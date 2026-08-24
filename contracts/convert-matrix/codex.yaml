@@ -1,0 +1,25 @@
+version: 0.1.0
+target: codex
+stability: gated
+layout:
+  - path: "~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-<timestamp>-<session-id>.jsonl"
+    mediaType: application/x-ndjson
+    purpose: Codex rollout with session metadata and typed events
+requiredFields:
+  - type=session_meta
+  - payload.id
+  - payload.cwd
+  - timestamp
+  - response_item.payload.role
+  - response_item.payload.content
+mapping:
+  session.id: session_meta.payload.id
+  workspace.path: session_meta.payload.cwd
+  turn.role: response_item.payload.role
+  turn.blocks: response_item.payload.content
+degradation:
+  unsupportedBlock: Render an attributed input_text block and add it to the conversion report
+  branch: Preserve the parent id in memoar provenance because rollout display is linear
+resume:
+  command: "codex resume <session-id> --no-alt-screen"
+  successSignal: Process loads the requested rollout without a format error

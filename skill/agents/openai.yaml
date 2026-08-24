@@ -1,0 +1,4 @@
+interface:
+  display_name: "Memoar Memory"
+  short_description: "Search archived coding sessions with evidence"
+  default_prompt: "Use $memoar-memory to find prior project decisions before solving this task."

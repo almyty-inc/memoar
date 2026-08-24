@@ -1,0 +1,147 @@
+import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, Patch, Post, Sse, type MessageEvent } from "@nestjs/common";
+import { Observable } from "rxjs";
+import type { MachineRecord, MachineStore, TenantContext } from "./archive-store.js";
+import { RequireScopes, Tenant } from "./auth.js";
+import { AckCommandDto, RegisterMachineDto, UpdateMachineDto } from "./machines.dto.js";
+import { uuidV7 } from "./ids.js";
+import { ARCHIVE_STORE } from "./tokens.js";
+
+function machineResponse(machine: MachineRecord): Record<string, unknown> {
+  const lastSeen = machine.lastSeenAt ? new Date(machine.lastSeenAt).valueOf() : null;
+  const status = lastSeen === null ? "never_connected" : Date.now() - lastSeen <= 120_000 ? "online" : "offline";
+  return {
+    id: machine.id,
+    name: machine.name,
+    platform: machine.platform,
+    status,
+    lastSeenAt: machine.lastSeenAt,
+    agentVersion: machine.agentVersion,
+    sources: Object.entries(machine.sourceSettings).map(([source, settings]) => ({ source, settings })),
+  };
+}
+
+@Injectable()
+export class MachinesService {
+  constructor(@Inject(ARCHIVE_STORE) private readonly store: MachineStore) {}
+
+  async list(context: TenantContext): Promise<{ items: Record<string, unknown>[] }> {
+    return { items: (await this.store.listMachines(context)).map(machineResponse) };
+  }
+
+  async register(context: TenantContext, body: RegisterMachineDto): Promise<Record<string, unknown>> {
+    const machine: MachineRecord = {
+      id: uuidV7(),
+      tenantId: context.tenantId,
+      name: body.name.trim(),
+      platform: body.platform.trim(),
+      agentVersion: body.agentVersion ?? null,
+      sourceSettings: {},
+      lastSeenAt: null,
+    };
+    await this.store.saveMachine(context, machine);
+    return machineResponse(machine);
+  }
+
+  async update(context: TenantContext, machineId: string, body: UpdateMachineDto): Promise<Record<string, unknown>> {
+    const machine = await this.store.getMachine(context, machineId);
+    if (!machine) throw new NotFoundException("Machine not found");
+    if (body.name !== undefined) machine.name = body.name.trim();
+    if (body.agentVersion !== undefined) machine.agentVersion = body.agentVersion;
+    if (body.sourceSettings !== undefined) machine.sourceSettings = body.sourceSettings;
+    await this.store.saveMachine(context, machine);
+    return machineResponse(machine);
+  }
+
+  private assertMachineBinding(context: TenantContext, machineId: string): void {
+    if (context.machineId && context.machineId !== machineId) {
+      throw new ForbiddenException("Machine token is bound to a different machine");
+    }
+  }
+
+  /**
+   * Durable command channel: replays every unacknowledged command on connect
+   * (marking them delivered), then polls for newly created commands. A command
+   * only leaves the replay set through an explicit ack, so commands survive
+   * dropped connections and server restarts.
+   */
+  streamCommands(context: TenantContext, machineId: string, pollMs = Number(process.env.MACHINE_COMMAND_POLL_MS ?? 3000)): Observable<MessageEvent> {
+    this.assertMachineBinding(context, machineId);
+    return new Observable<MessageEvent>((subscriber) => {
+      let initial = true;
+      let stopped = false;
+      const poll = async (): Promise<void> => {
+        const commands = await this.store.listUnackedMachineCommands(context, machineId);
+        const batch = initial ? commands : commands.filter((command) => command.status === "pending");
+        initial = false;
+        for (const command of batch) {
+          subscriber.next({ type: "command", data: { id: command.id, kind: command.kind, payload: command.payload, createdAt: command.createdAt } });
+        }
+        if (batch.length > 0) await this.store.markMachineCommandsDelivered(context, batch.map((command) => command.id));
+        subscriber.next({ type: "ping", data: new Date().toISOString() });
+      };
+      const touch = async (): Promise<void> => {
+        const machine = await this.store.getMachine(context, machineId);
+        if (!machine) throw new NotFoundException("Machine not found");
+        await this.store.saveMachine(context, { ...machine, lastSeenAt: new Date().toISOString() });
+      };
+      const tick = (): void => {
+        if (stopped) return;
+        poll().catch((error: unknown) => { subscriber.error(error); });
+      };
+      touch().then(tick).catch((error: unknown) => { subscriber.error(error); });
+      const timer = setInterval(tick, pollMs);
+      return () => { stopped = true; clearInterval(timer); };
+    });
+  }
+
+  async ackCommand(context: TenantContext, machineId: string, commandId: string, body: AckCommandDto): Promise<void> {
+    this.assertMachineBinding(context, machineId);
+    const acked = await this.store.ackMachineCommand(context, machineId, commandId, {
+      status: body.status,
+      ...(body.error !== undefined ? { error: body.error } : {}),
+    });
+    if (!acked) throw new NotFoundException("Command not found");
+  }
+}
+
+@Controller("machines")
+export class MachinesController {
+  constructor(private readonly machines: MachinesService) {}
+
+  @Get()
+  list(@Tenant() context: TenantContext): Promise<{ items: Record<string, unknown>[] }> {
+    return this.machines.list(context);
+  }
+
+  @Post()
+  register(@Tenant() context: TenantContext, @Body() body: RegisterMachineDto): Promise<Record<string, unknown>> {
+    return this.machines.register(context, body);
+  }
+
+  @Patch(":machineId")
+  update(
+    @Tenant() context: TenantContext,
+    @Param("machineId") machineId: string,
+    @Body() body: UpdateMachineDto,
+  ): Promise<Record<string, unknown>> {
+    return this.machines.update(context, machineId, body);
+  }
+
+  @Sse(":machineId/commands/stream")
+  @RequireScopes("materialize:read")
+  stream(@Tenant() context: TenantContext, @Param("machineId") machineId: string): Observable<MessageEvent> {
+    return this.machines.streamCommands(context, machineId);
+  }
+
+  @Post(":machineId/commands/:commandId/ack")
+  @RequireScopes("materialize:read")
+  @HttpCode(204)
+  ack(
+    @Tenant() context: TenantContext,
+    @Param("machineId") machineId: string,
+    @Param("commandId") commandId: string,
+    @Body() body: AckCommandDto,
+  ): Promise<void> {
+    return this.machines.ackCommand(context, machineId, commandId, body);
+  }
+}

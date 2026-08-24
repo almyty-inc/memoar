@@ -1,0 +1,25 @@
+{
+  "name": "memoar",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "description": "Launcher for the Memoar capture agent and CLI",
+  "type": "commonjs",
+  "bin": {
+    "memoar": "bin/memoar.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "install.sh",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "node --check bin/memoar.js && node --check lib/platform.js && sh -n install.sh",
+    "test": "node --test test/*.test.js",
+    "prepack": "npm run check && npm test"
+  }
+}

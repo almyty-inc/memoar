@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "rootDir": ".",
+    "outDir": "dist",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["*.ts", "src/**/*.ts", "libs/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}

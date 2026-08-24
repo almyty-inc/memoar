@@ -1,0 +1,1210 @@
+openapi: 3.1.0
+info:
+  title: Memoar API
+  version: 0.1.1
+  description: Contract for capture, archive, retrieval, sharing, conversion, and MCP authentication.
+servers:
+  - url: http://localhost:4000/v1
+    description: Local development
+tags:
+  - name: Auth
+  - name: Ingest
+  - name: Sessions
+  - name: Search
+  - name: Annotations
+  - name: Collections
+  - name: Sharing
+  - name: Convert
+  - name: Machines
+  - name: MCP
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginWithEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailLoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/AuthSessionResponse' }
+        '401': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/oauth/{provider}:
+    get:
+      tags: [Auth]
+      operationId: beginOAuth
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OAuthProvider'
+      responses:
+        '302': { description: Redirect to the identity provider }
+  /auth/oauth/{provider}/callback:
+    get:
+      tags: [Auth]
+      operationId: completeOAuth
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OAuthProvider'
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        '302': { description: Redirect to the web application }
+        '401': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/api-keys:
+    get:
+      tags: [Auth]
+      operationId: listApiKeys
+      responses:
+        '200':
+          description: API keys without secret material
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/ApiKey' } } } }
+    post:
+      tags: [Auth]
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name, scopes], properties: { name: { type: string }, scopes: { type: array, items: { type: string } } } }
+      responses:
+        '201':
+          description: Secret is returned once
+          content:
+            application/json:
+              schema: { type: object, required: [apiKey, secret], properties: { apiKey: { $ref: '#/components/schemas/ApiKey' }, secret: { type: string } } }
+  /auth/api-keys/{keyId}:
+    delete:
+      tags: [Auth]
+      operationId: revokeApiKey
+      parameters:
+        - $ref: '#/components/parameters/KeyId'
+      responses:
+        '204': { description: Key revoked }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/machine-token:
+    post:
+      tags: [Auth]
+      operationId: issueMachineToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [machineId], properties: { machineId: { $ref: '#/components/schemas/Uuid' } } }
+      responses:
+        '201':
+          description: Short-lived machine token
+          content:
+            application/json:
+              schema: { type: object, required: [token, expiresAt], properties: { token: { type: string }, expiresAt: { type: string, format: date-time } } }
+  /ingest/artifacts/{sha256}:
+    put:
+      tags: [Ingest]
+      operationId: putRawArtifact
+      security: [{ machineToken: [] }]
+      parameters:
+        - { name: sha256, in: path, required: true, schema: { type: string, pattern: '^[a-f0-9]{64}$' } }
+        - { name: x-memoar-source, in: header, required: true, schema: { type: string } }
+        - { name: x-memoar-source-path, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, contentEncoding: binary }
+      responses:
+        '201': { description: Artifact stored }
+        '208': { description: Artifact already exists }
+        '422': { $ref: '#/components/responses/ProblemResponse' }
+  /ingest/manifests:
+    post:
+      tags: [Ingest]
+      operationId: submitIngestManifest
+      security: [{ machineToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngestManifest' }
+      responses:
+        '202':
+          description: Manifest queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestReceipt' }
+        '422':
+          description: Manifest references artifact hashes that were never uploaded. Problem code missing_artifact_hashes lists the offending hashes.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /ingest/delta:
+    post:
+      tags: [Ingest]
+      operationId: negotiateIngestDelta
+      security: [{ machineToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [machineId, hashes], properties: { machineId: { $ref: '#/components/schemas/Uuid' }, hashes: { type: array, items: { type: string } } } }
+      responses:
+        '200':
+          description: Hashes the server does not have
+          content:
+            application/json:
+              schema: { type: object, required: [missing], properties: { missing: { type: array, items: { type: string } } } }
+  /sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - { name: agent, in: query, schema: { type: string } }
+        - { name: workspace, in: query, schema: { type: string } }
+        - { name: machineId, in: query, schema: { $ref: '#/components/schemas/Uuid' } }
+        - { name: model, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Cursor page of session summaries
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionPage' }
+  /sessions/timeline:
+    get:
+      tags: [Sessions]
+      operationId: getTimeline
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Timeline grouped by day
+          content:
+            application/json:
+              schema: { type: object, required: [groups], properties: { groups: { type: array, items: { $ref: '#/components/schemas/TimelineGroup' } }, nextCursor: { type: [string, 'null'] } } }
+  /sessions/{sessionId}/export:
+    get:
+      tags: [Sessions]
+      operationId: exportSession
+      description: Downloads the session as a canonical Memoar bundle (re-importable through the canonical-bundle ingest source) or as a self-contained HTML transcript.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - { name: format, in: query, schema: { type: string, enum: [canonical, html], default: canonical } }
+      responses:
+        '200':
+          description: Exported session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [memoarBundle, sessions]
+                properties:
+                  memoarBundle: { type: string }
+                  sessions: { type: array, items: { type: object, additionalProperties: true } }
+            text/html:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /sessions/{sessionId}/redaction-reviews:
+    post:
+      tags: [Sharing]
+      operationId: completeRedactionReview
+      description: Completes a redaction review for the session, snapshotting the resolved masks against the immutable content digest. The returned id authorizes share links and transfers until the session content changes.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '201':
+          description: Redaction review completed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedactionReview' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /sessions/{sessionId}:
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: chunkSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Canonical session chunk
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionChunk' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+    patch:
+      tags: [Sessions]
+      operationId: updateSessionVisibility
+      description: Changes a session's visibility scope. Widening beyond private requires a completed redaction review whose id is supplied as redactionReviewId and whose content digest still matches the session.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visibility]
+              properties:
+                visibility:
+                  type: object
+                  required: [scope]
+                  properties:
+                    scope: { type: string, enum: [private, team, org, link] }
+                    teamId: { $ref: '#/components/schemas/Uuid' }
+                    orgId: { $ref: '#/components/schemas/Uuid' }
+                redactionReviewId: { $ref: '#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: Updated visibility
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, visibility]
+                properties:
+                  id: { $ref: '#/components/schemas/Uuid' }
+                  visibility: { $ref: '#/components/schemas/Visibility' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+        '409': { $ref: '#/components/responses/RedactionReviewRequired' }
+    delete:
+      tags: [Sessions]
+      operationId: deleteSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '202': { description: Deletion and retention cleanup queued }
+  /search:
+    get:
+      tags: [Search]
+      operationId: searchSessions
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: mode, in: query, schema: { type: string, enum: [hybrid, lexical, semantic], default: hybrid } }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - { name: agent, in: query, schema: { type: string } }
+        - { name: workspace, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Hybrid results with realized mode and aggregations
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+  /pack:
+    post:
+      tags: [Search]
+      operationId: buildPack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PackRequest' }
+      responses:
+        '200':
+          description: Token-budgeted cited evidence bundle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PackResponse' }
+  /annotations:
+    get:
+      tags: [Annotations]
+      operationId: listAnnotations
+      parameters:
+        - { name: sessionId, in: query, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Annotations visible in the active tenant, optionally filtered to one session
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Annotation' } } } }
+    post:
+      tags: [Annotations]
+      operationId: createAnnotation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnnotationWrite' }
+      responses:
+        '201':
+          description: Annotation created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+  /annotations/{annotationId}:
+    patch:
+      tags: [Annotations]
+      operationId: updateAnnotation
+      parameters:
+        - $ref: '#/components/parameters/AnnotationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [value], properties: { value: { type: object, additionalProperties: true } } }
+      responses:
+        '200':
+          description: Annotation updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+    delete:
+      tags: [Annotations]
+      operationId: deleteAnnotation
+      parameters:
+        - $ref: '#/components/parameters/AnnotationId'
+      responses:
+        '204': { description: Annotation deleted }
+  /collections:
+    get:
+      tags: [Collections]
+      operationId: listCollections
+      responses:
+        '200':
+          description: Collections visible in the active tenant
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Collection' } } } }
+    post:
+      tags: [Collections]
+      operationId: createCollection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string }, teamId: { $ref: '#/components/schemas/Uuid' } } }
+      responses:
+        '201':
+          description: Collection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Collection' }
+  /collections/{collectionId}/sessions:
+    get:
+      tags: [Collections]
+      operationId: listCollectionSessions
+      parameters:
+        - $ref: '#/components/parameters/CollectionId'
+      responses:
+        '200':
+          description: Summaries of the sessions in the collection
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } } } }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /collections/{collectionId}/sessions/{sessionId}:
+    put:
+      tags: [Collections]
+      operationId: addSessionToCollection
+      parameters:
+        - $ref: '#/components/parameters/CollectionId'
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204': { description: Membership saved }
+    delete:
+      tags: [Collections]
+      operationId: removeSessionFromCollection
+      parameters:
+        - $ref: '#/components/parameters/CollectionId'
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204': { description: Membership removed }
+  /sharing/links:
+    get:
+      tags: [Sharing]
+      operationId: listShareLinks
+      responses:
+        '200':
+          description: Active and revoked links
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/ShareGrant' } } } }
+    post:
+      tags: [Sharing]
+      operationId: createShareLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShareRequest' }
+      responses:
+        '201':
+          description: Link created after redaction review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareGrant' }
+        '409': { $ref: '#/components/responses/RedactionReviewRequired' }
+  /sharing/grants/{grantId}:
+    delete:
+      tags: [Sharing]
+      operationId: revokeShareGrant
+      parameters:
+        - { name: grantId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Grant revoked }
+  /sharing/transfers:
+    get:
+      tags: [Sharing]
+      operationId: listTransfers
+      responses:
+        '200':
+          description: Incoming and outgoing transfers
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Transfer' } } } }
+    post:
+      tags: [Sharing]
+      operationId: requestTransfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [sessionId, recipientEmail, redactionReviewId], properties: { sessionId: { $ref: '#/components/schemas/Uuid' }, recipientEmail: { type: string, format: email }, redactionReviewId: { $ref: '#/components/schemas/Uuid' } } }
+      responses:
+        '201':
+          description: Transfer awaits recipient action
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '409': { $ref: '#/components/responses/RedactionReviewRequired' }
+  /sharing/transfers/{transferId}/accept:
+    post:
+      tags: [Sharing]
+      operationId: acceptTransfer
+      parameters:
+        - { name: transferId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Imported session summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionSummary' }
+  /shares/{token}:
+    get:
+      tags: [Sharing]
+      operationId: consumeShare
+      description: Public, unauthenticated read of a shared session through an active share link. The response is the redaction-projected canonical session; masked literals and raw tool payloads are removed. Revoked, expired, or unknown tokens return 404.
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Redaction-projected shared session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, permission]
+                properties:
+                  session: { type: object, additionalProperties: true }
+                  permission: { type: string, enum: [viewer, importer] }
+                  expiresAt: { type: [string, 'null'], format: date-time }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /shares/{token}/import:
+    post:
+      tags: [Sharing]
+      operationId: importShare
+      description: Imports the shared session into the caller's archive as a private copy with an import provenance entry. Requires an importer-permission link.
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '201':
+          description: Imported session summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionSummary' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /convert:
+    post:
+      tags: [Convert]
+      operationId: requestConversion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversionRequest' }
+      responses:
+        '202':
+          description: Conversion queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversionJob' }
+  /convert/{jobId}:
+    get:
+      tags: [Convert]
+      operationId: getConversion
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Conversion status and report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversionJob' }
+  /convert/{jobId}/download:
+    get:
+      tags: [Convert]
+      operationId: downloadConversion
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '302': { description: Redirect to a short-lived object download URL }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
+  /convert/{jobId}/materialize:
+    post:
+      tags: [Convert]
+      operationId: materializeConversion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [machineId], properties: { machineId: { $ref: '#/components/schemas/Uuid' } } }
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '202': { description: Materialization command sent to the machine }
+  /teams:
+    get:
+      tags: [Teams]
+      operationId: listTeams
+      responses:
+        '200':
+          description: Teams the caller belongs to
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Team' } } } }
+    post:
+      tags: [Teams]
+      operationId: createTeam
+      description: Creates a team (and an owning organization when orgId is omitted) with the caller as its first member.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+                orgId: { $ref: '#/components/schemas/Uuid' }
+      responses:
+        '201':
+          description: Team created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+  /teams/{teamId}/members:
+    put:
+      tags: [Teams]
+      operationId: addTeamMember
+      description: Adds a member by account email. Caller must already be a member. There is no roles matrix; every member has the same capabilities.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '204': { description: Membership saved }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/members/{userId}:
+    delete:
+      tags: [Teams]
+      operationId: removeTeamMember
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - { name: userId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Membership removed }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/sessions:
+    get:
+      tags: [Teams]
+      operationId: listTeamSessions
+      description: Summaries of sessions any member has widened to this team, read across member tenants. Caller must be a member.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Team-visible session summaries
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } } } }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/collections:
+    get:
+      tags: [Teams]
+      operationId: listTeamCollections
+      description: Collections any member has shared to this team. Caller must be a member.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Team-shared collections
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Collection' } } } }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /settings:
+    get:
+      tags: [Settings]
+      operationId: getSettings
+      responses:
+        '200':
+          description: Tenant settings with defaults applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantSettings' }
+    put:
+      tags: [Settings]
+      operationId: updateSettings
+      description: Partial update; omitted sections keep their current values. Custom redaction patterns must be valid regular expressions and a day-based retention policy requires days >= 1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                redaction: { $ref: '#/components/schemas/RedactionSettings' }
+                retention: { $ref: '#/components/schemas/RetentionSettings' }
+      responses:
+        '200':
+          description: Updated tenant settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantSettings' }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+  /distillation/settings:
+    get:
+      tags: [Distillation]
+      operationId: getDistillationSettings
+      responses:
+        '200':
+          description: Distillation opt-in and monthly budget state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DistillationSettings' }
+    put:
+      tags: [Distillation]
+      operationId: updateDistillationSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                monthlyBudgetCents: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Updated distillation settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DistillationSettings' }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+  /distillation/sessions/{sessionId}:
+    post:
+      tags: [Distillation]
+      operationId: runDistillation
+      description: Runs distillation for one session under the monthly cost cap and records a durable distill job. Requires prior opt-in via distillation settings.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '202':
+          description: Distillation job completed or failed; inspect status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DistillationJob' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+        '409':
+          description: Distillation is not opted in, or the estimated cost exceeds the remaining monthly budget
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /distillation/jobs/{jobId}:
+    get:
+      tags: [Distillation]
+      operationId: getDistillationJob
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Durable distillation job record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DistillationJob' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /distillation/projects/export:
+    post:
+      tags: [Distillation]
+      operationId: exportProjectMemory
+      parameters:
+        - { name: workspace, in: query, required: true, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string, enum: [claude, agents], default: agents } }
+      responses:
+        '200':
+          description: Markdown project memory assembled from distilled notes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace, format, markdown, noteCount]
+                properties:
+                  workspace: { type: string }
+                  format: { type: string, enum: [claude, agents] }
+                  markdown: { type: string }
+                  noteCount: { type: integer }
+  /machines:
+    get:
+      tags: [Machines]
+      operationId: listMachines
+      responses:
+        '200':
+          description: Registered machines and source status
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Machine' } } } }
+    post:
+      tags: [Machines]
+      operationId: registerMachine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name, platform], properties: { name: { type: string }, platform: { type: string }, agentVersion: { type: string } } }
+      responses:
+        '201':
+          description: Machine registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Machine' }
+  /machines/{machineId}:
+    patch:
+      tags: [Machines]
+      operationId: updateMachine
+      parameters:
+        - { name: machineId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, agentVersion: { type: string }, sourceSettings: { type: object, additionalProperties: true } } }
+      responses:
+        '200':
+          description: Machine updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Machine' }
+  /machines/{machineId}/commands/stream:
+    get:
+      tags: [Machines]
+      operationId: streamMachineCommands
+      description: Durable server-to-machine command channel over Server-Sent Events. On connect the stream replays every command not yet acknowledged (marking each delivered), then pushes new commands as they are created. Events are named "command" with a JSON body {id, kind, payload, createdAt}; the stream also emits periodic "ping" comments. A machine token may only stream its own machine's commands.
+      parameters:
+        - { name: machineId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: SSE stream of machine commands
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /machines/{machineId}/commands/{commandId}/ack:
+    post:
+      tags: [Machines]
+      operationId: ackMachineCommand
+      description: Acknowledges a delivered command. Completed commands leave the replay set; failed ones record the error and also stop replaying.
+      parameters:
+        - { name: machineId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - { name: commandId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [completed, failed] }
+                error: { type: string }
+      responses:
+        '204': { description: Command acknowledged }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /mcp/auth/handshake:
+    post:
+      tags: [MCP]
+      operationId: mcpAuthHandshake
+      security: [{ apiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [clientName, protocolVersion], properties: { clientName: { type: string }, protocolVersion: { type: string } } }
+      responses:
+        '200':
+          description: MCP endpoint and negotiated capabilities
+          content:
+            application/json:
+              schema: { type: object, required: [endpoint, tools], properties: { endpoint: { type: string, format: uri }, tools: { type: array, items: { type: string } } } }
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    apiKey: { type: apiKey, in: header, name: X-Memoar-Key }
+    machineToken: { type: http, scheme: bearer, bearerFormat: MachineToken }
+  parameters:
+    SessionId: { name: sessionId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    AnnotationId: { name: annotationId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    CollectionId: { name: collectionId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    KeyId: { name: keyId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    OAuthProvider: { name: provider, in: path, required: true, schema: { type: string, enum: [github, google] } }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+  responses:
+    ProblemResponse:
+      description: Request failed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    AuthSessionResponse:
+      description: Authenticated browser session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AuthSession' }
+    RedactionReviewRequired:
+      description: A completed redaction review is required before visibility widens
+      content:
+        application/problem+json:
+          schema: { allOf: [{ $ref: '#/components/schemas/Problem' }, { type: object, required: [reviewId], properties: { reviewId: { $ref: '#/components/schemas/Uuid' } } }] }
+  schemas:
+    Uuid: { type: string, format: uuid }
+    RedactionReview:
+      type: object
+      required: [id, sessionId, status, contentDigest, maskCount, completedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [pending, completed, superseded] }
+        contentDigest: { type: string }
+        maskCount: { type: integer, minimum: 0 }
+        masks:
+          type: array
+          items:
+            type: object
+            required: [kind, start, end, preview]
+            properties:
+              kind: { type: string }
+              start: { type: integer }
+              end: { type: integer }
+              preview: { type: string }
+        completedAt: { type: string, format: date-time }
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        code: { type: string }
+        detail: { type: string }
+        retryable: { type: boolean }
+    EmailLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10 }
+    AuthSession:
+      type: object
+      required: [accessToken, expiresAt, user]
+      properties:
+        accessToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      required: [id, email, displayName]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string, format: email }
+        displayName: { type: string }
+    ApiKey:
+      type: object
+      required: [id, name, prefix, scopes, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        prefix: { type: string }
+        scopes: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time }
+    IngestManifest:
+      type: object
+      required: [machineId, batchId, artifacts]
+      properties:
+        machineId: { $ref: '#/components/schemas/Uuid' }
+        batchId: { $ref: '#/components/schemas/Uuid' }
+        artifacts:
+          type: array
+          items:
+            type: object
+            required: [sha256, size, source, sourcePath, modifiedAt]
+            properties:
+              sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+              size: { type: integer, minimum: 0 }
+              source: { type: string }
+              sourcePath: { type: string }
+              modifiedAt: { type: string, format: date-time }
+    IngestReceipt:
+      type: object
+      required: [batchId, accepted, duplicate, queuedAt]
+      properties:
+        batchId: { $ref: '#/components/schemas/Uuid' }
+        accepted: { type: integer }
+        duplicate: { type: integer }
+        queuedAt: { type: string, format: date-time }
+    SessionSummary:
+      type: object
+      required: [id, title, source, workspace, updatedAt, turnCount, redactionStatus]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        title: { type: string }
+        summary: { type: string }
+        source: { type: string }
+        workspace: { type: string }
+        model: { type: string }
+        updatedAt: { type: string, format: date-time }
+        turnCount: { type: integer }
+        redactionStatus: { type: string, enum: [clear, findings, reviewed] }
+        score: { type: number }
+        highlight: { type: string }
+    SessionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
+        nextCursor: { type: [string, 'null'] }
+    TimelineGroup:
+      type: object
+      required: [date, sessions]
+      properties:
+        date: { type: string, format: date }
+        sessions: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
+    SessionChunk:
+      type: object
+      required: [session, turns, nextCursor]
+      properties:
+        session: { $ref: '#/components/schemas/SessionSummary' }
+        turns: { type: array, items: { type: object, additionalProperties: true } }
+        nextCursor: { type: [string, 'null'] }
+    SearchResponse:
+      type: object
+      required: [items, nextCursor, aggregations, meta]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
+        nextCursor: { type: [string, 'null'] }
+        aggregations: { type: object, additionalProperties: true }
+        meta:
+          type: object
+          required: [requestedMode, realizedMode, tookMs]
+          properties:
+            requestedMode: { type: string }
+            realizedMode: { type: string, enum: [hybrid, lexical, semantic] }
+            tookMs: { type: integer }
+            semanticFailure: { type: [string, 'null'] }
+    PackRequest:
+      type: object
+      additionalProperties: false
+      required: [query, maxTokens, maxEvidence, maxSessions, maxExcerptChars, freshnessPolicy]
+      properties:
+        query: { type: string, minLength: 1 }
+        maxTokens: { type: integer, minimum: 64, maximum: 32000 }
+        maxEvidence: { type: integer, minimum: 1, maximum: 100 }
+        maxSessions: { type: integer, minimum: 1, maximum: 50 }
+        maxExcerptChars: { type: integer, minimum: 80, maximum: 20000 }
+        freshnessPolicy: { type: string, enum: [strict, mixed] }
+        staleAfterDays: { type: integer, minimum: 1 }
+    PackResponse:
+      type: object
+      required: [query, markdown, evidence, tokenEstimate, staleCount, redactionStatus]
+      properties:
+        query: { type: string }
+        markdown: { type: string }
+        evidence:
+          type: array
+          items:
+            type: object
+            required: [sessionId, turnStart, turnEnd, ageDays, excerpt]
+            properties:
+              sessionId: { $ref: '#/components/schemas/Uuid' }
+              turnStart: { type: integer }
+              turnEnd: { type: integer }
+              ageDays: { type: integer }
+              excerpt: { type: string }
+        tokenEstimate: { type: integer }
+        staleCount: { type: integer }
+        redactionStatus: { type: string, enum: [clear, findings, mixed] }
+    AnnotationWrite:
+      type: object
+      required: [sessionId, kind, value]
+      properties:
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        turnId: { $ref: '#/components/schemas/Uuid' }
+        blockId: { $ref: '#/components/schemas/Uuid' }
+        kind: { type: string, enum: [tag, collection, pin, note, summary, redaction_mask] }
+        value: { type: object, additionalProperties: true }
+    Annotation:
+      allOf:
+        - { $ref: '#/components/schemas/AnnotationWrite' }
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    RedactionSettings:
+      type: object
+      required: [secretScan, pathScan, emailScan, customPatterns]
+      properties:
+        secretScan: { type: boolean }
+        pathScan: { type: boolean }
+        emailScan: { type: boolean }
+        customPatterns: { type: array, items: { type: string }, maxItems: 64 }
+    RetentionSettings:
+      type: object
+      required: [policy, exemptCollected]
+      properties:
+        policy: { type: string, enum: [indefinite, days] }
+        days: { type: integer, minimum: 1 }
+        exemptCollected: { type: boolean }
+    DistillationSettings:
+      type: object
+      required: [enabled, monthlyBudgetCents, monthlySpentCents, remainingCents, budgetWindowStartedAt]
+      properties:
+        enabled: { type: boolean }
+        monthlyBudgetCents: { type: integer, minimum: 0 }
+        monthlySpentCents: { type: integer, minimum: 0 }
+        remainingCents: { type: integer, minimum: 0 }
+        budgetWindowStartedAt: { type: string, format: date-time }
+    DistillationJob:
+      type: object
+      required: [id, sessionId, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [queued, running, ready, failed] }
+        createdAt: { type: string, format: date-time }
+        noteIds: { type: array, items: { $ref: '#/components/schemas/Uuid' } }
+        costCents: { type: integer }
+        inputTokens: { type: integer }
+        outputTokens: { type: integer }
+        remainingCents: { type: integer }
+        error: { type: string }
+    TenantSettings:
+      type: object
+      required: [redaction, retention]
+      properties:
+        redaction: { $ref: '#/components/schemas/RedactionSettings' }
+        retention: { $ref: '#/components/schemas/RetentionSettings' }
+        updatedAt: { type: [string, 'null'], format: date-time }
+    Team:
+      type: object
+      required: [id, orgId, name, memberCount]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        orgId: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        memberCount: { type: integer, minimum: 1 }
+    Collection:
+      type: object
+      required: [id, name, sessionCount, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        description: { type: string }
+        teamId: { $ref: '#/components/schemas/Uuid' }
+        sessionCount: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    ShareRequest:
+      type: object
+      required: [sessionId, permission, redactionReviewId]
+      properties:
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        permission: { type: string, enum: [viewer, importer] }
+        redactionReviewId: { $ref: '#/components/schemas/Uuid' }
+        expiresAt: { type: [string, 'null'], format: date-time }
+    ShareGrant:
+      type: object
+      required: [id, sessionId, permission, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        permission: { type: string, enum: [viewer, importer] }
+        status: { type: string, enum: [active, revoked, expired] }
+        token: { type: string }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: [string, 'null'], format: date-time }
+    Transfer:
+      type: object
+      required: [id, sessionId, senderEmail, recipientEmail, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        senderEmail: { type: string, format: email }
+        recipientEmail: { type: string, format: email }
+        status: { type: string, enum: [pending, accepted, declined, expired] }
+        createdAt: { type: string, format: date-time }
+    ConversionRequest:
+      type: object
+      required: [sessionId, target, fallback]
+      properties:
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        target:
+          type: string
+          minLength: 1
+          description: Conversion target. claude-code, codex, and antigravity-cli produce native bundles; any other value is an open target that only succeeds with fallback "injection", producing a cited, token-budgeted context prelude built from the session and related archive evidence.
+        fallback: { type: string, enum: [fail, injection] }
+    ConversionJob:
+      type: object
+      required: [id, sessionId, target, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        sessionId: { $ref: '#/components/schemas/Uuid' }
+        target: { type: string }
+        status: { type: string, enum: [queued, running, ready, failed] }
+        createdAt: { type: string, format: date-time }
+        downloadUrl: { type: string, format: uri }
+        resumeCommand: { type: string }
+        report: { type: object, additionalProperties: true }
+    Machine:
+      type: object
+      required: [id, name, platform, status, lastSeenAt, sources]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        platform: { type: string }
+        status: { type: string, enum: [online, offline, never_connected] }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        sources: { type: array, items: { type: object, additionalProperties: true } }

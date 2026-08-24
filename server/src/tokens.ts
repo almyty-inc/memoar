@@ -1,0 +1,7 @@
+export const ARCHIVE_STORE = Symbol("ARCHIVE_STORE");
+export const OBJECT_STORAGE = Symbol("OBJECT_STORAGE");
+export const JOB_QUEUE = Symbol("JOB_QUEUE");
+export const EMBEDDING_PROVIDER = Symbol("EMBEDDING_PROVIDER");
+export const DISTILLATION_PROVIDER = Symbol("DISTILLATION_PROVIDER");
+export const SEARCH_BACKEND = Symbol("SEARCH_BACKEND");
+export const SEMANTIC_SEARCH_PROVIDER = Symbol("SEMANTIC_SEARCH_PROVIDER");

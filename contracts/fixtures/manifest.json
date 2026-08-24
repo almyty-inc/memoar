@@ -1,0 +1,309 @@
+{
+  "version": "0.2.0",
+  "fixtures": [
+    {
+      "source": "claude-code",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/claude-code/v1/session-1/input/session.jsonl",
+      "inputSha256": "06e308b7fd768b8cc72ef5988d971212a96b59ce8c06ff1b243ffe910eb18433",
+      "expected": "contracts/fixtures/claude-code/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "claude-code",
+      "version": "v1",
+      "fixture": "session-2",
+      "input": "contracts/fixtures/claude-code/v1/session-2/input/session.jsonl",
+      "inputSha256": "48c9508f35a4d2f9f0f1fa4f9465dc7ec4d9065e5bb8f4081248ed25269cf84c",
+      "expected": "contracts/fixtures/claude-code/v1/session-2/expected.canonical.json"
+    },
+    {
+      "source": "claude-code",
+      "version": "v1",
+      "fixture": "session-3",
+      "input": "contracts/fixtures/claude-code/v1/session-3/input/session.jsonl",
+      "inputSha256": "a32385f0b0f94f6d08ee2dd6c2f3ffe93f669241d8d694c11d4e5d98e100ec13",
+      "expected": "contracts/fixtures/claude-code/v1/session-3/expected.canonical.json"
+    },
+    {
+      "source": "codex",
+      "version": "rollout-v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/codex/rollout-v1/session-1/input/session.jsonl",
+      "inputSha256": "f4759a8d452878785f88fe12e294e58f8a7587ae3b9ec94e42d686726f3f5e98",
+      "expected": "contracts/fixtures/codex/rollout-v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "codex",
+      "version": "rollout-v1",
+      "fixture": "session-2",
+      "input": "contracts/fixtures/codex/rollout-v1/session-2/input/session.jsonl",
+      "inputSha256": "9ee4f2a4ef6eeaf7d4688508593e4f6a5b805659052cc4d6fa8a2552890d2b64",
+      "expected": "contracts/fixtures/codex/rollout-v1/session-2/expected.canonical.json"
+    },
+    {
+      "source": "codex",
+      "version": "rollout-v1",
+      "fixture": "session-3",
+      "input": "contracts/fixtures/codex/rollout-v1/session-3/input/session.jsonl",
+      "inputSha256": "d648335704153116a7d70b801fdb3a00e8feadfcd5be6ce094892c3966f58ca7",
+      "expected": "contracts/fixtures/codex/rollout-v1/session-3/expected.canonical.json"
+    },
+    {
+      "source": "antigravity-cli",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/antigravity-cli/v1/session-1/input/native.sqlite3",
+      "inputSha256": "3678733862e36dc2d721f808a03b4bb9d9f8f19060a9d777b13002e7c3ef49c1",
+      "expected": "contracts/fixtures/antigravity-cli/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "antigravity-cli",
+      "version": "v1",
+      "fixture": "session-2",
+      "input": "contracts/fixtures/antigravity-cli/v1/session-2/input/native.sqlite3",
+      "inputSha256": "6b92fa11d96a2b1eb36e764d910d7a85b65b21b6ae41061ad37aa33133d95649",
+      "expected": "contracts/fixtures/antigravity-cli/v1/session-2/expected.canonical.json"
+    },
+    {
+      "source": "antigravity-cli",
+      "version": "v1",
+      "fixture": "session-3",
+      "input": "contracts/fixtures/antigravity-cli/v1/session-3/input/native.sqlite3",
+      "inputSha256": "50b2c859e2fbc22b22593e5183e58673232495833c36a25636f214e33478d5c9",
+      "expected": "contracts/fixtures/antigravity-cli/v1/session-3/expected.canonical.json"
+    },
+    {
+      "source": "cursor",
+      "version": "v3",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/cursor/v3/session-1/input/native.sqlite3",
+      "inputSha256": "0f852b96c2c013d67795a2b32ff835487bb9ec4d9d81cdc1a9aed5af451f9860",
+      "expected": "contracts/fixtures/cursor/v3/session-1/expected.canonical.json"
+    },
+    {
+      "source": "cursor",
+      "version": "v3",
+      "fixture": "session-2",
+      "input": "contracts/fixtures/cursor/v3/session-2/input/native.sqlite3",
+      "inputSha256": "6a0c3f98a15de9464ed323ca19c02bbe4e2150174c8d09a00b3b5f535311ed56",
+      "expected": "contracts/fixtures/cursor/v3/session-2/expected.canonical.json"
+    },
+    {
+      "source": "cursor",
+      "version": "v3",
+      "fixture": "session-3",
+      "input": "contracts/fixtures/cursor/v3/session-3/input/native.sqlite3",
+      "inputSha256": "93d2a2e8a799ea0d48856ad74c90a237ac47d09c2865b721f9a513564ea5d150",
+      "expected": "contracts/fixtures/cursor/v3/session-3/expected.canonical.json"
+    },
+    {
+      "source": "opencode",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/opencode/v1/session-1/input/session.json",
+      "inputSha256": "761c59c0462b9282f33ded1480c8acce9eafd5fc89515e3134354ca091c01779",
+      "expected": "contracts/fixtures/opencode/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "copilot",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/copilot/v1/session-1/input/session.json",
+      "inputSha256": "f43d667e3e3ffc60ed8cbf5a3fe2214c3978a1b370062654ddab4336a8c90c89",
+      "expected": "contracts/fixtures/copilot/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "goose",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/goose/v1/session-1/input/native.sqlite3",
+      "inputSha256": "e482f1ae05a0db17deebe187897daa1fa2c1493b5bb2a26455baa7efe8eca7df",
+      "expected": "contracts/fixtures/goose/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "crush",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/crush/v1/session-1/input/native.sqlite3",
+      "inputSha256": "191397e0b5d4b19b7e6187db1a10bedd83ef916269e18203c63a7ffe5ceaa28b",
+      "expected": "contracts/fixtures/crush/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "cline",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/cline/v1/session-1/input/session.json",
+      "inputSha256": "e8f8fd0c5e7b157e62995529782e6e97257f1819be437895354554bd36c8dc4b",
+      "expected": "contracts/fixtures/cline/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "roo",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/roo/v1/session-1/input/task.json",
+      "inputSha256": "6aba48052943c5807a4046619ac0edd20ee18569adde9536c94812533b9f56da",
+      "expected": "contracts/fixtures/roo/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "kilo",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/kilo/v1/session-1/input/task.json",
+      "inputSha256": "65d18a8e71c6e7ceb990492f6eeaf5494acfbea5c1f7fc918f90121df87ee8f0",
+      "expected": "contracts/fixtures/kilo/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "antigravity-ide",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/antigravity-ide/v1/session-1/input/native.sqlite3",
+      "inputSha256": "06e63e8e6b15a5b5d9e356a188e8321dcb160c5254a086430da349adf04a04bd",
+      "expected": "contracts/fixtures/antigravity-ide/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "openhands",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/openhands/v1/session-1/input/session.json",
+      "inputSha256": "47717fe2e8500cf507d08075de7d3430cd94f95debc6fa7b8c56fa95ade870a0",
+      "expected": "contracts/fixtures/openhands/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "droid",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/droid/v1/session-1/input/session.jsonl",
+      "inputSha256": "b67ffdc888f34a64a156dfd66e8a4bf0bb62680018fed93415218c1a7202d6a9",
+      "expected": "contracts/fixtures/droid/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "qwen",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/qwen/v1/session-1/input/session.jsonl",
+      "inputSha256": "eb5d71a743d0cb4da78828290bf248a48802107f8a8ec09bce579b559483de4a",
+      "expected": "contracts/fixtures/qwen/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "kimi",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/kimi/v1/session-1/input/session.jsonl",
+      "inputSha256": "93810f45f233dd438d622412ca67edcc8387e3d447631d5448da12a4d1b38022",
+      "expected": "contracts/fixtures/kimi/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "aider",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/aider/v1/session-1/input/session.json",
+      "inputSha256": "cc99f844171ee3323792a1de7a15ad8fa5a2ee897c4dac2ff3e7c859613ae8df",
+      "expected": "contracts/fixtures/aider/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "continue",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/continue/v1/session-1/input/session.json",
+      "inputSha256": "db5ef1cc6e3ab128619f321ef32e1a8a5746153cb25d29a378f3631e66e58079",
+      "expected": "contracts/fixtures/continue/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "zed",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/zed/v1/session-1/input/native.sqlite3",
+      "inputSha256": "65cdcc4953d96a6de0ec97764ba5b38aac5df813d16ed457f8ea56930d43ec1d",
+      "expected": "contracts/fixtures/zed/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "pi-agent",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/pi-agent/v1/session-1/input/session.jsonl",
+      "inputSha256": "88a40b7eded16a48392f764ec888aa944589a513f59b3e17c0ee47b12985ee13",
+      "expected": "contracts/fixtures/pi-agent/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "amp",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/amp/v1/session-1/input/thread.json",
+      "inputSha256": "24227a533f49bfb08e4af1412a62610a807d1557221927728d642276c9df31ca",
+      "expected": "contracts/fixtures/amp/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "warp",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/warp/v1/session-1/input/native.sqlite3",
+      "inputSha256": "230625207b1213f798cdc2c9bdfe4b9b60d7655ef2f44c641e162713623fdd23",
+      "expected": "contracts/fixtures/warp/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "windsurf",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/windsurf/v1/session-1/input/native.sqlite3",
+      "inputSha256": "3bc93531b81d58a69a6dc7771902aff5d279b3c8c5cff497f590d4b9ee872340",
+      "expected": "contracts/fixtures/windsurf/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "chatgpt-export",
+      "version": "2026-08",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/chatgpt-export/2026-08/session-1/input/export.zip",
+      "inputSha256": "6673509fd9449dc1661ca613b113a8887126d3cfdc22890f26b4441410159e79",
+      "expected": "contracts/fixtures/chatgpt-export/2026-08/session-1/expected.canonical.json"
+    },
+    {
+      "source": "claude-ai-export",
+      "version": "2026-08",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/claude-ai-export/2026-08/session-1/input/export.zip",
+      "inputSha256": "00e9c387d6c9118e063061e0c546280d836ec1803bed3263d7fc707bdaf0d48d",
+      "expected": "contracts/fixtures/claude-ai-export/2026-08/session-1/expected.canonical.json"
+    },
+    {
+      "source": "gemini-export",
+      "version": "2026-08",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/gemini-export/2026-08/session-1/input/export.zip",
+      "inputSha256": "fdef275557b4770eee9191e2fa5eec50fa31de2a2b9e9f88320d2774b666af92",
+      "expected": "contracts/fixtures/gemini-export/2026-08/session-1/expected.canonical.json"
+    },
+    {
+      "source": "mistral-export",
+      "version": "2026-08",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/mistral-export/2026-08/session-1/input/export.zip",
+      "inputSha256": "28ff5159c381a4fa88ba1bbdda561d288945d96c2023248f5610dd9d974b5bcc",
+      "expected": "contracts/fixtures/mistral-export/2026-08/session-1/expected.canonical.json"
+    },
+    {
+      "source": "perplexity-export",
+      "version": "2026-08",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/perplexity-export/2026-08/session-1/input/export.zip",
+      "inputSha256": "1172f0300d7376c6a5bc6d4f8abc5f61e3881d9890d7d2ebd395015001fa0053",
+      "expected": "contracts/fixtures/perplexity-export/2026-08/session-1/expected.canonical.json"
+    },
+    {
+      "source": "cass-export",
+      "version": "2026-08",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/cass-export/2026-08/session-1/input/cass.json",
+      "inputSha256": "387a0af0e32df3b52554c04957e6b189ef7158f146dace3fd2390cd8c9cf7e2a",
+      "expected": "contracts/fixtures/cass-export/2026-08/session-1/expected.canonical.json"
+    },
+    {
+      "source": "canonical-bundle",
+      "version": "v1",
+      "fixture": "session-1",
+      "input": "contracts/fixtures/canonical-bundle/v1/session-1/input/bundle.json",
+      "inputSha256": "f1872ce97e4086b43791ba72949ce92c642bb59fce92c9f0def8dabe4de9f0b9",
+      "expected": "contracts/fixtures/canonical-bundle/v1/session-1/expected.canonical.json"
+    }
+  ]
+}

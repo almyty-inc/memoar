@@ -1,0 +1,31 @@
+version: 0.1.0
+target: antigravity-cli
+stability: gated
+layout:
+  - path: "~/.gemini/antigravity-cli/brain/<session-id>/.system_generated/logs/transcript.jsonl"
+    mediaType: application/x-ndjson
+    purpose: Native transcript
+  - path: "~/.gemini/antigravity-cli/brain/<session-id>/conversations/<session-id>.db"
+    mediaType: application/vnd.sqlite3
+    purpose: Conversation metadata including workspace
+  - path: "~/.gemini/antigravity-cli/brain/<session-id>/walkthrough.md"
+    mediaType: text/markdown
+    purpose: Converted artifact summary
+requiredFields:
+  - message.id
+  - message.role
+  - message.parts
+  - message.createdAt
+  - conversation.workspacePath
+mapping:
+  session.id: brain directory and conversation id
+  workspace.path: conversation.workspacePath
+  turn.id: message.id
+  turn.parentId: message.parentId
+  turn.blocks: message.parts
+degradation:
+  unsupportedBlock: Render an attributed text part and record it in walkthrough.md
+  missingArtifact: Keep the artifact reference and mark the file unavailable
+resume:
+  command: "agy --conversation <session-id> --print smoke"
+  successSignal: Bounded non-interactive run prints a response for the resumed conversation and exits zero without a format error

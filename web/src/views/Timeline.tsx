@@ -1,0 +1,207 @@
+import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  ArrowRight,
+  CalendarDays,
+  ChevronDown,
+  Clock3,
+  Filter,
+  GitBranch,
+  MessageSquare,
+  Pin,
+  SlidersHorizontal,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { SessionSummary, TimelineGroup } from '../lib/types';
+import {
+  Badge,
+  Button,
+  RedactionBadge,
+  SourceBadge,
+  cn,
+  formatNumber,
+  formatRelative,
+} from '../components/ui';
+
+type TimelineItem =
+  | { type: 'date'; key: string; date: string; count: number }
+  | { type: 'session'; key: string; session: SessionSummary };
+
+function friendlyDate(date: string): string {
+  if (date === '2026-08-17') return 'Today';
+  if (date === '2026-08-16') return 'Yesterday';
+  return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
+}
+
+export function SessionCard({ session, onOpen }: { session: SessionSummary; onOpen: (session: SessionSummary) => void }) {
+  return (
+    <article className="session-card" onDoubleClick={() => onOpen(session)}>
+      <button className="session-card-main" type="button" onClick={() => onOpen(session)}>
+        <div className="session-card-topline">
+          <SourceBadge source={session.source} label={session.sourceLabel} />
+          <span className="subtle-text">{formatRelative(session.updatedAt)}</span>
+          {session.pinned ? <Pin size={13} className="pin-icon" aria-label="Pinned" /> : null}
+        </div>
+        <h3>{session.title}</h3>
+        <p>{session.summary}</p>
+        <div className="session-meta">
+          <span><GitBranch size={13} /> {session.workspace}</span>
+          <span className="branch-name">{session.branch}</span>
+          <span><MessageSquare size={13} /> {session.turnCount}</span>
+          <span><Clock3 size={13} /> {session.durationMinutes}m</span>
+          <span>{formatNumber(session.tokenCount)} tokens</span>
+        </div>
+      </button>
+      <div className="session-card-side">
+        <RedactionBadge status={session.redactionStatus} />
+        <div className="tag-row">
+          {session.tags.map((tag) => <Badge key={tag}>#{tag}</Badge>)}
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => onOpen(session)}>Open <ArrowRight size={14} /></Button>
+      </div>
+    </article>
+  );
+}
+
+export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, onLoadMore }: {
+  groups: TimelineGroup[];
+  onOpen: (session: SessionSummary) => void;
+  onSearch: () => void;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => Promise<void>;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [source, setSource] = useState('all');
+  const [workspace, setWorkspace] = useState('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const sessions = useMemo(() => groups.flatMap((group) => group.sessions), [groups]);
+  const sources = [...new Map(sessions.map((session) => [session.source, session.sourceLabel])).entries()];
+  const workspaces = [...new Set(sessions.map((session) => session.workspace))];
+  const filteredGroups = useMemo(() => groups
+    .map((group) => ({
+      ...group,
+      sessions: group.sessions.filter((session) =>
+        (source === 'all' || session.source === source)
+        && (workspace === 'all' || session.workspace === workspace)),
+    }))
+    .filter((group) => group.sessions.length > 0), [groups, source, workspace]);
+
+  const items = useMemo<TimelineItem[]>(() => filteredGroups.flatMap((group) => [
+    { type: 'date' as const, key: `date-${group.date}`, date: group.date, count: group.sessions.length },
+    ...group.sessions.map((session) => ({ type: 'session' as const, key: session.id, session })),
+  ]), [filteredGroups]);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => items[index]?.type === 'date' ? 58 : 178,
+    overscan: 5,
+  });
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const onScroll = () => {
+      const nearEnd = element.scrollTop + element.clientHeight >= element.scrollHeight - 240;
+      if (nearEnd && hasMore && !loadingMore) void onLoadMore();
+    };
+    element.addEventListener('scroll', onScroll, { passive: true });
+    return () => element.removeEventListener('scroll', onScroll);
+  }, [hasMore, loadingMore, onLoadMore]);
+
+  const filtersApplied = Number(source !== 'all') + Number(workspace !== 'all');
+
+  return (
+    <div className="page timeline-page">
+      <section className="page-heading timeline-heading">
+        <div>
+          <div className="eyebrow"><Sparkles size={13} /> Your complete coding history</div>
+          <h1>Pick up where you left off.</h1>
+          <p>Sessions from every connected agent and machine, preserved in one branch-aware archive.</p>
+        </div>
+        <div className="archive-stats" aria-label="Archive summary">
+          <div><strong>635</strong><span>sessions</span></div>
+          <div><strong>1.8m</strong><span>tokens</span></div>
+          <div><strong>5</strong><span>sources</span></div>
+        </div>
+      </section>
+
+      <section className="toolbar" aria-label="Timeline filters">
+        <div className="toolbar-left">
+          <Button className="mobile-filter-button" size="sm" onClick={() => setFiltersOpen(!filtersOpen)}>
+            <SlidersHorizontal size={15} /> Filters {filtersApplied ? <span className="filter-count">{filtersApplied}</span> : null}
+          </Button>
+          <div className={cn('filter-controls', filtersOpen && 'filter-controls-open')}>
+            <label className="select-control">
+              <span className="sr-only">Filter by source</span>
+              <Filter size={14} />
+              <select value={source} onChange={(event) => setSource(event.target.value)}>
+                <option value="all">All sources</option>
+                {sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <ChevronDown size={13} />
+            </label>
+            <label className="select-control">
+              <span className="sr-only">Filter by workspace</span>
+              <GitBranch size={14} />
+              <select value={workspace} onChange={(event) => setWorkspace(event.target.value)}>
+                <option value="all">All workspaces</option>
+                {workspaces.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <ChevronDown size={13} />
+            </label>
+            <Button size="sm" variant="ghost"><CalendarDays size={14} /> Any time</Button>
+            {filtersApplied ? (
+              <Button size="sm" variant="ghost" onClick={() => { setSource('all'); setWorkspace('all'); }}>
+                <X size={14} /> Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onSearch}>Search archive <span className="shortcut-hint">⌘K</span></Button>
+      </section>
+
+      <div className="timeline-scroll" ref={scrollRef} role="feed" aria-label="Archived sessions">
+        {items.length ? (
+          <div className="virtual-list" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const item = items[virtualItem.index];
+              if (!item) return null;
+              return (
+                <div
+                  key={item.key}
+                  ref={virtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  className={cn('virtual-row', item.type === 'date' && 'date-row')}
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  {item.type === 'date' ? (
+                    <div className="date-divider">
+                      <h2>{friendlyDate(item.date)}</h2>
+                      <span>{item.count} session{item.count === 1 ? '' : 's'}</span>
+                      <div />
+                    </div>
+                  ) : <SessionCard session={item.session} onOpen={onOpen} />}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="no-filter-results">
+            <h3>No sessions match these filters</h3>
+            <p>Clear a filter to return to the full archive.</p>
+            <Button onClick={() => { setSource('all'); setWorkspace('all'); }}>Clear filters</Button>
+          </div>
+        )}
+        <div className="infinite-marker" aria-label={hasMore ? 'More archive history is available' : 'Archive history is fully loaded'}>
+          <span />
+          {hasMore ? <Button size="sm" variant="ghost" disabled={loadingMore} onClick={() => void onLoadMore()}>{loadingMore ? 'Loading older sessions…' : 'Load older sessions'}</Button> : <p>All available sessions loaded</p>}
+          <span />
+        </div>
+      </div>
+    </div>
+  );
+}

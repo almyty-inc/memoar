@@ -1,0 +1,99 @@
+{
+  "source": "cline",
+  "version": "v1",
+  "session": {
+    "id": "0191cafe-0000-7000-8000-0000000000aa",
+    "source": {
+      "vendor": "cline",
+      "tool": "cline",
+      "version": "v1",
+      "machineId": "0191cafe-0000-7000-8000-000000000001",
+      "nativeSessionId": "cline-1"
+    },
+    "workspace": {
+      "path": "/workspace/example-1",
+      "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+      "branch": "main"
+    },
+    "createdAt": "2026-08-03T09:00:00.000Z",
+    "updatedAt": "2026-08-03T09:00:00.000Z",
+    "title": "Cline fixture 1",
+    "summary": "Scrubbed session used to verify canonical normalization.",
+    "models": [
+      "vendor-model"
+    ],
+    "tokenTotals": {
+      "input": 51,
+      "output": 72,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "provenance": [
+      {
+        "kind": "native",
+        "sourceId": "cline:v1:1",
+        "capturedAt": "2026-08-03T09:00:00.000Z",
+        "parserVersion": "0.2.0",
+        "details": {
+          "fixture": true
+        }
+      }
+    ],
+    "visibility": {
+      "scope": "private",
+      "ownerId": "0191cafe-0000-7000-8000-000000000002"
+    },
+    "turns": [
+      {
+        "id": "0191cafe-0000-7000-8000-0000000000ab",
+        "ordinal": 0,
+        "parentId": null,
+        "role": "user",
+        "createdAt": "2026-08-03T09:00:00.000Z",
+        "blocks": [
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000ad",
+            "kind": "text",
+            "text": "Find the cause of the failing archive test."
+          }
+        ]
+      },
+      {
+        "id": "0191cafe-0000-7000-8000-0000000000ac",
+        "ordinal": 1,
+        "parentId": "0191cafe-0000-7000-8000-0000000000ab",
+        "role": "assistant",
+        "createdAt": "2026-08-03T09:00:00.000Z",
+        "model": "vendor-model",
+        "tokens": {
+          "input": 51,
+          "output": 72
+        },
+        "blocks": [
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000ae",
+            "kind": "thinking",
+            "text": "I will inspect the parser boundary and the fixture."
+          },
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000af",
+            "kind": "tool_call",
+            "name": "read_file",
+            "callId": "fixture-call-17",
+            "data": {
+              "path": "src/archive.ts"
+            }
+          },
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000b0",
+            "kind": "text",
+            "text": "The parser dropped parent references. Preserve the native parent id during normalization."
+          }
+        ]
+      }
+    ],
+    "ext": {
+      "fixtureSource": "cline"
+    }
+  }
+}

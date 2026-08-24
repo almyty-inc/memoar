@@ -1,0 +1,51 @@
+{
+  "threads": [
+    {
+      "id": "amp-1",
+      "title": "Amp fixture 1",
+      "createdAt": "2026-08-15T09:00:00.000Z",
+      "messages": [
+        {
+          "id": "0191cafe-0000-7000-8000-000000000123",
+          "role": "user",
+          "at": "2026-08-15T09:00:00.000Z",
+          "parentId": null,
+          "parts": [
+            {
+              "id": "0191cafe-0000-7000-8000-000000000125",
+              "kind": "text",
+              "text": "Find the cause of the failing archive test."
+            }
+          ]
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000000000124",
+          "role": "assistant",
+          "at": "2026-08-15T09:00:00.000Z",
+          "parentId": "0191cafe-0000-7000-8000-000000000123",
+          "parts": [
+            {
+              "id": "0191cafe-0000-7000-8000-000000000126",
+              "kind": "thinking",
+              "text": "I will inspect the parser boundary and the fixture."
+            },
+            {
+              "id": "0191cafe-0000-7000-8000-000000000127",
+              "kind": "tool_call",
+              "name": "read_file",
+              "callId": "fixture-call-29",
+              "data": {
+                "path": "src/archive.ts"
+              }
+            },
+            {
+              "id": "0191cafe-0000-7000-8000-000000000128",
+              "kind": "text",
+              "text": "The parser dropped parent references. Preserve the native parent id during normalization."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

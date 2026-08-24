@@ -1,0 +1,12 @@
+.git
+.agented
+.env
+**/.DS_Store
+**/node_modules
+**/dist
+**/target
+**/coverage
+**/*.log
+deploy/postgres-data
+deploy/redis-data
+deploy/minio-data

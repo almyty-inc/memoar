@@ -1,0 +1,26 @@
+version: 0.1.0
+target: claude-code
+stability: gated
+layout:
+  - path: "~/.claude/projects/<encoded-workspace>/<session-id>.jsonl"
+    mediaType: application/x-ndjson
+    purpose: Branch-aware native session stream
+requiredFields:
+  - uuid
+  - parentUuid
+  - type
+  - message.role
+  - message.content
+  - timestamp
+mapping:
+  session.id: filename session id
+  turn.id: uuid
+  turn.parentId: parentUuid
+  turn.role: message.role
+  turn.blocks: message.content
+degradation:
+  unsupportedBlock: Render an attributed text block and add it to the conversion report
+  missingWorkspace: Place the session in a memoar-imports workspace
+resume:
+  command: "claude -r <session-id> --print smoke"
+  successSignal: Process loads the requested session without a format error

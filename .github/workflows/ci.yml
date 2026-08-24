@@ -1,0 +1,103 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: npm ci
+      - run: make contracts-check
+      - run: node scripts/check-version-pins.mjs
+      - run: npm run lint
+      # npm test enforces server coverage thresholds and runs the ArchiveStore
+      # contract suite against a throwaway pgvector container (Docker required).
+      - run: npm test
+      - run: npm run build
+      - run: cargo fmt --all --manifest-path agent/Cargo.toml -- --check
+      - run: cargo clippy --workspace --all-targets --manifest-path agent/Cargo.toml -- -D warnings
+      - run: cargo test --workspace --manifest-path agent/Cargo.toml
+      - run: docker compose -f deploy/docker-compose.dev.yml config
+
+  data-gates:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Prove migrations up/down/up and that RLS actually filters
+        run: npx vitest run test/migrations.test.ts test/rls.test.ts
+        working-directory: server
+      - name: 100k-session search benchmark (hard p95 gate)
+        run: npx vitest run test/perf-100k.test.ts
+        working-directory: server
+        env:
+          MEMOAR_TEST_PERF: "1"
+
+  compose-e2e:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: npm ci
+      - name: Build compiled Memoar CLI
+        run: cargo build --locked --manifest-path agent/Cargo.toml --bin memoar
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+      - name: Start live Compose stack
+        run: docker compose -f deploy/docker-compose.dev.yml up --build --wait
+      - name: Run compiled CLI black-box flow
+        run: agent/scripts/e2e-compose.sh
+      - name: Run browser acceptance
+        run: npm run test:e2e --workspace @memoar/web
+      - name: Capture Compose diagnostics
+        if: failure()
+        run: |
+          mkdir -p artifacts
+          docker compose -f deploy/docker-compose.dev.yml ps --all > artifacts/compose-ps.txt
+          docker compose -f deploy/docker-compose.dev.yml logs --no-color api worker web > artifacts/compose-services.log
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-e2e-failure
+          if-no-files-found: ignore
+          path: |
+            artifacts/
+            web/test-results/
+            web/playwright-report/
+      - if: always()
+        run: docker compose -f deploy/docker-compose.dev.yml down -v

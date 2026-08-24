@@ -1,0 +1,8 @@
+{
+  "contractVersion": "0.2.0",
+  "targets": {
+    "claude-code": "2.1.224",
+    "codex": "0.147.0",
+    "antigravity-cli": "1.1.6"
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "memoar-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "memoar"
+path = "src/main.rs"
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+memoar-canonical = { path = "../memoar-canonical" }
+memoar-connectors = { path = "../memoar-connectors" }
+memoar-daemon = { path = "../memoar-daemon" }
+memoar-materializer = { path = "../memoar-materializer" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

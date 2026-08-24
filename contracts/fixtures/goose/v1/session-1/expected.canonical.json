@@ -1,0 +1,95 @@
+{
+  "id": "0191cafe-0000-7000-8000-000000000096",
+  "source": {
+    "vendor": "goose",
+    "tool": "goose",
+    "version": "v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "goose-1"
+  },
+  "workspace": {
+    "path": "/workspace/example-1",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-01T09:00:00.000Z",
+  "updatedAt": "2026-08-01T09:00:00.000Z",
+  "title": "Goose fixture 1",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "vendor-model"
+  ],
+  "tokenTotals": {
+    "input": 49,
+    "output": 70,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "goose:v1:1",
+      "capturedAt": "2026-08-01T09:00:00.000Z",
+      "parserVersion": "0.2.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "turns": [
+    {
+      "id": "0191cafe-0000-7000-8000-000000000097",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "user",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000000000099",
+          "kind": "text",
+          "text": "Find the cause of the failing archive test."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-000000000098",
+      "ordinal": 1,
+      "parentId": "0191cafe-0000-7000-8000-000000000097",
+      "role": "assistant",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "model": "vendor-model",
+      "tokens": {
+        "input": 49,
+        "output": 70
+      },
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-00000000009a",
+          "kind": "thinking",
+          "text": "I will inspect the parser boundary and the fixture."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00000000009b",
+          "kind": "tool_call",
+          "name": "read_file",
+          "callId": "fixture-call-15",
+          "data": {
+            "path": "src/archive.ts"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00000000009c",
+          "kind": "text",
+          "text": "The parser dropped parent references. Preserve the native parent id during normalization."
+        }
+      ]
+    }
+  ],
+  "ext": {
+    "fixtureSource": "goose"
+  }
+}

@@ -1,0 +1,89 @@
+import { Injectable } from "@nestjs/common";
+
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+
+import type { TokenClaims } from "./types.js";
+
+function base64(value: string): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+@Injectable()
+export class TokenService {
+  private readonly signingKey: string;
+
+  constructor() {
+    const configured = process.env.MEMOAR_TOKEN_SECRET;
+    const isDevelopment = process.env.NODE_ENV !== "production";
+    if (!configured && !isDevelopment) throw new Error("MEMOAR_TOKEN_SECRET is required outside development/test");
+    this.signingKey = configured ?? "memoar-dev-token-secret-do-not-use-in-production";
+  }
+
+  issue(claims: Omit<TokenClaims, "exp" | "jti">, ttlSeconds: number): { token: string; expiresAt: string } {
+    const payload: TokenClaims = { ...claims, jti: randomBytes(12).toString("base64url"), exp: Math.floor(Date.now() / 1000) + ttlSeconds };
+    const encoded = `${base64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${base64(JSON.stringify(payload))}`;
+    const signature = createHmac("sha256", this.signingKey).update(encoded).digest("base64url");
+    return { token: `${encoded}.${signature}`, expiresAt: new Date(payload.exp * 1000).toISOString() };
+  }
+
+  issueOAuthState(provider: string): string {
+    const payload = base64(JSON.stringify({ provider, nonce: randomBytes(16).toString("hex"), exp: Math.floor(Date.now() / 1000) + 600 }));
+    const signature = createHmac("sha256", this.signingKey).update(payload).digest("base64url");
+    return `${payload}.${signature}`;
+  }
+
+  verifyOAuthState(state: string, provider: string): boolean {
+    const [payload, signature] = state.split(".");
+    if (!payload || !signature) return false;
+    const expected = createHmac("sha256", this.signingKey).update(payload).digest();
+    const received = Buffer.from(signature, "base64url");
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) return false;
+    try {
+      const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { provider?: string; exp?: number };
+      return decoded.provider === provider && typeof decoded.exp === "number" && decoded.exp > Math.floor(Date.now() / 1000);
+    } catch {
+      return false;
+    }
+  }
+
+  verify(token: string): TokenClaims | null {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [header, payload, signature] = parts;
+    if (!header || !payload || !signature) return null;
+    const expected = createHmac("sha256", this.signingKey).update(`${header}.${payload}`).digest();
+    const received = Buffer.from(signature, "base64url");
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) return null;
+    try {
+      const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as TokenClaims;
+      return claims.exp > Math.floor(Date.now() / 1000) ? claims : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+export function hashSecret(secret: string, salt = randomBytes(16).toString("hex")): string {
+  const digest = scryptSync(secret, salt, 32).toString("hex");
+  return `scrypt$${salt}$${digest}`;
+}
+
+export function verifySecret(secret: string, encoded: string): boolean {
+  const [algorithm, salt, digest] = encoded.split("$");
+  if (algorithm !== "scrypt" || !salt || !digest) return false;
+  const actual = scryptSync(secret, salt, 32);
+  const expected = Buffer.from(digest, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export interface DevApiKey {
+  id: string;
+  tenantId: string;
+  userId: string;
+  name: string;
+  prefix: string;
+  secretHash: string;
+  scopes: string[];
+  createdAt: string;
+  revokedAt: string | null;
+}

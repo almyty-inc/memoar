@@ -1,0 +1,48 @@
+{
+  "taskId": "kilo-1",
+  "title": "Kilo fixture 1",
+  "createdAt": "2026-08-05T09:00:00.000Z",
+  "workspace": "/workspace/example-1",
+  "history": [
+    {
+      "id": "0191cafe-0000-7000-8000-0000000000bf",
+      "role": "user",
+      "at": "2026-08-05T09:00:00.000Z",
+      "parentId": null,
+      "parts": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000000000c1",
+          "kind": "text",
+          "text": "Find the cause of the failing archive test."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000000c0",
+      "role": "assistant",
+      "at": "2026-08-05T09:00:00.000Z",
+      "parentId": "0191cafe-0000-7000-8000-0000000000bf",
+      "parts": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000000000c2",
+          "kind": "thinking",
+          "text": "I will inspect the parser boundary and the fixture."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000000000c3",
+          "kind": "tool_call",
+          "name": "read_file",
+          "callId": "fixture-call-19",
+          "data": {
+            "path": "src/archive.ts"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000000000c4",
+          "kind": "text",
+          "text": "The parser dropped parent references. Preserve the native parent id during normalization."
+        }
+      ]
+    }
+  ]
+}

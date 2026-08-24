@@ -1,0 +1,99 @@
+{
+  "source": "openhands",
+  "version": "v1",
+  "session": {
+    "id": "0191cafe-0000-7000-8000-0000000000d2",
+    "source": {
+      "vendor": "openhands",
+      "tool": "openhands",
+      "version": "v1",
+      "machineId": "0191cafe-0000-7000-8000-000000000001",
+      "nativeSessionId": "openhands-1"
+    },
+    "workspace": {
+      "path": "/workspace/example-1",
+      "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+      "branch": "main"
+    },
+    "createdAt": "2026-08-07T09:00:00.000Z",
+    "updatedAt": "2026-08-07T09:00:00.000Z",
+    "title": "Openhands fixture 1",
+    "summary": "Scrubbed session used to verify canonical normalization.",
+    "models": [
+      "vendor-model"
+    ],
+    "tokenTotals": {
+      "input": 55,
+      "output": 76,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "provenance": [
+      {
+        "kind": "native",
+        "sourceId": "openhands:v1:1",
+        "capturedAt": "2026-08-07T09:00:00.000Z",
+        "parserVersion": "0.2.0",
+        "details": {
+          "fixture": true
+        }
+      }
+    ],
+    "visibility": {
+      "scope": "private",
+      "ownerId": "0191cafe-0000-7000-8000-000000000002"
+    },
+    "turns": [
+      {
+        "id": "0191cafe-0000-7000-8000-0000000000d3",
+        "ordinal": 0,
+        "parentId": null,
+        "role": "user",
+        "createdAt": "2026-08-07T09:00:00.000Z",
+        "blocks": [
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000d5",
+            "kind": "text",
+            "text": "Find the cause of the failing archive test."
+          }
+        ]
+      },
+      {
+        "id": "0191cafe-0000-7000-8000-0000000000d4",
+        "ordinal": 1,
+        "parentId": "0191cafe-0000-7000-8000-0000000000d3",
+        "role": "assistant",
+        "createdAt": "2026-08-07T09:00:00.000Z",
+        "model": "vendor-model",
+        "tokens": {
+          "input": 55,
+          "output": 76
+        },
+        "blocks": [
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000d6",
+            "kind": "thinking",
+            "text": "I will inspect the parser boundary and the fixture."
+          },
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000d7",
+            "kind": "tool_call",
+            "name": "read_file",
+            "callId": "fixture-call-21",
+            "data": {
+              "path": "src/archive.ts"
+            }
+          },
+          {
+            "id": "0191cafe-0000-7000-8000-0000000000d8",
+            "kind": "text",
+            "text": "The parser dropped parent references. Preserve the native parent id during normalization."
+          }
+        ]
+      }
+    ],
+    "ext": {
+      "fixtureSource": "openhands"
+    }
+  }
+}

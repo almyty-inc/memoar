@@ -1,0 +1,95 @@
+{
+  "id": "0191cafe-0000-7000-8000-00000000000a",
+  "source": {
+    "vendor": "anthropic",
+    "tool": "claude-code",
+    "version": "v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "claude-code-1"
+  },
+  "workspace": {
+    "path": "/workspace/example-1",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-02T09:00:00.000Z",
+  "updatedAt": "2026-08-02T09:00:00.000Z",
+  "title": "Claude Code fixture 1",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "claude-sonnet"
+  ],
+  "tokenTotals": {
+    "input": 35,
+    "output": 56,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "claude-code:v1:1",
+      "capturedAt": "2026-08-02T09:00:00.000Z",
+      "parserVersion": "0.2.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "turns": [
+    {
+      "id": "0191cafe-0000-7000-8000-00000000000b",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "user",
+      "createdAt": "2026-08-02T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-00000000000d",
+          "kind": "text",
+          "text": "Find the cause of the failing archive test."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000000c",
+      "ordinal": 1,
+      "parentId": "0191cafe-0000-7000-8000-00000000000b",
+      "role": "assistant",
+      "createdAt": "2026-08-02T09:00:00.000Z",
+      "model": "claude-sonnet",
+      "tokens": {
+        "input": 35,
+        "output": 56
+      },
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-00000000000e",
+          "kind": "thinking",
+          "text": "I will inspect the parser boundary and the fixture."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00000000000f",
+          "kind": "tool_call",
+          "name": "read_file",
+          "callId": "fixture-call-1",
+          "data": {
+            "path": "src/archive.ts"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000000000010",
+          "kind": "text",
+          "text": "The parser dropped parent references. Preserve the native parent id during normalization."
+        }
+      ]
+    }
+  ],
+  "ext": {
+    "fixtureSource": "claude-code"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@memoar/monorepo",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "description": "Vendor-neutral cloud archive and memory for AI coding sessions",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "server",
+    "web",
+    "packages/npx"
+  ],
+  "scripts": {
+    "contracts:generate": "node contracts/scripts/generate.mjs && node contracts/scripts/generate-fixtures.mjs",
+    "contracts:check": "node contracts/scripts/check.mjs",
+    "build": "npm run contracts:check && npm run build --workspace @memoar/server && npm run build --workspace @memoar/web",
+    "test": "npm run contracts:check && npm test --workspace @memoar/server && npm test --workspace @memoar/web",
+    "lint": "eslint server/src server/test web/src web/e2e scripts --max-warnings=0",
+    "dev": "npm run dev --workspace @memoar/server",
+    "format:check": "npm run format:check --if-present --workspaces"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/pg": "^8.23.1",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "eslint": "^10.8.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "fflate": "^0.8.2",
+    "globals": "^17.11.0",
+    "typescript-eslint": "^8.67.0",
+    "yaml": "^2.8.1"
+  }
+}
