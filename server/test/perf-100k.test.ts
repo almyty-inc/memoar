@@ -43,6 +43,31 @@ function percentile(samples: readonly number[], fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]!;
 }
 
+interface PlanShape {
+  readonly nodeTypes: string[];
+  readonly indexes: string[];
+}
+
+/**
+ * Flattens a plan tree into the two facts worth asserting on: which node types
+ * appear anywhere in it, and which indexes it actually reaches.
+ */
+async function explain(database: Client, sql: string, values: readonly unknown[]): Promise<PlanShape> {
+  const explained = await database.query<{ "QUERY PLAN": [{ Plan: Record<string, unknown> }] }>(
+    `EXPLAIN (FORMAT JSON) ${sql}`, [...values]);
+  const nodeTypes: string[] = [];
+  const indexes: string[] = [];
+  const pending = [explained.rows[0]!["QUERY PLAN"][0].Plan];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (typeof node["Node Type"] === "string") nodeTypes.push(node["Node Type"]);
+    if (typeof node["Index Name"] === "string") indexes.push(node["Index Name"]);
+    const children = node["Plans"];
+    if (Array.isArray(children)) pending.push(...children as Record<string, unknown>[]);
+  }
+  return { nodeTypes, indexes };
+}
+
 /** Machine context so a budget failure is diagnosable rather than mysterious. */
 function measurementContext(): string {
   const [one = 0, five = 0] = loadavg();
@@ -184,4 +209,46 @@ suite("hybrid search at 100k sessions", () => {
       console.warn(`[perf-100k] absolute budget not enforced: host saturated (${summary})`);
     }
   }, 600_000);
+
+  // A plan is a structural property, like a round-trip count: it has no
+  // statistics in it, so it cannot be waved away as machine load. This is the
+  // instrument that would have caught the dead vector index, where the index
+  // WAS used and a Sort over every candidate row was stacked on top of it —
+  // invisible to "did it use the index?" and to a p95 that merely looked slow.
+  it("serves vector retrieval from the HNSW index with no sort stacked on top", async () => {
+    const database = new Client({ connectionString: APP_URL });
+    await database.connect();
+    try {
+      await database.query("SELECT set_config('memoar.tenant_id', $1, false)", [TENANT_ID]);
+      const probe = `[${Array.from({ length: 768 }, (_, index) => index % 7).join(",")}]`;
+
+      const indexed = await explain(database, `
+        SELECT id, 1 - (embedding <=> $1::vector) AS score
+        FROM sessions
+        WHERE "tenantId" = $2 AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector
+        LIMIT 25
+      `, [probe, TENANT_ID]);
+
+      expect(indexed.indexes, `plan did not reach the HNSW index: ${indexed.nodeTypes.join(" > ")}`)
+        .toContain("sessions_embedding_idx");
+      expect(indexed.nodeTypes, `a sort over the candidate set defeats the index: ${indexed.nodeTypes.join(" > ")}`)
+        .not.toContain("Sort");
+
+      // Proves the assertion above discriminates rather than passing vacuously:
+      // the exact defect we shipped once — a tiebreaker appended to the
+      // ordering — must still produce the Sort the real query must not have.
+      const tiebroken = await explain(database, `
+        SELECT id, 1 - (embedding <=> $1::vector) AS score
+        FROM sessions
+        WHERE "tenantId" = $2 AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector, id
+        LIMIT 25
+      `, [probe, TENANT_ID]);
+      expect(tiebroken.nodeTypes, "sabotage plan lost its Sort, so the check above proves nothing")
+        .toContain("Sort");
+    } finally {
+      await database.end();
+    }
+  }, 120_000);
 });
