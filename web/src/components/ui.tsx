@@ -177,15 +177,23 @@ export function Modal({ open, title, description, children, onClose }: {
   );
 }
 
+/**
+ * Highlights each search term separately. Matching the whole query as one
+ * phrase meant a multi-word search only highlighted when that exact phrase
+ * appeared, which for real queries was almost never.
+ */
 export function HighlightText({ text, query }: { text: string; query: string }) {
-  const normalized = query.trim();
-  if (!normalized) return <>{text}</>;
-  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const segments = text.split(new RegExp(`(${escaped})`, 'ig'));
+  const terms = [...new Set(query.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [])]
+    .filter((term) => term.length > 1)
+    .sort((left, right) => right.length - left.length);
+  if (terms.length === 0) return <>{text}</>;
+  const pattern = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const segments = text.split(new RegExp(`(${pattern})`, 'giu'));
+  const matches = new Set(terms);
   return (
     <>
       {segments.map((segment, index) =>
-        segment.toLocaleLowerCase() === normalized.toLocaleLowerCase()
+        matches.has(segment.toLocaleLowerCase())
           ? <mark key={`${segment}-${index}`}>{segment}</mark>
           : segment,
       )}

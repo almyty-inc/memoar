@@ -77,6 +77,10 @@ export class PostgresFtsBackend implements SearchBackend {
       if (filters.workspace) { values.push(`%${filters.workspace}%`); conditions.push(`workspace ->> 'path' ILIKE $${values.length}`); }
       if (filters.from) { values.push(filters.from); conditions.push(`\"capturedUpdatedAt\" >= $${values.length}`); }
       if (filters.to) { values.push(filters.to); conditions.push(`\"capturedUpdatedAt\" <= $${values.length}`); }
+      // ts_headline emits <b> markers by default. The client renders excerpts
+      // as text and does its own <mark> highlighting, so markup here would show
+      // up literally as "<b>parent</b>" on screen. Empty selectors keep the
+      // excerpt plain and keep highlighting a client-side concern.
       // Two stage on purpose. A broad query matches tens of thousands of rows,
       // and scoring every one with similarity() and ts_headline() before the
       // top-N sort dominated the request. Stage one ranks with the indexed
@@ -96,7 +100,7 @@ export class PostgresFtsBackend implements SearchBackend {
         )
         SELECT id,
           rank + similarity(title, $2) AS score,
-          ts_headline('english', "searchDocument", websearch_to_tsquery('english', $2), 'MaxWords=36, MinWords=12') AS highlight
+          ts_headline('english', "searchDocument", websearch_to_tsquery('english', $2), 'MaxWords=36, MinWords=12, StartSel="", StopSel=""') AS highlight
         FROM candidates
         ORDER BY score DESC, "capturedUpdatedAt" DESC, id ASC
         LIMIT $${values.length}

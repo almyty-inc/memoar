@@ -111,6 +111,19 @@ suite("search hydration cost", () => {
     expect(queries.length, `queries issued:\n${queries.join("\n")}`).toBeLessThan(12);
   }, 60_000);
 
+  it("returns excerpts as plain text so the client can highlight them safely", async () => {
+    const store = new PostgresArchiveStore(dataSource!);
+    const service = new SearchService(new PostgresFtsBackend(dataSource!, store), new DisabledSemanticSearchProvider());
+    const result = await service.execute(DEMO_CONTEXT, "archive decision", "lexical", {}, 10);
+    expect(result.candidates.length).toBeGreaterThan(0);
+    for (const candidate of result.candidates) {
+      // ts_headline marks matches with <b> by default. The client renders the
+      // excerpt as text, so any markup here reaches the user as literal
+      // characters like "<b>archive</b>".
+      expect(candidate.highlight, `excerpt carried markup: ${candidate.highlight}`).not.toMatch(/<\/?[a-z]/i);
+    }
+  }, 60_000);
+
   it("hydrates in bulk without losing ranking order or dropping results", async () => {
     const store = new PostgresArchiveStore(dataSource!);
     const ids = [
