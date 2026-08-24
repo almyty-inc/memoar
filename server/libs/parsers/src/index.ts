@@ -1,6 +1,7 @@
 import { AntigravityCliV1Parser } from "./antigravity-cli.js";
 import { CanonicalBundleParser } from "./canonical-bundle.js";
 import { CassExportParser } from "./cass-export.js";
+import { ChatgptExportParser } from "./chatgpt-export.js";
 import { ClaudeCodeV1Parser } from "./claude-code.js";
 import { CodexRolloutV1Parser } from "./codex.js";
 import { CrushV1Parser } from "./crush.js";
@@ -23,6 +24,7 @@ export class ParserRegistry {
     new ZedV1Parser(),
     new CanonicalBundleParser(),
     new CassExportParser(),
+    new ChatgptExportParser(),
   ]) {}
 
   parse(request: ParseRequest): ParseResult {

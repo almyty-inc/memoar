@@ -19,6 +19,7 @@ const SOURCE_ALIASES: Readonly<Record<string, { source: string; version: string 
   "canonical-bundle": { source: "canonical-bundle", version: "v1" },
   cass: { source: "cass-export", version: "2026-08" },
   "cass-export": { source: "cass-export", version: "2026-08" },
+  "chatgpt-export": { source: "chatgpt-export", version: "2026-08" },
 };
 
 export class FormatDetector {

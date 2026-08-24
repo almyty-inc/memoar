@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Session } from "../libs/canonical/src/generated.js";
@@ -15,6 +15,49 @@ const cases = [
   ["canonical-bundle", "v1", "bundle.json"],
   ["cass-export", "2026-08", "cass.json"],
 ] as const;
+
+/**
+ * Formats with a contract fixture but no parser. This list is the point of the
+ * test below: the fixture corpus is the contract's own conformance set, and the
+ * case list above only covers a third of it, so a format could be specified,
+ * fixtured, and never implemented without anything going red. chatgpt-export
+ * sat here until its parser landed — the browser gate caught it only because a
+ * user-facing import hung, which is far too late.
+ */
+/**
+ * Implemented, but the fixture cannot serve as a conformance pair: its
+ * expected.canonical.json asks for a thinking block and a tool_call that appear
+ * nowhere in its input export.zip, so no parser could ever reproduce it. The
+ * expected output was authored by hand rather than generated from the input —
+ * its block ids do not even follow the derivation every parser uses. Correcting
+ * a fixture is a contract change, so it waits on ACK in #memoar; the parser
+ * itself is covered directly by chatgpt-export.test.ts.
+ */
+const FIXTURE_NOT_A_CONFORMANCE_PAIR = new Set(["chatgpt-export"]);
+
+const UNIMPLEMENTED = new Set([
+  "aider", "amp", "antigravity-ide", "claude-ai-export", "cline", "continue", "copilot",
+  "droid", "gemini-export", "kilo", "kimi", "mistral-export", "opencode", "openhands",
+  "perplexity-export", "pi-agent", "qwen", "roo", "warp", "windsurf",
+]);
+
+describe("fixture corpus coverage", () => {
+  it("accounts for every fixture format as either covered or explicitly unimplemented", async () => {
+    const root = resolve(process.cwd(), "../contracts/fixtures");
+    const formats = (await readdir(root, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    const covered = new Set<string>(cases.map(([source]) => source));
+    const accounted = (format: string) =>
+      covered.has(format) || UNIMPLEMENTED.has(format) || FIXTURE_NOT_A_CONFORMANCE_PAIR.has(format);
+    const unaccounted = formats.filter((format) => !accounted(format));
+    expect(unaccounted, "new fixture formats must be given a parser case or listed as unimplemented").toEqual([]);
+    // Keeps the list honest in the other direction: once a parser lands, its
+    // entry has to be removed here rather than lingering as a false gap.
+    const stale = [...UNIMPLEMENTED].filter((format) => covered.has(format) || !formats.includes(format));
+    expect(stale, "these are implemented or gone; drop them from UNIMPLEMENTED").toEqual([]);
+  });
+});
 
 describe("Tier-1 parsers", () => {
   for (const [source, version, filename] of cases) {

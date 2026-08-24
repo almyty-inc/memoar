@@ -4,6 +4,14 @@ import { Badge, Button } from '../components/ui';
 import type { ImportProgress, ImportSource } from '../lib/api';
 import type { Machine, SessionSummary } from '../lib/types';
 
+/**
+ * Every entry here must have a parser registered server-side. Offering a format
+ * we cannot parse does not fail: the upload succeeds, the artifact is stored as
+ * unknown_format, and the user watches a progress bar until it times out with
+ * nothing to show. claude-ai, gemini, mistral, and perplexity exports were
+ * listed here without parsers and did exactly that — they return when the
+ * parsers land, not before.
+ */
 const sources: Array<{ value: ImportSource; label: string }> = [
   { value: 'canonical', label: 'Memoar canonical bundle' },
   { value: 'cass', label: 'cass export' },
@@ -12,10 +20,6 @@ const sources: Array<{ value: ImportSource; label: string }> = [
   { value: 'antigravity-cli', label: 'Antigravity CLI archive' },
   { value: 'cursor', label: 'Cursor database export' },
   { value: 'chatgpt-export', label: 'ChatGPT export ZIP' },
-  { value: 'claude-ai-export', label: 'Claude.ai export ZIP' },
-  { value: 'gemini-export', label: 'Gemini Takeout ZIP' },
-  { value: 'mistral-export', label: 'Mistral export ZIP' },
-  { value: 'perplexity-export', label: 'Perplexity export ZIP' },
 ];
 
 export function ImportView({ machines, onImport, onOpen }: {
