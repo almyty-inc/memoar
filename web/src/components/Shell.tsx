@@ -21,7 +21,7 @@ import { Badge, Button, IconButton, cn } from './ui';
 
 const navGroups: Array<{
   label: string;
-  items: Array<{ view: ViewId; label: string; icon: typeof Archive; badge?: string }>;
+  items: Array<{ view: ViewId; label: string; icon: typeof Archive }>;
 }> = [
   {
     label: 'Archive',
@@ -35,7 +35,12 @@ const navGroups: Array<{
   {
     label: 'Manage',
     items: [
-      { view: 'sharing', label: 'Sharing', icon: Share2, badge: '1' },
+      // No badge here: the count was hardcoded to '1', so the nav claimed one
+      // pending item forever regardless of what was actually pending. It also
+      // silently became part of the button's accessible name ("Sharing 1"),
+      // which is how it broke navigation for anyone matching on the name. A
+      // real count needs real data, and needs to reach the name deliberately.
+      { view: 'sharing', label: 'Sharing', icon: Share2 },
       { view: 'machines', label: 'Machines & sources', icon: Cpu },
       { view: 'settings', label: 'Settings', icon: Settings },
     ],
@@ -114,7 +119,6 @@ export function Shell({ view, mode, children, onNavigate }: {
                   >
                     <Icon size={17} aria-hidden="true" />
                     <span>{item.label}</span>
-                    {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
                   </button>
                 );
               })}
