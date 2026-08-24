@@ -63,6 +63,19 @@ describe("HTTP surface: sessions", () => {
     expect(arr(page2.body, "turns")[0]!.id).not.toBe(arr(detail.body, "turns")[0]!.id);
   });
 
+  it("carries provenance on the detail chunk so the client can show how a session arrived", async () => {
+    const detail = await api.request("GET", `/sessions/${DEMO_SESSION_ID}`);
+    expect(detail.status).toBe(200);
+    const provenance = arr(detail.body, "provenance");
+    expect(provenance.length).toBeGreaterThan(0);
+    expect(provenance[0]).toHaveProperty("kind");
+    expect(provenance[0]).toHaveProperty("capturedAt");
+
+    // Summaries stay lean: provenance belongs to the detail view only.
+    const list = await api.request("GET", "/sessions?limit=1");
+    expect(arr(list.body)[0]).not.toHaveProperty("provenance");
+  });
+
   it("404s unknown sessions and rejects malformed ids", async () => {
     expect((await api.request("GET", "/sessions/0191cafe-0000-7000-8000-00000000dead")).status).toBe(404);
     expect((await api.request("GET", "/sessions/not-a-uuid/export")).status).toBe(400);

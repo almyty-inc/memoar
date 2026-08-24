@@ -58,15 +58,18 @@ export interface SessionTurn {
   blocks: ContentBlock[];
 }
 
+/** Mirrors ProvenanceEntry in the canonical model. */
+export interface ProvenanceEntry {
+  kind: 'native' | 'import' | 'conversion' | 'distillation';
+  sourceId?: string;
+  capturedAt: string;
+  parserVersion?: string;
+}
+
 export interface SessionDetailData {
   session: SessionSummary;
   turns: SessionTurn[];
-  provenance: Array<{
-    kind: 'native' | 'imported' | 'converted' | 'derived';
-    sourceId: string;
-    capturedAt: string;
-    parserVersion: string;
-  }>;
+  provenance: ProvenanceEntry[];
   tokenTotals: { input: number; output: number; cacheRead: number };
 }
 

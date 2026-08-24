@@ -183,10 +183,18 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert }: {
 
           <section className="inspector-card">
             <h2>Provenance</h2>
-            {detail.provenance.map((item) => (
-              <div className="provenance-item" key={item.sourceId}>
+            {detail.provenance.length === 0 ? (
+              <p className="raw-note">No provenance recorded for this session.</p>
+            ) : detail.provenance.map((item, index) => (
+              // sourceId and parserVersion are optional in the canonical model,
+              // so neither can be used as a key or rendered unguarded.
+              <div className="provenance-item" key={`${item.kind}-${item.sourceId ?? index}`}>
                 <span><Network size={15} /></span>
-                <div><strong>{item.kind} capture</strong><small>{item.sourceId}</small><small>Parser {item.parserVersion}</small></div>
+                <div>
+                  <strong>{item.kind} capture</strong>
+                  {item.sourceId ? <small>{item.sourceId}</small> : null}
+                  {item.parserVersion ? <small>Parser {item.parserVersion}</small> : null}
+                </div>
                 <ShieldCheck size={15} className="success-icon" />
               </div>
             ))}

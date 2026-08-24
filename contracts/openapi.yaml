@@ -1014,11 +1014,27 @@ components:
         sessions: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
     SessionChunk:
       type: object
-      required: [session, turns, nextCursor]
+      required: [session, turns, provenance, nextCursor]
       properties:
         session: { $ref: '#/components/schemas/SessionSummary' }
         turns: { type: array, items: { type: object, additionalProperties: true } }
+        provenance:
+          type: array
+          description: >-
+            How this session reached the archive - native capture, import, conversion,
+            or distillation. Carried on the detail chunk rather than the summary so
+            list responses stay small.
+          items: { $ref: '#/components/schemas/ProvenanceEntry' }
         nextCursor: { type: [string, 'null'] }
+    ProvenanceEntry:
+      type: object
+      required: [kind, capturedAt]
+      properties:
+        kind: { type: string, enum: [native, import, conversion, distillation] }
+        sourceId: { type: string }
+        capturedAt: { type: string, format: date-time }
+        parserVersion: { type: string }
+        details: { type: object, additionalProperties: true }
     SearchResponse:
       type: object
       required: [items, nextCursor, aggregations, meta]

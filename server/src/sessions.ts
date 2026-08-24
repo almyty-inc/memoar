@@ -69,6 +69,9 @@ export class SessionsService {
     return {
       session: sessionSummary(session),
       turns,
+      // Provenance rides the detail chunk, not the summary, so list responses
+      // stay small while the detail view can show how a session got here.
+      provenance: session.provenance,
       nextCursor: nextOffset < session.turns.length ? Buffer.from(String(nextOffset)).toString("base64url") : null,
     };
   }

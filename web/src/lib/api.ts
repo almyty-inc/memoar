@@ -20,6 +20,7 @@ import type {
   PackResponse,
   SearchAggregation,
   SearchResponse,
+  ProvenanceEntry,
   SessionDetailData,
   SessionSummary,
   SessionTurn,
@@ -79,6 +80,7 @@ interface WireTurn {
 interface WireSessionChunk {
   session: WireSessionSummary;
   turns: WireTurn[];
+  provenance?: ProvenanceEntry[];
   nextCursor: string | null;
 }
 
@@ -323,7 +325,7 @@ function mapSessionDetail(summary: SessionSummary, chunks: WireSessionChunk[]): 
       turnCount: turns.length,
     },
     turns,
-    provenance: [],
+    provenance: chunks[0]?.provenance ?? [],
     tokenTotals,
   };
 }
