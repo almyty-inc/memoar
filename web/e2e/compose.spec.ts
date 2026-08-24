@@ -159,7 +159,12 @@ async function openFixture(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Session overview' })).toBeVisible();
 }
 
-test.describe.configure({ mode: 'serial' });
+// Deliberately NOT serial. The config already pins workers to 1 so these run
+// in order against one live stack, but serial mode also SKIPS every remaining
+// test after the first failure — which meant a red run reported one defect and
+// hid the rest, costing a full CI cycle per bug. Each test signs in and creates
+// its own data, so they stand alone.
+test.describe.configure({ mode: 'default' });
 
 test.describe('Memoar live Compose browser acceptance', () => {
   test.beforeAll(async ({ request }) => {
