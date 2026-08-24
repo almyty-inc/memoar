@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Inject, Injectable, Optional, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Post, Query } from "@nestjs/common";
 import type { RedactionStatus, TenantContext } from "../archive-store.js";
 import { Tenant } from "../auth.js";
 import { sessionSummary } from "../sessions.js";
 import { SEARCH_BACKEND, SEMANTIC_SEARCH_PROVIDER } from "../tokens.js";
 import type { SearchBackend, SearchCandidate, SearchFilters } from "./backends.js";
 import type { SemanticSearchProvider } from "./embeddings.js";
+import { BuildPackDto } from "./search.dto.js";
 
 function rrf(lexical: readonly SearchCandidate[], semantic: readonly SearchCandidate[]): SearchCandidate[] {
   const fused = new Map<string, SearchCandidate & { fused: number }>();
@@ -169,8 +170,11 @@ export class SearchController {
     }, Math.max(1, Math.min(100, Number.parseInt(query.limit ?? "30", 10))));
   }
 
+  // Nest defaults POST to 201, but the contract documents 200: a pack is a
+  // computed projection over existing sessions, not a created resource.
   @Post("pack")
-  pack(@Tenant() context: TenantContext, @Body() body: PackRequest): Promise<Record<string, unknown>> {
+  @HttpCode(200)
+  pack(@Tenant() context: TenantContext, @Body() body: BuildPackDto): Promise<Record<string, unknown>> {
     return this.packs.build(context, body);
   }
 }

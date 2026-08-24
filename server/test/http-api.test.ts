@@ -307,6 +307,26 @@ describe("HTTP surface: collections and conversion", () => {
     expect((await api.request("POST", `/convert/${str(job.body, "id")}/materialize`, { body: { machineId: "" } })).status).toBe(400);
   });
 
+  it("validates the pack body instead of letting it reach SQL, and answers 200", async () => {
+    const valid = {
+      query: "parser", maxTokens: 2000, maxEvidence: 5,
+      maxSessions: 3, maxExcerptChars: 400, freshnessPolicy: "mixed",
+    };
+    // PackRequest was an interface, so the ValidationPipe had no metadata to act
+    // on and the body passed through untouched: an absent query and unparsable
+    // limits reached Postgres, which rejected NaN as a bigint and returned 500.
+    const malformed = await api.request("POST", "/pack", { body: { sessionIds: [DEMO_SESSION_ID], budgetTokens: 2000 } });
+    expect(malformed.status).toBe(400);
+    expect((await api.request("POST", "/pack", { body: { ...valid, maxTokens: 99_999 } })).status).toBe(400);
+    expect((await api.request("POST", "/pack", { body: { ...valid, freshnessPolicy: "whenever" } })).status).toBe(400);
+
+    const built = await api.request("POST", "/pack", { body: valid });
+    // A pack is a projection over existing sessions, not a created resource;
+    // Nest's default 201 for POST contradicted the contract's documented 200.
+    expect(built.status).toBe(200);
+    expect(arr(built.body, "evidence").length).toBeGreaterThan(0);
+  });
+
   it("queues a materialize command carrying a pre-signed bundle URL", async () => {
     const machine = await api.request("POST", "/machines", { body: { name: "materialize-suite", platform: "darwin" } });
     const machineId = str(machine.body, "id");
