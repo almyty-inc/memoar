@@ -14,8 +14,9 @@ import { SessionDetailView } from './views/SessionDetail';
 import { SettingsView } from './views/Settings';
 import { SharingView } from './views/Sharing';
 import { TimelineView } from './views/Timeline';
+import { WorkspaceView } from './views/Workspace';
 
-const supportedViews: ViewId[] = ['timeline', 'search', 'collections', 'import', 'sharing', 'machines', 'settings', 'onboarding', 'signin', 'session'];
+const supportedViews: ViewId[] = ['workspace', 'timeline', 'search', 'collections', 'import', 'sharing', 'machines', 'settings', 'onboarding', 'signin', 'session'];
 
 const emptyConnectedDashboard: DashboardState = {
   timeline: [],
@@ -152,6 +153,17 @@ export function App() {
         <div><h1>Archive connection failed</h1><p>{connectionError}</p></div>
         <Button onClick={() => void loadDashboard()}><RefreshCw size={14} /> Retry</Button>
       </section>
+    );
+  } else if (view === 'workspace') {
+    content = (
+      <WorkspaceView
+        sessions={allSessions}
+        machines={dashboard.machines}
+        collections={dashboard.collections}
+        grants={dashboard.grants}
+        transfers={dashboard.transfers}
+        onOpen={openSession}
+      />
     );
   } else if (view === 'search') {
     content = <SearchView onOpen={openSession} />;

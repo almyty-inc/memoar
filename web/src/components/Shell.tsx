@@ -7,6 +7,7 @@ import {
   Command,
   Cpu,
   KeyRound,
+  LayoutGrid,
   Menu,
   Plus,
   Search,
@@ -27,6 +28,7 @@ const navGroups: Array<{
   {
     label: 'Archive',
     items: [
+      { view: 'workspace', label: 'Overview', icon: LayoutGrid },
       { view: 'timeline', label: 'Timeline', icon: Archive },
       { view: 'search', label: 'Search', icon: Search },
       { view: 'import', label: 'Import', icon: Upload },
@@ -49,6 +51,7 @@ const navGroups: Array<{
 ];
 
 const titles: Partial<Record<ViewId, string>> = {
+  workspace: 'Overview',
   timeline: 'Timeline',
   search: 'Search',
   import: 'Import',
