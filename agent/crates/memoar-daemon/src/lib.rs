@@ -32,6 +32,10 @@ pub enum DaemonError {
     Transport(String),
     #[error("server returned an invalid response: {0}")]
     Protocol(String),
+    #[error(
+        "{path} is not valid UTF-8 and matched a redaction pattern, so it cannot be rewritten safely"
+    )]
+    UnscannableSecret { path: PathBuf },
     #[error("client redaction is unsupported for opaque artifact {0}")]
     UnsupportedRedaction(PathBuf),
     #[error("ZIP redaction failed for {path}: {message}")]
@@ -107,6 +111,8 @@ impl RedactionConfig {
 
 #[derive(Debug, Clone)]
 struct RedactedBytes {
+    /// False when the bytes could not be read as text, so no pattern was applied.
+    scanned: bool,
     bytes: Vec<u8>,
     replacements: u32,
 }
@@ -116,12 +122,17 @@ fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedBytes {
         return RedactedBytes {
             bytes: bytes.to_vec(),
             replacements: 0,
+            scanned: true,
         };
     }
     let Ok(mut text) = String::from_utf8(bytes.to_vec()) else {
+        // Not text we can rewrite. Returning the bytes untouched here is what
+        // the caller must not do silently: see redact_artifact, which scans a
+        // lossy view and refuses the artifact if anything matches.
         return RedactedBytes {
             bytes: bytes.to_vec(),
             replacements: 0,
+            scanned: false,
         };
     };
     let mut replacements = 0_u32;
@@ -167,6 +178,7 @@ fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedBytes {
     RedactedBytes {
         bytes: text.into_bytes(),
         replacements,
+        scanned: true,
     }
 }
 
@@ -179,6 +191,7 @@ fn redact_artifact(
         return Ok(RedactedBytes {
             bytes: bytes.to_vec(),
             replacements: 0,
+            scanned: true,
         });
     }
     let extension = path
@@ -195,7 +208,30 @@ fn redact_artifact(
     if extension == "zip" {
         return redact_zip(path, bytes, config);
     }
-    Ok(redact_bytes(bytes, config))
+    let redacted = redact_bytes(bytes, config);
+    if !redacted.scanned && contains_secret_lossy(bytes, config) {
+        // The bytes are not valid UTF-8, so no pattern could be applied to
+        // them, and a lossy read shows something that should have been
+        // removed. Rewriting a lossy view would corrupt the artifact, so this
+        // refuses it the same way an opaque database is refused. Silently
+        // uploading an unscanned file is the one outcome redaction must not
+        // have.
+        return Err(DaemonError::UnscannableSecret {
+            path: path.to_path_buf(),
+        });
+    }
+    Ok(redacted)
+}
+
+/// Whether a lossy reading of non-UTF-8 bytes trips any enabled pattern.
+///
+/// Used only to decide whether to refuse an artifact, never to rewrite one:
+/// replacing text in a lossy view and writing it back would mangle every byte
+/// that did not survive the conversion.
+fn contains_secret_lossy(bytes: &[u8], config: RedactionConfig) -> bool {
+    let text = String::from_utf8_lossy(bytes);
+    let probe = redact_bytes(text.as_bytes(), config);
+    probe.replacements > 0
 }
 
 fn redact_zip(
@@ -294,6 +330,7 @@ fn redact_zip(
         return Ok(RedactedBytes {
             bytes: bytes.to_vec(),
             replacements: 0,
+            scanned: true,
         });
     }
     let bytes = writer
@@ -306,6 +343,7 @@ fn redact_zip(
     Ok(RedactedBytes {
         bytes,
         replacements,
+        scanned: true,
     })
 }
 
@@ -1218,5 +1256,91 @@ mod tests {
             Err(DaemonError::UnsupportedRedaction(_))
         ));
         assert_eq!(queue.counts().unwrap().pending, 0);
+    }
+
+    /// Assembled at runtime so the repository's own secret scan does not flag it.
+    fn token_fixture() -> String {
+        ["sk", "livefixtureabcdefghijklmnop"].join("_")
+    }
+
+    #[test]
+    fn refuses_an_unscannable_artifact_that_still_shows_a_secret() {
+        // Invalid UTF-8 means no pattern can be applied, so the artifact used
+        // to be queued exactly as found while redaction was switched on. An
+        // opaque database is refused for the same reason; this is the same
+        // situation arriving through a different door.
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("capture.jsonl");
+        let mut bytes = format!("token={} ", token_fixture()).into_bytes();
+        bytes.extend_from_slice(&[0xff, 0xfe, 0x00]);
+        fs::write(&source, &bytes).unwrap();
+
+        let queue = OfflineQueue::open(&temp.path().join("queue.sqlite3")).unwrap();
+        let error = queue
+            .enqueue_with_redaction(
+                "fixture",
+                &source,
+                RedactionConfig {
+                    secrets: true,
+                    ..RedactionConfig::disabled()
+                },
+            )
+            .expect_err("an unscannable artifact holding a secret must not be queued");
+        assert!(
+            matches!(error, DaemonError::UnscannableSecret { .. }),
+            "expected an unscannable-secret refusal, got: {error}"
+        );
+        assert_eq!(queue.counts().unwrap().pending, 0, "nothing may be queued");
+    }
+
+    #[test]
+    fn still_accepts_unscannable_bytes_that_hold_no_secret() {
+        // Refusing every non-UTF-8 artifact would block ordinary captures, so
+        // the refusal has to be about the secret, not about the encoding.
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("capture.bin");
+        fs::write(&source, [0xff, 0xfe, 0x00, 0x41, 0x42]).unwrap();
+
+        let queue = OfflineQueue::open(&temp.path().join("queue.sqlite3")).unwrap();
+        let artifact = queue
+            .enqueue_with_redaction(
+                "fixture",
+                &source,
+                RedactionConfig {
+                    secrets: true,
+                    ..RedactionConfig::disabled()
+                },
+            )
+            .expect("bytes with nothing to hide are still capturable");
+        assert!(
+            !artifact.redacted,
+            "nothing was replaced, so nothing was redacted"
+        );
+        assert_eq!(artifact.redaction_count, 0);
+    }
+
+    #[test]
+    fn reports_redaction_only_when_something_was_replaced() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("capture.jsonl");
+        fs::write(&source, format!("token={}", token_fixture())).unwrap();
+        let queue = OfflineQueue::open(&temp.path().join("queue.sqlite3")).unwrap();
+        let artifact = queue
+            .enqueue_with_redaction(
+                "fixture",
+                &source,
+                RedactionConfig {
+                    secrets: true,
+                    ..RedactionConfig::disabled()
+                },
+            )
+            .unwrap();
+        assert!(artifact.redacted);
+        assert!(artifact.redaction_count > 0);
+        let stored = fs::read_to_string(&artifact.local_path).unwrap();
+        assert!(
+            !stored.contains(&token_fixture()),
+            "the secret reached the queue"
+        );
     }
 }
