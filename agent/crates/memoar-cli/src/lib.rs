@@ -1475,7 +1475,10 @@ mod tests {
         let path = temp.path().join("secret");
         let file = create_private(&path, 0o600).unwrap();
         let mode = file.metadata().unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "the file was readable by others before anything was written to it");
+        assert_eq!(
+            mode, 0o600,
+            "the file was readable by others before anything was written to it"
+        );
         drop(file);
     }
 
@@ -1486,7 +1489,10 @@ mod tests {
         // was created with, outliving the window entirely.
         let temp = tempfile::tempdir().unwrap();
         let paths = fixture_paths(&temp);
-        paths.credential_store().store_token("secret-user-token").unwrap();
+        paths
+            .credential_store()
+            .store_token("secret-user-token")
+            .unwrap();
         let parent = paths.credentials_file().parent().unwrap().to_owned();
         let leftovers: Vec<_> = fs::read_dir(&parent)
             .unwrap()
@@ -1494,7 +1500,10 @@ mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .filter(|name| name.starts_with(".memoar-") && name.ends_with(".tmp"))
             .collect();
-        assert!(leftovers.is_empty(), "temporary credential files were left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temporary credential files were left behind: {leftovers:?}"
+        );
     }
 
     #[test]

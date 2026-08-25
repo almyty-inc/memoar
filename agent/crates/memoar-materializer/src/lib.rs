@@ -1137,7 +1137,9 @@ mod tests {
             for written in &result.written {
                 wrote_something = true;
                 let resolved = written.canonicalize().expect("a written file must resolve");
-                let root = projects.canonicalize().expect("projects directory must exist once written");
+                let root = projects
+                    .canonicalize()
+                    .expect("projects directory must exist once written");
                 assert!(
                     resolved.starts_with(&root),
                     "workspace {hostile:?} escaped the projects directory: {}",
@@ -1148,7 +1150,10 @@ mod tests {
 
         // Without this the loop could pass by refusing every input, which would
         // prove the guard is strict rather than that it is correct.
-        assert!(wrote_something, "no workspace was accepted, so nothing was actually checked");
+        assert!(
+            wrote_something,
+            "no workspace was accepted, so nothing was actually checked"
+        );
     }
 
     #[test]
@@ -1166,7 +1171,11 @@ mod tests {
             "expected an unsafe-path refusal, got: {error}"
         );
         assert!(
-            !temp.path().join(".claude").join(format!("{}.jsonl", session.id)).exists(),
+            !temp
+                .path()
+                .join(".claude")
+                .join(format!("{}.jsonl", session.id))
+                .exists(),
             "the refusal must happen before anything is written"
         );
     }
