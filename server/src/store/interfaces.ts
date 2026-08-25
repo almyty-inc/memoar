@@ -61,6 +61,9 @@ export interface SharingStore {
   getTransfer(context: TenantContext, transferId: string): Promise<TransferRecord | null>;
   createTransferOffer(context: TenantContext, offer: { id: string; sessionId: string; recipientEmail: string }): Promise<void>;
   acceptTransferOffer(context: TenantContext, transferId: string): Promise<ArchivedSession>;
+
+  /** Refuses a pending transfer without copying the session. */
+  declineTransferOffer(context: TenantContext, transferId: string): Promise<void>;
 }
 
 export interface TeamStore {

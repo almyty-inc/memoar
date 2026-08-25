@@ -9,6 +9,7 @@ import {
   makeDemoDetail,
 } from './demo';
 import type {
+  Annotation,
   ApiKey,
   ApiKeyCreateResult,
   CurrentUser,
@@ -419,7 +420,12 @@ export class MemoarApiClient {
     return this.session?.token ?? null;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+  /**
+   * One authenticated fetch. Kept separate from request() so responses that are
+   * not JSON — an export download, for one — can be read without pretending to
+   * be, while still sharing the token, timeout and 401 handling.
+   */
+  private async fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
     if (!this.configured) throw new Error('No Memoar API URL is configured');
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 10_000);
@@ -435,18 +441,25 @@ export class MemoarApiClient {
           ...init?.headers,
         },
       });
+      if (response.status === 401) {
+        this.clearSession();
+        window.dispatchEvent(new CustomEvent('memoar:unauthorized'));
+      }
+      return response;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    {
+      const response = await this.fetchWithAuth(path, init);
       if (!response.ok) {
         const body = await response.text();
-        if (response.status === 401) {
-          this.clearSession();
-          window.dispatchEvent(new CustomEvent('memoar:unauthorized'));
-        }
         throw new MemoarApiError(response.status, body || `Memoar API returned ${response.status}`);
       }
       if (response.status === 204) return undefined as T;
       return (await response.json()) as T;
-    } finally {
-      window.clearTimeout(timer);
     }
   }
 
@@ -584,6 +597,52 @@ export class MemoarApiClient {
 
   deleteSession(sessionId: string): Promise<void> {
     return this.request<void>(`/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  declineTransfer(transferId: string): Promise<void> {
+    return this.request<void>(`/sharing/transfers/${transferId}/decline`, { method: 'POST' });
+  }
+
+  listAnnotations(sessionId: string): Promise<ListResponse<Annotation>> {
+    return this.request<ListResponse<Annotation>>(`/annotations?sessionId=${encodeURIComponent(sessionId)}`);
+  }
+
+  createAnnotation(input: { sessionId: string; kind: Annotation['kind']; value: Record<string, unknown> }): Promise<Annotation> {
+    return this.request<Annotation>('/annotations', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  deleteAnnotation(annotationId: string): Promise<void> {
+    return this.request<void>(`/annotations/${annotationId}`, { method: 'DELETE' });
+  }
+
+  addSessionToCollection(collectionId: string, sessionId: string): Promise<void> {
+    return this.request<void>(`/collections/${collectionId}/sessions/${sessionId}`, { method: 'PUT' });
+  }
+
+  removeSessionFromCollection(collectionId: string, sessionId: string): Promise<void> {
+    return this.request<void>(`/collections/${collectionId}/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  async listCollectionSessions(collectionId: string): Promise<SessionSummary[]> {
+    const page = await this.request<ListResponse<WireSessionSummary>>(`/collections/${collectionId}/sessions`);
+    return page.items.map(mapSession);
+  }
+
+  /**
+   * Exports a session as a file. The response carries the filename the server
+   * chose, so the download is named by the archive rather than by the browser
+   * guessing from a URL.
+   */
+  async exportSession(sessionId: string, format: 'canonical' | 'markdown' = 'canonical'): Promise<{ filename: string; body: string; contentType: string }> {
+    const response = await this.fetchWithAuth(`/sessions/${sessionId}/export?format=${format}`);
+    if (!response.ok) throw new MemoarApiError(response.status, `Export failed with HTTP ${response.status}`);
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const match = /filename="([^"]+)"/.exec(disposition);
+    return {
+      filename: match?.[1] ?? `${sessionId}.json`,
+      body: await response.text(),
+      contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+    };
   }
 
   async updateSessionVisibility(

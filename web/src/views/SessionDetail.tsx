@@ -32,10 +32,10 @@ import {
   User,
   WandSparkles,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { memoarApi } from '../lib/api';
-import type { ContentBlock, ConversionJob, PackResponse, SessionDetailData, ShareGrant } from '../lib/types';
+import type { Collection as CollectionRecord, ContentBlock, ConversionJob, Machine, PackResponse, SessionDetailData, ShareGrant } from '../lib/types';
 import {
   Badge,
   Button,
@@ -50,12 +50,15 @@ import {
   formatRelative,
 } from '../components/ui';
 
-export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDeleted }: {
+export function SessionDetailView({ detail, collections, machines, onBack, onBuildPack, onConvert, onDeleted, onCollectionsChanged }: {
   detail: SessionDetailData;
+  collections: CollectionRecord[];
+  machines: Machine[];
   onBack: () => void;
   onBuildPack: (query: string, budget: number, freshness: 'strict' | 'mixed') => Promise<PackResponse>;
   onConvert: (target: ConversionJob['target']) => Promise<ConversionJob>;
   onDeleted: () => void;
+  onCollectionsChanged: () => void;
 }) {
   const [showThinking, setShowThinking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -73,14 +76,88 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDe
   const [packLoading, setPackLoading] = useState(false);
   const [conversion, setConversion] = useState<ConversionJob | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The pack controls drive the request. They were a readOnly number and a
+  // disabled select, so the budget and freshness shown were never the ones used.
+  const [packBudget, setPackBudget] = useState(4000);
+  const [packFreshness, setPackFreshness] = useState<'strict' | 'mixed'>('mixed');
+  const [machineId, setMachineId] = useState('');
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const [pinId, setPinId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const session = detail.session;
+
+  // Pins live as annotations, so the current state has to be read rather than
+  // assumed: the button previously guessed from a field the server never set.
+  useEffect(() => {
+    let active = true;
+    void memoarApi.listAnnotations(session.id)
+      .then((page) => {
+        if (active) setPinId(page.items.find((annotation) => annotation.kind === 'pin')?.id ?? null);
+      })
+      .catch(() => {
+        // Absence of a pin is the safe default: showing "Pin session" for an
+        // already-pinned session is recoverable, the reverse is confusing.
+        if (active) setPinId(null);
+      });
+    return () => { active = false; };
+  }, [session.id]);
+
+  const togglePin = async () => {
+    setBusyAction('pin');
+    setActionError(null);
+    try {
+      if (pinId) {
+        await memoarApi.deleteAnnotation(pinId);
+        setPinId(null);
+      } else {
+        const created = await memoarApi.createAnnotation({ sessionId: session.id, kind: 'pin', value: {} });
+        setPinId(created.id);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Pin could not be updated');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const exportSession = async () => {
+    setBusyAction('export');
+    setActionError(null);
+    try {
+      const exported = await memoarApi.exportSession(session.id);
+      const url = URL.createObjectURL(new Blob([exported.body], { type: exported.contentType }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = exported.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Export failed');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const addToCollection = async (collectionId: string) => {
+    setBusyAction('collection');
+    setActionError(null);
+    try {
+      await memoarApi.addSessionToCollection(collectionId, session.id);
+      setCollectionOpen(false);
+      onCollectionsChanged();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Session could not be added');
+    } finally {
+      setBusyAction(null);
+    }
+  };
 
   const openPack = async () => {
     setPackOpen(true);
     setPackLoading(true);
     setActionError(null);
     try {
-      setPack(await onBuildPack(session.title, 4000, 'mixed'));
+      setPack(await onBuildPack(session.title, packBudget, packFreshness));
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Pack request failed');
     } finally {
@@ -122,7 +199,9 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDe
         </div>
         <div className="session-action-bar" aria-label="Session actions">
           <Button size="sm" onClick={() => setShareOpen(true)}><Share2 size={14} /> Share</Button>
-          <Button size="sm"><Download size={14} /> Export <ChevronDown size={13} /></Button>
+          <Button size="sm" disabled={busyAction === 'export'} onClick={() => void exportSession()}>
+            <Download size={14} /> {busyAction === 'export' ? 'Exporting…' : 'Export'}
+          </Button>
           <Button size="sm" onClick={() => setConvertOpen(true)}><RefreshCw size={14} /> Convert</Button>
           <Button size="sm" variant="primary" onClick={() => void openPack()}><Braces size={14} /> Pack preview</Button>
           <IconButton label="More actions"><MoreHorizontal size={17} /></IconButton>
@@ -209,8 +288,12 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDe
           <section className="inspector-card">
             <h2>Organization</h2>
             <div className="inspector-tags">{session.tags.map((tag) => <Badge key={tag}>#{tag}</Badge>)}</div>
-            <Button size="sm" variant="ghost"><Collection size={14} /> Add to collection</Button>
-            <Button size="sm" variant="ghost"><Pin size={14} /> {session.pinned ? 'Unpin session' : 'Pin session'}</Button>
+            <Button size="sm" variant="ghost" disabled={collections.length === 0} onClick={() => setCollectionOpen(true)}>
+              <Collection size={14} /> {collections.length === 0 ? 'No collections yet' : 'Add to collection'}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busyAction === 'pin'} onClick={() => void togglePin()}>
+              <Pin size={14} /> {pinId ? 'Unpin session' : 'Pin session'}
+            </Button>
           </section>
 
           <Button className="delete-session-button" size="sm" variant="ghost" onClick={() => setDeleteOpen(true)}>
@@ -263,7 +346,20 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDe
               </button>
             ))}
           </div>
-          <label className="field-label">Materialize on<select><option>Atlas · MacBook Pro</option><option>Kepler · Linux workstation</option></select></label>
+          {/*
+            This listed "Atlas · MacBook Pro" and "Kepler · Linux workstation",
+            neither of which exists. It shows the machines actually registered,
+            and says so when there are none rather than offering invented ones.
+          */}
+          <label className="field-label">Materialize on
+            {machines.length === 0 ? (
+              <span className="field-empty">No machines connected yet</span>
+            ) : (
+              <select value={machineId || machines[0]?.id} onChange={(event) => setMachineId(event.target.value)}>
+                {machines.map((machine) => <option key={machine.id} value={machine.id}>{machine.name} · {machine.platform}</option>)}
+              </select>
+            )}
+          </label>
           <div className="conversion-note"><Sparkles size={16} /><p><strong>{conversion ? `Conversion ${conversion.status}` : 'Conversion report'}</strong><br />{conversion?.resumeCommand ?? 'Queue the canonical session to receive an exact resume command and mapping report.'}</p></div>
           {actionError ? <p role="alert">{actionError}</p> : null}
         </div>
@@ -277,7 +373,16 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDe
         onClose={() => setPackOpen(false)}
       >
         <div className="modal-body pack-modal-body">
-          <div className="budget-row"><label>Token budget<input type="number" value="4000" readOnly min="64" max="32000" /></label><label>Freshness<select value="mixed" disabled><option value="mixed">Mixed, flag stale</option></select></label></div>
+          <div className="budget-row">
+            <label>Token budget<input type="number" value={packBudget} min={64} max={32000} onChange={(event) => setPackBudget(Number(event.target.value))} /></label>
+            <label>Freshness
+              <select value={packFreshness} onChange={(event) => setPackFreshness(event.target.value === 'strict' ? 'strict' : 'mixed')}>
+                <option value="mixed">Mixed, flag stale</option>
+                <option value="strict">Strict, fresh only</option>
+              </select>
+            </label>
+            <Button size="sm" variant="ghost" disabled={packLoading} onClick={() => void openPack()}>Rebuild</Button>
+          </div>
           {packLoading ? <p role="status">Building cited preview…</p> : null}
           {pack ? (
             <div className="pack-preview-card">
@@ -290,7 +395,22 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDe
           {actionError ? <p role="alert">{actionError}</p> : null}
           {pack ? <div className="redaction-safe"><ShieldCheck size={15} /><span>Redaction status: {pack.redactionStatus}. {pack.staleCount} stale excerpts.</span></div> : null}
         </div>
-        <footer className="modal-actions">{pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}<Button variant="primary" disabled={!pack}>Send to agent <ArrowRight size={14} /></Button></footer>
+        <footer className="modal-actions">{pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}<Button variant="primary" disabled={!pack} onClick={() => { setPackOpen(false); setConvertOpen(true); }}>Send to agent <ArrowRight size={14} /></Button></footer>
+      </Modal>
+
+      <Modal open={collectionOpen} title="Add to collection" description="Collections group sessions for review and for packing evidence." onClose={() => setCollectionOpen(false)}>
+        <div className="modal-body">
+          <div className="collection-picker">
+            {collections.map((collection) => (
+              <button key={collection.id} type="button" className="collection-choice" disabled={busyAction === 'collection'} onClick={() => void addToCollection(collection.id)}>
+                <strong>{collection.name}</strong>
+                <small>{collection.sessionCount} sessions</small>
+              </button>
+            ))}
+          </div>
+          {actionError ? <p role="alert">{actionError}</p> : null}
+        </div>
+        <footer className="modal-actions"><Button variant="ghost" onClick={() => setCollectionOpen(false)}>Cancel</Button></footer>
       </Modal>
 
       <Modal open={deleteOpen} title="Delete this session?" description="Captured data and raw artifacts enter the configured 30-day recovery window." onClose={() => setDeleteOpen(false)}>

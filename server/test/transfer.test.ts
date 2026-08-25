@@ -8,6 +8,9 @@ import { DevArchiveStore } from "../src/dev-archive-store.js";
 const LIVE_KEY_FIXTURE = ["sk", "live", "abcdefghijklmnopqrstuvwx"].join("_");
 
 const sender: TenantContext = DEMO_CONTEXT;
+/** Dev identities are addressed by this convention, as listTransfers uses. */
+const RECIPIENT_EMAIL = "0191cafe-0000-7000-8000-0000000000c2@local.invalid";
+
 const recipient: TenantContext = {
   tenantId: "0191cafe-0000-7000-8000-0000000000c1",
   userId: "0191cafe-0000-7000-8000-0000000000c2",
@@ -24,7 +27,7 @@ describe("direct transfer", () => {
     const review = await sharing.completeReview(sender, DEMO_SESSION.id);
     const transfer = await sharing.requestTransfer(
       sender,
-      { sessionId: DEMO_SESSION.id, recipientEmail: "recipient@example.test", redactionReviewId: review.id },
+      { sessionId: DEMO_SESSION.id, recipientEmail: RECIPIENT_EMAIL, redactionReviewId: review.id },
       "sender@example.test",
     );
     expect(transfer.status).toBe("pending");
@@ -55,7 +58,7 @@ describe("direct transfer", () => {
     const sharing = new SharingService(store);
     await expect(sharing.requestTransfer(
       sender,
-      { sessionId: DEMO_SESSION.id, recipientEmail: "recipient@example.test", redactionReviewId: "0191cafe-0000-7000-8000-0000000000ff" },
+      { sessionId: DEMO_SESSION.id, recipientEmail: RECIPIENT_EMAIL, redactionReviewId: "0191cafe-0000-7000-8000-0000000000ff" },
       "sender@example.test",
     )).rejects.toThrow();
   });
@@ -88,7 +91,7 @@ describe("direct transfer", () => {
 
     const transfer = await sharing.requestTransfer(
       sender,
-      { sessionId: session.id, recipientEmail: "recipient@example.test", redactionReviewId: review.id },
+      { sessionId: session.id, recipientEmail: RECIPIENT_EMAIL, redactionReviewId: review.id },
       "sender@example.test",
     );
     const summary = await sharing.acceptTransfer(recipient, transfer.id);
@@ -99,5 +102,46 @@ describe("direct transfer", () => {
     expect(tool!.data).toEqual({ memoarRedacted: "raw payload removed by redaction projection" });
     const original = await store.getSession(sender, session.id);
     expect(original!.turns[0]!.blocks[0]!.text).toContain(secret);
+  });
+});
+
+describe("declining a transfer", () => {
+  it("moves the offer off pending for both sides and copies nothing", async () => {
+    const store = new DevArchiveStore();
+    await store.saveSession(sender, DEMO_SESSION);
+    const sharing = new SharingService(store);
+    const review = await sharing.completeReview(sender, DEMO_SESSION.id);
+    const transfer = await sharing.requestTransfer(
+      sender,
+      { sessionId: DEMO_SESSION.id, recipientEmail: RECIPIENT_EMAIL, redactionReviewId: review.id },
+      "sender@example.test",
+    );
+
+    await sharing.declineTransfer(recipient, transfer.id);
+
+    // The recipient must not end up holding the session they refused.
+    const held = await store.listSessions(recipient, { limit: 50 });
+    expect(held.items).toHaveLength(0);
+
+    // The sender sees the refusal rather than a transfer stuck on pending.
+    const senderView = await store.listTransfers(sender);
+    expect(senderView.find((entry) => entry.id === transfer.id)?.status).toBe("declined");
+
+    // A declined offer is spent: it can be neither declined nor accepted again.
+    await expect(sharing.declineTransfer(recipient, transfer.id)).rejects.toThrow(/not found/i);
+    await expect(sharing.acceptTransfer(recipient, transfer.id)).rejects.toThrow(/not found/i);
+  });
+
+  it("refuses a transfer addressed to somebody else", async () => {
+    const store = new DevArchiveStore();
+    await store.saveSession(sender, DEMO_SESSION);
+    const sharing = new SharingService(store);
+    const review = await sharing.completeReview(sender, DEMO_SESSION.id);
+    const transfer = await sharing.requestTransfer(
+      sender,
+      { sessionId: DEMO_SESSION.id, recipientEmail: "somebody-else@example.test", redactionReviewId: review.id },
+      "sender@example.test",
+    );
+    await expect(sharing.declineTransfer(recipient, transfer.id)).rejects.toThrow();
   });
 });

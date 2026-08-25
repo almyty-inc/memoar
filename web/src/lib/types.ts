@@ -10,6 +10,18 @@ export type ViewId =
   | 'signin'
   | 'session';
 
+/** A user-authored mark on a session: a pin, a tag, a note, a collection link. */
+export interface Annotation {
+  id: string;
+  sessionId: string;
+  turnId?: string;
+  blockId?: string;
+  kind: 'tag' | 'collection' | 'pin' | 'note' | 'summary' | 'redaction_mask';
+  value: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** The signed-in account, as reported by the server. Never assembled locally. */
 export interface CurrentUser {
   id: string;

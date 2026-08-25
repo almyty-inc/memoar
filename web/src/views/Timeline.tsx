@@ -64,6 +64,20 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
   );
 }
 
+const RANGES: Array<[string, string]> = [
+  ['all', 'Any time'],
+  ['7', 'Last 7 days'],
+  ['30', 'Last 30 days'],
+  ['90', 'Last 90 days'],
+];
+
+/** Whether a session is newer than the cutoff. A null cutoff accepts everything. */
+function withinRange(updatedAt: string, cutoff: number | null): boolean {
+  if (cutoff === null) return true;
+  const at = new Date(updatedAt).valueOf();
+  return Number.isFinite(at) && at >= cutoff;
+}
+
 export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, onLoadMore }: {
   groups: TimelineGroup[];
   onOpen: (session: SessionSummary) => void;
@@ -75,6 +89,17 @@ export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, o
   const scrollRef = useRef<HTMLDivElement>(null);
   const [source, setSource] = useState('all');
   const [workspace, setWorkspace] = useState('all');
+  // "Any time" was a button that did nothing. It filters now. The cutoff is
+  // stamped when the range is chosen — an event, where reading the clock is
+  // fine — rather than during render, where it would not be a pure value.
+  const [within, setWithin] = useState('all');
+  const [cutoff, setCutoff] = useState<number | null>(null);
+
+  const chooseRange = (value: string) => {
+    setWithin(value);
+    const days = Number(value);
+    setCutoff(value === 'all' || !Number.isFinite(days) ? null : Date.now() - days * 24 * 60 * 60 * 1000);
+  };
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const sessions = useMemo(() => groups.flatMap((group) => group.sessions), [groups]);
@@ -85,9 +110,10 @@ export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, o
       ...group,
       sessions: group.sessions.filter((session) =>
         (source === 'all' || session.source === source)
-        && (workspace === 'all' || session.workspace === workspace)),
+        && (workspace === 'all' || session.workspace === workspace)
+        && withinRange(session.updatedAt, cutoff)),
     }))
-    .filter((group) => group.sessions.length > 0), [groups, source, workspace]);
+    .filter((group) => group.sessions.length > 0), [groups, source, workspace, cutoff]);
 
   const items = useMemo<TimelineItem[]>(() => filteredGroups.flatMap((group) => [
     { type: 'date' as const, key: `date-${group.date}`, date: group.date, count: group.sessions.length },
@@ -112,7 +138,7 @@ export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, o
     return () => element.removeEventListener('scroll', onScroll);
   }, [hasMore, loadingMore, onLoadMore]);
 
-  const filtersApplied = Number(source !== 'all') + Number(workspace !== 'all');
+  const filtersApplied = Number(source !== 'all') + Number(workspace !== 'all') + Number(within !== 'all');
 
   return (
     <div className="page timeline-page">
@@ -153,9 +179,15 @@ export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, o
               </select>
               <ChevronDown size={13} />
             </label>
-            <Button size="sm" variant="ghost"><CalendarDays size={14} /> Any time</Button>
+            <label className="select-control">
+              <CalendarDays size={14} />
+              <select value={within} onChange={(event) => chooseRange(event.target.value)}>
+                {RANGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <ChevronDown size={13} />
+            </label>
             {filtersApplied ? (
-              <Button size="sm" variant="ghost" onClick={() => { setSource('all'); setWorkspace('all'); }}>
+              <Button size="sm" variant="ghost" onClick={() => { setSource('all'); setWorkspace('all'); chooseRange('all'); }}>
                 <X size={14} /> Clear
               </Button>
             ) : null}

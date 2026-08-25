@@ -34,6 +34,12 @@ export class SharingController {
     return this.sharing.requestTransfer(context, body, `${context.userId}@local.invalid`);
   }
 
+  @Post("transfers/:transferId/decline")
+  @HttpCode(204)
+  decline(@Tenant() context: TenantContext, @Param("transferId", ParseUUIDPipe) transferId: string): Promise<void> {
+    return this.sharing.declineTransfer(context, transferId);
+  }
+
   @Post("transfers/:transferId/accept")
   accept(@Tenant() context: TenantContext, @Param("transferId", ParseUUIDPipe) transferId: string): Promise<Record<string, unknown>> {
     return this.sharing.acceptTransfer(context, transferId);

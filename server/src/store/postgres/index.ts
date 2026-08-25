@@ -76,6 +76,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   getTransfer(context: TenantContext, transferId: string): Promise<TransferRecord | null> { return this.sharing.getTransfer(context, transferId); }
   createTransferOffer(context: TenantContext, offer: { id: string; sessionId: string; recipientEmail: string }): Promise<void> { return this.sharing.createTransferOffer(context, offer); }
   acceptTransferOffer(context: TenantContext, transferId: string): Promise<ArchivedSession> { return this.sharing.acceptTransferOffer(context, transferId); }
+  declineTransferOffer(context: TenantContext, transferId: string): Promise<void> { return this.sharing.declineTransferOffer(context, transferId); }
 
   createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord> { return this.teams.createTeam(input, creator); }
   listTeamsForUser(userId: string): Promise<TeamRecord[]> { return this.teams.listTeamsForUser(userId); }

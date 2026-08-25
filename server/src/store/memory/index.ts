@@ -61,6 +61,7 @@ export class DevArchiveStore implements ArchiveStore {
   getTransfer(context: TenantContext, transferId: string): Promise<TransferRecord | null> { return this.sharingStore.getTransfer(context, transferId); }
   createTransferOffer(context: TenantContext, offer: { id: string; sessionId: string; recipientEmail: string }): Promise<void> { return this.sharingStore.createTransferOffer(context, offer); }
   acceptTransferOffer(context: TenantContext, transferId: string): Promise<ArchivedSession> { return this.sharingStore.acceptTransferOffer(context, transferId); }
+  declineTransferOffer(context: TenantContext, transferId: string): Promise<void> { return this.sharingStore.declineTransferOffer(context, transferId); }
 
   createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord> { return this.teamStore.createTeam(input, creator); }
   listTeamsForUser(userId: string): Promise<TeamRecord[]> { return this.teamStore.listTeamsForUser(userId); }

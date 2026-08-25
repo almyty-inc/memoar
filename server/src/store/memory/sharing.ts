@@ -66,9 +66,19 @@ export class MemorySharingStore implements SharingStore {
     });
   }
 
+  async declineTransferOffer(context: TenantContext, transferId: string): Promise<void> {
+    const offer = this.tables.transferOffers.get(transferId);
+    if (!offer || offer.status !== "pending") throw new Error("transfer_not_found");
+    assertAddressedTo(context, offer.recipientEmail);
+    offer.status = "declined";
+    const transfer = this.tables.transfers.get(key(offer.senderTenantId, transferId));
+    if (transfer) transfer.status = "declined";
+  }
+
   async acceptTransferOffer(context: TenantContext, transferId: string): Promise<ArchivedSession> {
     const offer = this.tables.transferOffers.get(transferId);
     if (!offer || offer.status !== "pending") throw new Error("transfer_not_found");
+    assertAddressedTo(context, offer.recipientEmail);
     const source = this.tables.sessions.get(key(offer.senderTenantId, offer.sessionId));
     if (!source) throw new Error("transfer_session_missing");
     const copied = copyTransferredSession(copy(source), offer.id, context.userId);
@@ -136,5 +146,17 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
 
   async listTeamCollections(teamId: string): Promise<CollectionRecord[]> {
     return [...this.tables.collections.values()].filter((collection) => collection.teamId === teamId).map((collection) => copy(collection));
+  }
+}
+
+/**
+ * Only the addressee may accept or decline. The Postgres store has always
+ * enforced this by looking the caller's email up; this store enforced nothing,
+ * so anyone could act on anyone's transfer. Dev identities are addressed by the
+ * same `<userId>@local.invalid` convention listTransfers already uses.
+ */
+function assertAddressedTo(context: TenantContext, recipientEmail: string): void {
+  if (recipientEmail.toLowerCase() !== `${context.userId}@local.invalid`.toLowerCase()) {
+    throw new Error("transfer_not_addressed_to_caller");
   }
 }

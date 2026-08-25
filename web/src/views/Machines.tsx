@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  ArrowRight,
   Check,
   ChevronDown,
   CircleDot,
@@ -32,6 +31,7 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
   const [expanded, setExpanded] = useState<string[]>(machines.slice(0, 2).map((machine) => machine.id));
   const toggle = (id: string) => setExpanded((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   const sessionCount = machines.flatMap((machine) => machine.sources).reduce((count, source) => count + source.sessionCount, 0);
+  const needsAttention = machines.flatMap((machine) => machine.sources.filter((source) => source.state === 'attention').map((source) => ({ machine, source })));
 
   return (
     <div className="page machines-page">
@@ -71,11 +71,25 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
         })}
       </div>
 
-      <section className="source-diagnostic">
-        <div><span><HardDrive size={18} /></span><div><strong>Cursor source needs attention on Atlas</strong><p>The local state database changed format. The raw file is preserved and queued for parser diagnostics.</p></div></div>
-        <Badge className="redaction-findings"><AlertCircle size={12} /> Format drift</Badge>
-        <Button size="sm">Open diagnostic <ArrowRight size={14} /></Button>
-      </section>
+      {/*
+        This described "Cursor source needs attention on Atlas · Format drift"
+        as a literal, on every archive, whether or not any source needed
+        attention and whether or not a machine named Atlas existed. It now
+        reports the sources actually in that state, and renders nothing when
+        none are.
+      */}
+      {needsAttention.length > 0 ? (
+        <section className="source-diagnostic">
+          <div>
+            <span><HardDrive size={18} /></span>
+            <div>
+              <strong>{needsAttention.length} {needsAttention.length === 1 ? 'source needs' : 'sources need'} attention</strong>
+              <p>{needsAttention.map(({ machine, source }) => `${source.label} on ${machine.name}`).join(', ')}. The raw files are preserved and queued for parser diagnostics.</p>
+            </div>
+          </div>
+          <Badge className="redaction-findings"><AlertCircle size={12} /> Needs attention</Badge>
+        </section>
+      ) : null}
 
       <section className="install-inline">
         <span><CircleDot size={18} /></span><div><strong>Connect another computer</strong><p>The install command registers a machine-specific token and starts source discovery.</p></div><code>npx memoar connect</code><CopyButton value="npx memoar connect" label="Copy" /><Button size="sm" variant="ghost" onClick={onConnect}>Setup guide</Button>

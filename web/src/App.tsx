@@ -41,12 +41,16 @@ export function App() {
   const [selected, setSelected] = useState<SessionSummary | null>(null);
   const [detail, setDetail] = useState<SessionDetailData | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
+  // Stamped when the archive loads so views can do time maths without reading
+  // the clock while rendering.
+  const [loadedAt, setLoadedAt] = useState(0);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setConnectionError(null);
     try {
       setDashboard(await memoarApi.loadDashboard());
+      setLoadedAt(Date.now());
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : 'Archive connection failed');
     } finally {
@@ -67,6 +71,7 @@ export function App() {
     void memoarApi.loadDashboard().then((nextDashboard) => {
       if (!active) return;
       setDashboard(nextDashboard);
+      setLoadedAt(Date.now());
       setLoading(false);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -159,7 +164,23 @@ export function App() {
       return imported;
     }} />;
   } else if (view === 'sharing') {
-    content = <SharingView grants={dashboard.grants} transfers={dashboard.transfers} onAcceptTransfer={async (id) => { await memoarApi.acceptTransfer(id); await loadDashboard(); }} />;
+    content = (
+      <SharingView
+        grants={dashboard.grants}
+        transfers={dashboard.transfers}
+        sessions={allSessions}
+        shareOrigin={window.location.origin}
+        asOf={loadedAt}
+        onAcceptTransfer={async (id) => { await memoarApi.acceptTransfer(id); await loadDashboard(); }}
+        onDeclineTransfer={async (id) => { await memoarApi.declineTransfer(id); await loadDashboard(); }}
+        onRevokeGrant={async (id) => { await memoarApi.revokeShareLink(id); await loadDashboard(); }}
+        onRequestTransfer={async (input) => {
+          const review = await memoarApi.completeRedactionReview(input.sessionId);
+          await memoarApi.requestTransfer({ ...input, redactionReviewId: review.id });
+          await loadDashboard();
+        }}
+      />
+    );
   } else if (view === 'machines') {
     content = <MachinesView machines={dashboard.machines} onConnect={() => navigate('onboarding')} />;
   } else if (view === 'settings') {
@@ -174,6 +195,9 @@ export function App() {
     content = detail ? (
       <SessionDetailView
         detail={detail}
+        collections={dashboard.collections}
+        machines={dashboard.machines}
+        onCollectionsChanged={() => void loadDashboard()}
         onBack={() => navigate('timeline')}
         onBuildPack={(query, budget, freshness) => memoarApi.buildPack(query, budget, freshness)}
         onConvert={(target) => memoarApi.requestConversion(detail.session.id, target)}

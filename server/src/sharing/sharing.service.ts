@@ -161,18 +161,31 @@ export class SharingService {
     return sessionSummary(copy);
   }
 
+  async declineTransfer(context: TenantContext, transferId: string): Promise<void> {
+    try {
+      await this.store.declineTransferOffer(context, transferId);
+    } catch (error) {
+      throw transferFailure(error);
+    }
+  }
+
   async acceptTransfer(context: TenantContext, transferId: string): Promise<Record<string, unknown>> {
     try {
       return sessionSummary(await this.store.acceptTransferOffer(context, transferId));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (message === "transfer_not_found" || message === "transfer_session_missing") {
-        throw new NotFoundException("Pending transfer not found");
-      }
-      if (message === "transfer_not_addressed_to_caller") {
-        throw new ForbiddenException("Transfer is addressed to a different account");
-      }
-      throw error;
+      throw transferFailure(error);
     }
   }
+}
+
+/** Maps store-level transfer errors onto the contract's status codes. */
+function transferFailure(error: unknown): Error {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "transfer_not_found" || message === "transfer_session_missing") {
+    return new NotFoundException("Pending transfer not found");
+  }
+  if (message === "transfer_not_addressed_to_caller") {
+    return new ForbiddenException("Transfer is addressed to a different account");
+  }
+  return error instanceof Error ? error : new Error(message);
 }

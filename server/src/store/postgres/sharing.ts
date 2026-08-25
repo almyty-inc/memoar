@@ -96,6 +96,34 @@ export class PostgresSharingStore implements SharingStore {
    * (with remapped turn/block ids and an import provenance entry) into the
    * caller's tenant, then marks the offer and the sender-side transfer accepted.
    */
+  /**
+   * Refuses a pending transfer. Nothing is copied, so the recipient never holds
+   * the session; both sides are moved off "pending" so the offer stops showing
+   * as awaiting an answer that will never come.
+   */
+  async declineTransferOffer(context: TenantContext, transferId: string): Promise<void> {
+    const offerRepository = this.runner.dataSource.getRepository(TransferOfferEntity);
+    const offer = await offerRepository.findOneBy({ id: transferId, status: "pending" });
+    if (!offer) throw new Error("transfer_not_found");
+    const recipient = await this.runner.dataSource.getRepository(UserEntity).findOneBy({ id: context.userId });
+    if (!recipient || recipient.email.toLowerCase() !== offer.recipientEmail.toLowerCase()) {
+      throw new Error("transfer_not_addressed_to_caller");
+    }
+    await offerRepository.update({ id: offer.id }, { status: "declined" });
+    const senderContext: TenantContext = {
+      tenantId: offer.senderTenantId,
+      userId: offer.senderUserId,
+      scopes: ["archive:read"],
+      authType: "machine",
+    };
+    await this.runner.inTenant(senderContext, async (manager) => {
+      await manager.getRepository(TransferEntity).update(
+        { id: offer.id, tenantId: offer.senderTenantId },
+        { status: "declined" },
+      );
+    });
+  }
+
   async acceptTransferOffer(context: TenantContext, transferId: string): Promise<ArchivedSession> {
     const offerRepository = this.runner.dataSource.getRepository(TransferOfferEntity);
     const offer = await offerRepository.findOneBy({ id: transferId, status: "pending" });

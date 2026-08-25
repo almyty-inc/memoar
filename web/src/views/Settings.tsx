@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   ArrowRight,
   Bot,
   Check,
@@ -20,8 +19,9 @@ import {
   Trash2,
   UserRound,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { accountInitials } from '../lib/account';
+import { memoarApi, type TenantSettings } from '../lib/api';
 import type { CurrentUser, ApiKey } from '../lib/types';
 import { Badge, Button, CopyButton, IconButton, Modal, Toggle, cn, formatDate, formatRelative } from '../components/ui';
 
@@ -42,9 +42,42 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey }: { apiK
   const [keyScopes, setKeyScopes] = useState<string[]>(['sessions:read', 'collections:read', 'pack:read']);
   const [keySaving, setKeySaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
-  const [secretScan, setSecretScan] = useState(true);
-  const [pathScan, setPathScan] = useState(true);
-  const [emailScan, setEmailScan] = useState(true);
+  // Settings are loaded from and written back to the archive. These were local
+  // useState only: every toggle appeared to work and nothing was ever saved.
+  const [settings, setSettings] = useState<TenantSettings | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [newPattern, setNewPattern] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void memoarApi.getSettings()
+      .then((loaded) => { if (active) setSettings(loaded); })
+      .catch((error: unknown) => { if (active) setSettingsError(error instanceof Error ? error.message : 'Settings could not be loaded'); });
+    return () => { active = false; };
+  }, []);
+
+  const persist = async (next: TenantSettings) => {
+    const previous = settings;
+    setSettings(next);
+    setSaving(true);
+    setSettingsError(null);
+    try {
+      setSettings(await memoarApi.updateSettings({ redaction: next.redaction, retention: next.retention }));
+    } catch (error) {
+      // Put the old value back rather than leaving the screen showing a
+      // setting the archive never accepted.
+      setSettings(previous);
+      setSettingsError(error instanceof Error ? error.message : 'Settings could not be saved');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setRedaction = (patch: Partial<TenantSettings['redaction']>) => {
+    if (!settings) return;
+    void persist({ ...settings, redaction: { ...settings.redaction, ...patch } });
+  };
 
   const createKey = async () => {
     setKeySaving(true);
@@ -103,17 +136,107 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey }: { apiK
 
           {tab === 'privacy' ? (
             <section className="settings-section">
-              <header><div><h2>Redaction rules</h2><p>Scan captured blocks before upload and before any visibility change.</p></div><Badge><ScanSearch size={12} /> 14 masks active</Badge></header>
-              <div className="toggle-list"><Toggle checked={secretScan} onChange={setSecretScan} label="Credentials and private keys" hint="API keys, JWTs, .env blocks, and PEM material" /><Toggle checked={pathScan} onChange={setPathScan} label="Local filesystem paths" hint="Replace home directory segments with [redacted]" /><Toggle checked={emailScan} onChange={setEmailScan} label="Email addresses" hint="Mask likely personal and commit author addresses" /></div>
-              <div className="custom-rules"><h3>Custom patterns</h3><div><code>ACME_[A-Z0-9]{'{'}24{'}'}</code><Badge>Account-wide</Badge><IconButton label="Delete custom rule"><Trash2 size={14} /></IconButton></div><Button size="sm"><Plus size={14} /> Add pattern</Button></div>
+              {/*
+                The badge here read "14 masks active" and the custom pattern
+                list showed a hardcoded ACME_[A-Z0-9]{24} rule with a delete
+                button that did nothing. Both are real values now.
+              */}
+              <header>
+                <div><h2>Redaction rules</h2><p>Scan captured blocks before upload and before any visibility change.</p></div>
+                <Badge><ScanSearch size={12} /> {settings ? `${settings.redaction.customPatterns.length} custom ${settings.redaction.customPatterns.length === 1 ? 'pattern' : 'patterns'}` : 'Loading…'}</Badge>
+              </header>
+              {settingsError ? <p role="alert">{settingsError}</p> : null}
+              <div className="toggle-list">
+                <Toggle checked={settings?.redaction.secretScan ?? false} onChange={(value) => setRedaction({ secretScan: value })} label="Credentials and private keys" hint="API keys, JWTs, .env blocks, and PEM material" />
+                <Toggle checked={settings?.redaction.pathScan ?? false} onChange={(value) => setRedaction({ pathScan: value })} label="Local filesystem paths" hint="Replace home directory segments with [redacted]" />
+                <Toggle checked={settings?.redaction.emailScan ?? false} onChange={(value) => setRedaction({ emailScan: value })} label="Email addresses" hint="Mask likely personal and commit author addresses" />
+              </div>
+              <div className="custom-rules">
+                <h3>Custom patterns</h3>
+                {(settings?.redaction.customPatterns ?? []).length === 0 ? <p className="empty-note">No custom patterns.</p> : null}
+                {(settings?.redaction.customPatterns ?? []).map((pattern) => (
+                  <div key={pattern}>
+                    <code>{pattern}</code>
+                    <IconButton
+                      label={`Delete custom rule ${pattern}`}
+                      onClick={() => setRedaction({ customPatterns: (settings?.redaction.customPatterns ?? []).filter((entry) => entry !== pattern) })}
+                    ><Trash2 size={14} /></IconButton>
+                  </div>
+                ))}
+                <div className="custom-rule-add">
+                  <input
+                    aria-label="New redaction pattern"
+                    placeholder="ACME_[A-Z0-9]{24}"
+                    value={newPattern}
+                    onChange={(event) => setNewPattern(event.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={saving || newPattern.trim().length === 0 || !settings}
+                    onClick={() => {
+                      const pattern = newPattern.trim();
+                      setRedaction({ customPatterns: [...(settings?.redaction.customPatterns ?? []), pattern] });
+                      setNewPattern('');
+                    }}
+                  ><Plus size={14} /> Add pattern</Button>
+                </div>
+              </div>
             </section>
           ) : null}
 
           {tab === 'retention' ? (
             <section className="settings-section">
               <header><div><h2>Retention</h2><p>Lifecycle policies apply to normalized sessions and their raw artifacts.</p></div></header>
-              <div className="retention-options"><label><span><strong>Keep archive indefinitely</strong><small>Recommended while Memoar is your recovery source.</small></span><input type="radio" name="retention" defaultChecked /></label><label><span><strong>Delete after 365 days</strong><small>Pinned and collected sessions are exempt.</small></span><input type="radio" name="retention" /></label><label><span><strong>Custom policy</strong><small>Choose scope and recovery window.</small></span><input type="radio" name="retention" /></label></div>
-              <div className="danger-zone"><AlertTriangle size={18} /><div><strong>Delete entire archive</strong><p>Queues permanent removal after a 30-day recovery window.</p></div><Button variant="danger" size="sm">Request deletion</Button></div>
+              {/*
+                These radios were uncontrolled with a defaultChecked, so the
+                policy shown had no relationship to the policy in force. The
+                "Custom policy" option led nowhere and is now the days field
+                that actually exists.
+              */}
+              {settingsError ? <p role="alert">{settingsError}</p> : null}
+              <div className="retention-options">
+                <label>
+                  <span><strong>Keep archive indefinitely</strong><small>Recommended while Memoar is your recovery source.</small></span>
+                  <input
+                    type="radio"
+                    name="retention"
+                    checked={settings?.retention.policy === 'indefinite'}
+                    disabled={!settings || saving}
+                    onChange={() => settings && void persist({ ...settings, retention: { ...settings.retention, policy: 'indefinite' } })}
+                  />
+                </label>
+                <label>
+                  <span>
+                    <strong>Delete after a fixed age</strong>
+                    <small>Sessions in a collection are exempt when that is enabled below.</small>
+                  </span>
+                  <input
+                    type="radio"
+                    name="retention"
+                    checked={settings?.retention.policy === 'days'}
+                    disabled={!settings || saving}
+                    onChange={() => settings && void persist({ ...settings, retention: { ...settings.retention, policy: 'days', days: settings.retention.days ?? 365 } })}
+                  />
+                </label>
+              </div>
+              {settings?.retention.policy === 'days' ? (
+                <div className="form-grid">
+                  <label className="field-label">Delete after
+                    <input
+                      type="number"
+                      min={1}
+                      value={settings.retention.days ?? 365}
+                      onChange={(event) => void persist({ ...settings, retention: { ...settings.retention, days: Math.max(1, Number(event.target.value)) } })}
+                    />
+                  </label>
+                  <Toggle
+                    checked={settings.retention.exemptCollected}
+                    onChange={(value) => void persist({ ...settings, retention: { ...settings.retention, exemptCollected: value } })}
+                    label="Exempt collected sessions"
+                    hint="Sessions that belong to a collection are never swept"
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
 

@@ -492,6 +492,19 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Transfer' }
         '409': { $ref: '#/components/responses/RedactionReviewRequired' }
+  /sharing/transfers/{transferId}/decline:
+    post:
+      tags: [Sharing]
+      operationId: declineTransfer
+      description: >-
+        Refuses a pending transfer. Nothing is copied, so the recipient never
+        holds the session. The declined status existed with no way to reach it.
+      parameters:
+        - { name: transferId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Transfer declined }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
   /sharing/transfers/{transferId}/accept:
     post:
       tags: [Sharing]

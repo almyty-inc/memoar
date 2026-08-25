@@ -14,11 +14,13 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { memoarApi } from '../lib/api';
-import type { SearchResponse, SessionSummary } from '../lib/types';
+import type { PackResponse, SearchResponse, SessionSummary } from '../lib/types';
 import {
   Badge,
   Button,
+  CopyButton,
   EmptyState,
+  Modal,
   HighlightText,
   RedactionBadge,
   SourceBadge,
@@ -39,6 +41,13 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // "Best match" was a button that did nothing, and "Preview pack" was a
+  // primary call to action that did nothing at all.
+  const [sort, setSort] = useState<'relevance' | 'recent'>('relevance');
+  const [packOpen, setPackOpen] = useState(false);
+  const [pack, setPack] = useState<PackResponse | null>(null);
+  const [packLoading, setPackLoading] = useState(false);
+  const [packError, setPackError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -52,8 +61,26 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  const items = useMemo(() => response.items.filter((session) =>
-    !activeSource || session.sourceLabel === activeSource), [activeSource, response.items]);
+  const items = useMemo(() => {
+    const filtered = response.items.filter((session) => !activeSource || session.sourceLabel === activeSource);
+    // The server orders by relevance already, so 'relevance' keeps its order
+    // rather than re-sorting on a score the backend may not have supplied.
+    if (sort === 'relevance') return filtered;
+    return [...filtered].sort((left, right) => new Date(right.updatedAt).valueOf() - new Date(left.updatedAt).valueOf());
+  }, [activeSource, response.items, sort]);
+
+  const previewPack = async () => {
+    setPackOpen(true);
+    setPackLoading(true);
+    setPackError(null);
+    try {
+      setPack(await memoarApi.buildPack(query, 4000, 'mixed'));
+    } catch (error) {
+      setPackError(error instanceof Error ? error.message : 'Pack request failed');
+    } finally {
+      setPackLoading(false);
+    }
+  };
 
   const clearQuery = () => {
     setQuery('');
@@ -116,7 +143,13 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
             </div>
             <div className="results-meta">
               <span>{response.meta.realizedMode} · {response.meta.tookMs} ms</span>
-              <Button size="sm" variant="ghost">Best match <ChevronDown size={13} /></Button>
+              <label className="select-control">
+                <select value={sort} onChange={(event) => setSort(event.target.value === 'recent' ? 'recent' : 'relevance')}>
+                  <option value="relevance">Best match</option>
+                  <option value="recent">Most recent</option>
+                </select>
+                <ChevronDown size={13} />
+              </label>
             </div>
           </div>
 
@@ -168,11 +201,29 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
             <div className="pack-prompt">
               <span className="pack-icon"><Braces size={18} /></span>
               <div><strong>Turn these results into a cited context pack</strong><p>Preview evidence within a 4,000-token budget before sending it to an agent.</p></div>
-              <Button variant="primary">Preview pack <ArrowRight size={14} /></Button>
+              <Button variant="primary" disabled={packLoading} onClick={() => void previewPack()}>Preview pack <ArrowRight size={14} /></Button>
             </div>
           ) : null}
         </section>
       </div>
+
+      <Modal open={packOpen} title="Pack preview" description="A cited, extractive bundle built from these results." onClose={() => setPackOpen(false)}>
+        <div className="modal-body pack-modal-body">
+          {packLoading ? <p role="status">Building cited preview…</p> : null}
+          {packError ? <p role="alert">{packError}</p> : null}
+          {pack ? (
+            <div className="pack-preview-card">
+              <div><Badge>{pack.evidence.length} excerpts</Badge><span>Estimated {pack.tokenEstimate.toLocaleString()} tokens</span></div>
+              <h3>{pack.query}</h3>
+              <p>{pack.evidence[0]?.excerpt ?? 'No evidence matched this query.'}</p>
+            </div>
+          ) : null}
+        </div>
+        <footer className="modal-actions">
+          {pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}
+          <Button variant="ghost" onClick={() => setPackOpen(false)}>Close</Button>
+        </footer>
+      </Modal>
     </div>
   );
 }

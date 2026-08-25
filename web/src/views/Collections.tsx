@@ -3,15 +3,14 @@ import {
   BookOpen,
   ChevronRight,
   LibraryBig as Collection,
-  FileDown,
   FolderPlus,
   MoreHorizontal,
   Plus,
   Search,
-  Sparkles,
   Users,
 } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
+import { memoarApi } from '../lib/api';
 import type { Collection as CollectionType, SessionSummary } from '../lib/types';
 import { Badge, Button, IconButton, Modal, SourceBadge, formatRelative } from '../components/ui';
 
@@ -22,6 +21,25 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
   onCreate: (name: string, description: string) => Promise<void>;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [opened, setOpened] = useState<{ id: string; name: string; sessions: SessionSummary[] } | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  // "Open collection" did nothing. Membership lives server-side, so it is
+  // fetched rather than guessed from whatever sessions happen to be loaded.
+  const openCollection = async (collectionId: string) => {
+    setOpeningId(collectionId);
+    setOpenError(null);
+    try {
+      const members = await memoarApi.listCollectionSessions(collectionId);
+      const collection = collections.find((entry) => entry.id === collectionId);
+      setOpened({ id: collectionId, name: collection?.name ?? 'Collection', sessions: members });
+    } catch (error) {
+      setOpenError(error instanceof Error ? error.message : 'Collection could not be opened');
+    } finally {
+      setOpeningId(null);
+    }
+  };
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -56,7 +74,7 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
       </section>
 
       <div className="collection-grid">
-        {filtered.map((collection, index) => {
+        {filtered.map((collection) => {
           const members = sessions.filter((session) => collection.members.includes(session.id));
           return (
             <article className="collection-card" key={collection.id}>
@@ -75,25 +93,51 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
                     <span>{session.title}</span><ChevronRight size={14} />
                   </button>
                 ))}
-                {!members.length ? <p>No demo sessions in this collection.</p> : null}
+                {!members.length ? <p>No sessions in this collection yet.</p> : null}
               </div>
               <footer>
-                <div>{index < 2 ? <Badge><Users size={12} /> Personal</Badge> : <Badge>Private</Badge>}</div>
-                <Button variant="ghost" size="sm">Open collection <ArrowRight size={14} /></Button>
+                {/*
+                  The badge here was decided by list position — the first two
+                  collections were labelled "Personal" and the rest "Private",
+                  which described nothing. It shows the real membership count.
+                */}
+                <div><Badge><Users size={12} /> {collection.sessionCount} {collection.sessionCount === 1 ? 'session' : 'sessions'}</Badge></div>
+                <Button variant="ghost" size="sm" onClick={() => void openCollection(collection.id)}>
+                  {openingId === collection.id ? 'Opening…' : 'Open collection'} <ArrowRight size={14} />
+                </Button>
               </footer>
             </article>
           );
         })}
 
+        {openError ? <p role="alert">{openError}</p> : null}
         <button className="new-collection-card" type="button" onClick={() => setCreateOpen(true)}>
           <span><FolderPlus size={22} /></span><strong>Create a collection</strong><p>Curate sessions, notes, and pins around a project or topic.</p>
         </button>
       </div>
 
-      <section className="notes-panel">
-        <div className="notes-heading"><span><Sparkles size={17} /></span><div><h2>Durable notes</h2><p>Distilled decisions and working solutions, linked back to their source turns.</p></div><Button size="sm">Review notes <ArrowRight size={14} /></Button></div>
-        <div className="note-row"><div><Badge>Decision</Badge><strong>Keep annotations separate from captured session data</strong><p>Immutable capture allows safe re-parsing and predictable sharing masks.</p></div><span>3 sources</span><Button variant="ghost" size="sm"><FileDown size={14} /> AGENTS.md fragment</Button></div>
-      </section>
+      {/*
+        A "Durable notes" panel used to sit here showing one hardcoded note —
+        "Keep annotations separate from captured session data", attributed to
+        "3 sources" — with Review notes and AGENTS.md fragment buttons that did
+        nothing. None of it came from the archive. Distillation is a real
+        feature and this panel will return when it is wired to it.
+      */}
+
+      <Modal open={opened !== null} title={opened?.name ?? 'Collection'} description="Sessions in this collection." onClose={() => setOpened(null)}>
+        <div className="modal-body">
+          {opened?.sessions.length === 0 ? <p className="empty-note">This collection has no sessions yet.</p> : null}
+          <div className="collection-picker">
+            {opened?.sessions.map((session) => (
+              <button key={session.id} type="button" className="collection-choice" onClick={() => { setOpened(null); onOpen(session); }}>
+                <strong>{session.title}</strong>
+                <small>{session.sourceLabel} · {formatRelative(session.updatedAt)}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+        <footer className="modal-actions"><Button variant="ghost" onClick={() => setOpened(null)}>Close</Button></footer>
+      </Modal>
 
       <Modal open={createOpen} title="Create collection" description="Collections stay private until you add them to a team space." onClose={() => setCreateOpen(false)}>
         <form onSubmit={(event) => void submit(event)}>
