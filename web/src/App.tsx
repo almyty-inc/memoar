@@ -184,7 +184,7 @@ export function App() {
   } else if (view === 'machines') {
     content = <MachinesView machines={dashboard.machines} onConnect={() => navigate('onboarding')} />;
   } else if (view === 'settings') {
-    content = <SettingsView apiKeys={dashboard.apiKeys} user={user} mcpEndpoint={memoarApi.mcpEndpoint} onCreateKey={async (name, scopes) => {
+    content = <SettingsView apiKeys={dashboard.apiKeys} user={user} onKeyRevoked={() => void loadDashboard()} mcpEndpoint={memoarApi.mcpEndpoint} onCreateKey={async (name, scopes) => {
       const created = await memoarApi.createApiKey(name, scopes);
       setDashboard((current) => ({ ...current, apiKeys: [created.apiKey, ...current.apiKeys] }));
       return created.secret;

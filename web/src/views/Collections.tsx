@@ -4,7 +4,6 @@ import {
   ChevronRight,
   LibraryBig as Collection,
   FolderPlus,
-  MoreHorizontal,
   Plus,
   Search,
   Users,
@@ -12,7 +11,7 @@ import {
 import { useMemo, useState, type FormEvent } from 'react';
 import { memoarApi } from '../lib/api';
 import type { Collection as CollectionType, SessionSummary } from '../lib/types';
-import { Badge, Button, IconButton, Modal, SourceBadge, formatRelative } from '../components/ui';
+import { Badge, Button, Modal, SourceBadge, formatRelative } from '../components/ui';
 
 export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
   collections: CollectionType[];
@@ -81,7 +80,6 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
               <div className="collection-color" style={{ background: collection.color }} />
               <header>
                 <span className="collection-icon" style={{ color: collection.color }}><BookOpen size={18} /></span>
-                <IconButton label={`More options for ${collection.name}`}><MoreHorizontal size={17} /></IconButton>
               </header>
               <h2>{collection.name}</h2>
               <p>{collection.description}</p>

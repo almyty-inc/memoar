@@ -19,7 +19,6 @@ import {
   Laptop,
   Link2,
   MessageSquare,
-  MoreHorizontal,
   Network,
   Pin,
   RefreshCw,
@@ -204,7 +203,6 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
           </Button>
           <Button size="sm" onClick={() => setConvertOpen(true)}><RefreshCw size={14} /> Convert</Button>
           <Button size="sm" variant="primary" onClick={() => void openPack()}><Braces size={14} /> Pack preview</Button>
-          <IconButton label="More actions"><MoreHorizontal size={17} /></IconButton>
         </div>
       </header>
 
@@ -464,7 +462,7 @@ function BlockView({ block, showThinking }: { block: ContentBlock; showThinking:
     const added = block.newText.split('\n');
     return (
       <div className="diff-block">
-        <header><FileCode2 size={15} /><span>{block.path}</span><Badge>{Math.max(removed.length, added.length)} lines</Badge><IconButton label="Copy diff"><Copy size={13} /></IconButton></header>
+        <header><FileCode2 size={15} /><span>{block.path}</span><Badge>{Math.max(removed.length, added.length)} lines</Badge><IconButton label="Copy diff" onClick={() => void navigator.clipboard.writeText([...removed.map((line) => `-${line}`), ...added.map((line) => `+${line}`)].join('\n'))}><Copy size={13} /></IconButton></header>
         <div className="diff-lines" role="table" aria-label={`Diff for ${block.path}`}>
           {removed.map((line, index) => <span className="diff-old" role="row" key={`old-${index}`}><b>−</b><code>{line}</code></span>)}
           {added.map((line, index) => <span className="diff-new" role="row" key={`new-${index}`}><b>+</b><code>{line}</code></span>)}

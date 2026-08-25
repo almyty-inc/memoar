@@ -8,7 +8,6 @@ import {
   Cpu,
   HardDrive,
   Laptop,
-  MoreHorizontal,
   Plus,
   RefreshCw,
   Server,
@@ -56,7 +55,6 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
                 <span className="machine-icon">{machine.platform.includes('macOS') ? <Laptop size={20} /> : <Server size={20} />}</span>
                 <div className="machine-heading"><div><h2>{machine.name}</h2><StatusDot status={machine.status} /><Badge>{machine.status}</Badge></div><p>{machine.platform} · agent {machine.agentVersion}</p></div>
                 <div className="machine-last-seen"><span>{machine.status === 'online' ? <Wifi size={14} /> : <WifiOff size={14} />}{formatRelative(machine.lastSeenAt)}</span><small>{machine.sources.length} discovered sources</small></div>
-                <IconButton label={`More options for ${machine.name}`}><MoreHorizontal size={18} /></IconButton>
                 <IconButton className={cn('expand-button', isExpanded && 'expanded')} label={`${isExpanded ? 'Collapse' : 'Expand'} ${machine.name}`} onClick={() => toggle(machine.id)}><ChevronDown size={17} /></IconButton>
               </header>
               {isExpanded ? (

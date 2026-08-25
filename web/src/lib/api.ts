@@ -599,6 +599,10 @@ export class MemoarApiClient {
     return this.request<void>(`/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
+  revokeApiKey(keyId: string): Promise<void> {
+    return this.request<void>(`/auth/api-keys/${keyId}`, { method: 'DELETE' });
+  }
+
   declineTransfer(transferId: string): Promise<void> {
     return this.request<void>(`/sharing/transfers/${transferId}/decline`, { method: 'POST' });
   }

@@ -9,7 +9,6 @@ import {
   Fingerprint,
   KeyRound,
   LockKeyhole,
-  MoreHorizontal,
   Plus,
   ScanSearch,
   ServerCog,
@@ -34,7 +33,7 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
   { id: 'retention', label: 'Retention', icon: Clock3 },
 ];
 
-export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey }: { apiKeys: ApiKey[]; mcpEndpoint: string; user: CurrentUser | null; onCreateKey: (name: string, scopes: string[]) => Promise<string> }) {
+export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRevoked }: { apiKeys: ApiKey[]; mcpEndpoint: string; user: CurrentUser | null; onCreateKey: (name: string, scopes: string[]) => Promise<string>; onKeyRevoked: () => void }) {
   const [tab, setTab] = useState<SettingsTab>('keys');
   const [createOpen, setCreateOpen] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
@@ -48,6 +47,20 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey }: { apiK
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [newPattern, setNewPattern] = useState('');
+  const [revoking, setRevoking] = useState<string | null>(null);
+
+  const revokeKey = async (keyId: string) => {
+    setRevoking(keyId);
+    setKeyError(null);
+    try {
+      await memoarApi.revokeApiKey(keyId);
+      onKeyRevoked();
+    } catch (error) {
+      setKeyError(error instanceof Error ? error.message : 'API key could not be revoked');
+    } finally {
+      setRevoking(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -114,7 +127,12 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey }: { apiK
                       <span className="key-icon"><FileKey size={17} /></span>
                       <div><strong>{key.name}</strong><code>{key.prefix}••••••••</code><div>{key.scopes.map((scope) => <Badge key={scope}>{scope}</Badge>)}</div></div>
                       <div className="key-usage"><span>Last used {formatRelative(key.lastUsedAt)}</span><small>Created {formatDate(key.createdAt)}</small></div>
-                      <IconButton label={`More options for ${key.name}`}><MoreHorizontal size={17} /></IconButton>
+                      {/* An overflow menu that never opened; revoking is the action a key row has. */}
+                      <IconButton
+                        label={`Revoke ${key.name}`}
+                        disabled={revoking === key.id}
+                        onClick={() => void revokeKey(key.id)}
+                      ><Trash2 size={16} /></IconButton>
                     </article>
                   ))}
                 </div>
