@@ -9,7 +9,7 @@ use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashSet};
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Read as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1059,14 +1059,14 @@ fn atomic_replace(path: &Path, bytes: &[u8], unix_mode: u32) -> Result<(), AppEr
     })?;
     let temporary = parent.join(format!(".memoar-{}.tmp", Uuid::now_v7()));
     let result = (|| -> Result<(), std::io::Error> {
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temporary)?;
+        let mut file = create_private(&temporary, unix_mode)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         #[cfg(unix)]
         {
+            // umask can only clear bits, never add them, so this cannot loosen
+            // the file. It pins the exact mode when a restrictive umask would
+            // otherwise have dropped a bit the caller asked for.
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&temporary, fs::Permissions::from_mode(unix_mode))?;
         }
@@ -1078,6 +1078,28 @@ fn atomic_replace(path: &Path, bytes: &[u8], unix_mode: u32) -> Result<(), AppEr
     result.map_err(|error| {
         AppError::internal(format!("could not replace {}: {error}", path.display()))
     })
+}
+
+/// Creates a file that has its final permissions from the moment it exists.
+///
+/// The access token used to be written into a temporary file opened with the
+/// default umask — world-readable on a typical machine — and only chmod'ed to
+/// 0600 after the bytes had been written and flushed. Any local process could
+/// read the token during that window. The mode has to be part of the open, not
+/// a correction applied afterwards.
+#[cfg(unix)]
+fn create_private(path: &Path, unix_mode: u32) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(unix_mode)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn create_private(path: &Path, _unix_mode: u32) -> std::io::Result<File> {
+    OpenOptions::new().create_new(true).write(true).open(path)
 }
 
 struct ApiClient {
@@ -1439,6 +1461,40 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_credential_file_is_never_briefly_world_readable() {
+        // The test below this one checks the mode of the finished file, which
+        // stayed green while the token was written into a temporary opened at
+        // the default umask and only tightened afterwards. What matters is the
+        // mode the file has the instant it exists, so that is what is asserted.
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("secret");
+        let file = create_private(&path, 0o600).unwrap();
+        let mode = file.metadata().unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the file was readable by others before anything was written to it");
+        drop(file);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_temporary_file_survives_a_credential_write() {
+        // A leftover .memoar-*.tmp would hold the token under whatever mode it
+        // was created with, outliving the window entirely.
+        let temp = tempfile::tempdir().unwrap();
+        let paths = fixture_paths(&temp);
+        paths.credential_store().store_token("secret-user-token").unwrap();
+        let parent = paths.credentials_file().parent().unwrap().to_owned();
+        let leftovers: Vec<_> = fs::read_dir(&parent)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".memoar-") && name.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temporary credential files were left behind: {leftovers:?}");
     }
 
     #[test]
