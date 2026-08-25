@@ -5,6 +5,7 @@ import type { TenantContext } from "../archive-store.js";
 import { Public, Tenant } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
+import { CreateApiKeyDto, EmailLoginDto, IssueMachineTokenDto } from "./auth.dto.js";
 
 @Controller("auth")
 export class AuthController {
@@ -13,8 +14,18 @@ export class AuthController {
   @Public()
   @Post("login")
   @HttpCode(200)
-  login(@Body() body: { email: string; password: string }): Promise<Record<string, unknown>> {
+  login(@Body() body: EmailLoginDto): Promise<Record<string, unknown>> {
     return this.auth.login(body.email, body.password);
+  }
+
+  /**
+   * The signed-in identity. Login returns the user too, but a browser reload
+   * keeps only the token, so without this the client has to either invent a
+   * name or persist one it can no longer verify.
+   */
+  @Get("me")
+  me(@Tenant() context: TenantContext): Promise<Record<string, unknown>> {
+    return this.auth.currentUser(context);
   }
 
   @Public()
@@ -41,12 +52,12 @@ export class AuthController {
   }
 
   @Post("api-keys")
-  createApiKey(@Tenant() context: TenantContext, @Body() body: { name: string; scopes: string[] }): Promise<{ apiKey: Record<string, unknown>; secret: string }> {
+  createApiKey(@Tenant() context: TenantContext, @Body() body: CreateApiKeyDto): Promise<{ apiKey: Record<string, unknown>; secret: string }> {
     return this.auth.createApiKey(context, body.name, body.scopes);
   }
 
   @Post("machine-token")
-  issueMachineToken(@Tenant() context: TenantContext, @Body() body: { machineId: string }): Promise<{ token: string; expiresAt: string }> {
+  issueMachineToken(@Tenant() context: TenantContext, @Body() body: IssueMachineTokenDto): Promise<{ token: string; expiresAt: string }> {
     return this.auth.issueMachineToken(context, body.machineId);
   }
 

@@ -21,7 +21,8 @@ import {
   UserRound,
 } from 'lucide-react';
 import { useState } from 'react';
-import type { ApiKey } from '../lib/types';
+import { accountInitials } from '../lib/account';
+import type { CurrentUser, ApiKey } from '../lib/types';
 import { Badge, Button, CopyButton, IconButton, Modal, Toggle, cn, formatDate, formatRelative } from '../components/ui';
 
 type SettingsTab = 'general' | 'keys' | 'privacy' | 'retention';
@@ -33,7 +34,7 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
   { id: 'retention', label: 'Retention', icon: Clock3 },
 ];
 
-export function SettingsView({ apiKeys, mcpEndpoint, onCreateKey }: { apiKeys: ApiKey[]; mcpEndpoint: string; onCreateKey: (name: string, scopes: string[]) => Promise<string> }) {
+export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey }: { apiKeys: ApiKey[]; mcpEndpoint: string; user: CurrentUser | null; onCreateKey: (name: string, scopes: string[]) => Promise<string> }) {
   const [tab, setTab] = useState<SettingsTab>('keys');
   const [createOpen, setCreateOpen] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
@@ -118,10 +119,18 @@ export function SettingsView({ apiKeys, mcpEndpoint, onCreateKey }: { apiKeys: A
 
           {tab === 'general' ? (
             <section className="settings-section">
-              <header><div><h2>Account</h2><p>Your personal archive identity and default team scope.</p></div></header>
-              <div className="profile-card"><span className="avatar large">FK</span><div><strong>Frane K.</strong><p>frane@example.test</p></div><Button size="sm">Edit profile</Button></div>
-              <div className="form-grid"><label className="field-label">Default archive<select><option>Personal archive</option><option>Memoar team</option></select></label><label className="field-label">Timezone<select><option>Europe/Berlin</option><option>UTC</option></select></label></div>
-              <Toggle checked={true} onChange={() => undefined} label="Dark appearance" hint="Memoar uses a dark archive theme by default" />
+              <header><div><h2>Account</h2><p>The identity this archive belongs to.</p></div></header>
+              {/*
+                Everything here reflects the signed-in account. It previously
+                showed a hardcoded name and address, and sat beside an archive
+                picker, a timezone picker and an appearance toggle that were
+                wired to nothing. Controls that cannot act do not belong in a
+                settings page: they read as capabilities the product has.
+              */}
+              <div className="profile-card">
+                <span className="avatar large">{user ? accountInitials(user.displayName) : '·'}</span>
+                <div><strong>{user?.displayName ?? 'Not signed in'}</strong><p>{user?.email ?? '—'}</p></div>
+              </div>
             </section>
           ) : null}
         </div>

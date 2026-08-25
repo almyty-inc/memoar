@@ -31,6 +31,21 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AuthSessionResponse' }
         '401': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      description: >-
+        The signed-in identity, resolved from the token subject. A browser
+        reload keeps only the token, so the client needs this to render who is
+        signed in without inventing or caching an unverifiable name.
+      responses:
+        '200':
+          description: The authenticated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/ProblemResponse' }
   /auth/oauth/{provider}:
     get:
       tags: [Auth]

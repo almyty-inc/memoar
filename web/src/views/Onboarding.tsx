@@ -96,7 +96,13 @@ export function SignInView({ onSignIn, onOAuth }: { onSignIn: (email: string, pa
         <p className="auth-signup">New to Memoar? <button type="button">Create an archive</button></p>
         <div className="auth-trust"><ShieldCheck size={14} /> Credentials are never stored in session fixtures.</div>
       </section>
-      <aside className="auth-aside"><div><span className="quote-mark">“</span><blockquote>Memoar let me resume a Claude Code investigation in Codex without flattening the branch history.</blockquote><p><strong>Avery R.</strong><span>Infrastructure engineer</span></p></div></aside>
+      {/*
+        This carried a testimonial attributed to "Avery R., Infrastructure
+        engineer", who does not exist. An invented endorsement from an invented
+        person is a claim the product cannot stand behind, so it states what
+        Memoar does instead of pretending someone vouched for it.
+      */}
+      <aside className="auth-aside"><div><p className="auth-aside-lede">Resume any coding session in any agent.</p><p>Memoar archives sessions from Claude Code, Codex, Cursor and others, then converts them so work continues where you left it — branch history intact.</p></div></aside>
     </div>
   );
 }

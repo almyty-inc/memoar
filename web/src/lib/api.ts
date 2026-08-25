@@ -11,6 +11,7 @@ import {
 import type {
   ApiKey,
   ApiKeyCreateResult,
+  CurrentUser,
   Collection,
   ContentBlock,
   ConversionJob,
@@ -449,12 +450,22 @@ export class MemoarApiClient {
     }
   }
 
-  async login(email: string, password: string): Promise<void> {
-    const result = await this.request<{ accessToken: string; expiresAt: string }>('/auth/login', {
+  async login(email: string, password: string): Promise<CurrentUser> {
+    const result = await this.request<{ accessToken: string; expiresAt: string; user: CurrentUser }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
     this.setAccessToken(result.accessToken, result.expiresAt);
+    return result.user;
+  }
+
+  /**
+   * Who is signed in, according to the server. A reload keeps the token but not
+   * the login response, so the identity is re-fetched rather than cached and
+   * re-displayed without any way to verify it is still true.
+   */
+  currentUser(): Promise<CurrentUser> {
+    return this.request<CurrentUser>('/auth/me');
   }
 
   beginOAuth(provider: 'github' | 'google'): void {

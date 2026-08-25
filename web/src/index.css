@@ -670,6 +670,8 @@ mark { padding: 0 2px; color: #19200c; background: #d6ff78d9; border-radius: 2px
 .auth-aside > div { max-width: 480px; }
 .quote-mark { color: var(--acid); font: 90px/0.6 Georgia, serif; }
 .auth-aside blockquote { margin: 25px 0; font-size: clamp(22px, 3vw, 36px); line-height: 1.25; letter-spacing: -.04em; }
+.auth-aside-lede { margin-bottom: 18px; font-size: clamp(22px, 3vw, 36px); line-height: 1.25; letter-spacing: -.04em; color: var(--text); }
+.auth-aside > div > p:not(.auth-aside-lede) { color: #97a0a1; font-size: 14px; line-height: 1.6; }
 .auth-aside p strong, .auth-aside p span { display: block; }
 .auth-aside p strong { font-size: 10px; }
 .auth-aside p span { margin-top: 4px; color: var(--quiet); font-size: 8px; }

@@ -63,6 +63,22 @@ export class AuthService {
     return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: user.id, email: user.email, displayName: user.displayName } };
   }
 
+  /**
+   * Resolves the caller's own record from the token's subject. The token is the
+   * only trusted input here: the id is never taken from the request, so one
+   * tenant cannot read another's profile by asking for it.
+   */
+  async currentUser(context: TenantContext): Promise<{ id: string; email: string; displayName: string }> {
+    if (this.dataSource) {
+      const row = await this.dataSource.getRepository(UserEntity).findOneBy({ id: context.userId });
+      if (!row) throw new UnauthorizedException("Signed-in user no longer exists");
+      return { id: row.id, email: row.email, displayName: row.displayName };
+    }
+    const user = [...this.devUsers.values()].find((candidate) => candidate.id === context.userId);
+    if (!user) throw new UnauthorizedException("Signed-in user no longer exists");
+    return { id: user.id, email: user.email, displayName: user.displayName };
+  }
+
   beginOAuth(provider: string): string {
     const normalized = provider.toLowerCase();
     if (normalized !== "github" && normalized !== "google") throw new UnauthorizedException("Unsupported OAuth provider");

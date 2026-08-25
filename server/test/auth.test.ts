@@ -13,8 +13,50 @@ describe("authentication", () => {
     expect(str(ok.body, "accessToken").split(".")).toHaveLength(3);
     expect(ok.body.expiresAt).toBeTruthy();
 
-    expect((await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "" } })).status).toBe(401);
-    expect((await api.request("POST", "/auth/login", { token: null, body: { email: "nobody@memoar.dev", password: "memoar-demo-password" } })).status).toBe(401);
+    // A well-formed body with the wrong secret is an authentication failure,
+    // and must not distinguish a wrong password from an unknown account.
+    const wrongPassword = await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "wrong-but-long-enough" } });
+    const unknownAccount = await api.request("POST", "/auth/login", { token: null, body: { email: "nobody@memoar.dev", password: "memoar-demo-password" } });
+    expect(wrongPassword.status).toBe(401);
+    expect(unknownAccount.status).toBe(401);
+    expect(wrongPassword.body).toEqual(unknownAccount.body);
+  });
+
+  it("answers malformed login bodies with 400 rather than a 500", async () => {
+    // /auth/login is unauthenticated, so anyone could reach it. The body was
+    // declared as an inline interface, which the ValidationPipe cannot see, so
+    // every one of these reached the service and came back as a 500.
+    for (const body of [
+      {},
+      { email: "demo@memoar.dev" },
+      { password: "memoar-demo-password" },
+      { email: 5, password: [] },
+      { email: "not-an-email", password: "memoar-demo-password" },
+      { email: "demo@memoar.dev", password: "short" },
+      { email: "demo@memoar.dev", password: "memoar-demo-password", role: "admin" },
+    ]) {
+      const response = await api.request("POST", "/auth/login", { token: null, body });
+      expect(response.status, `body ${JSON.stringify(body)} should be rejected as malformed`).toBe(400);
+    }
+  });
+
+  it("validates api key and machine token bodies", async () => {
+    for (const body of [{}, { name: "" }, { name: "x" }, { name: "x", scopes: "not-an-array" }, { name: "x", scopes: [] }, { name: "x", scopes: [5] }]) {
+      expect((await api.request("POST", "/auth/api-keys", { body })).status, JSON.stringify(body)).toBe(400);
+    }
+    for (const body of [{}, { machineId: "" }, { machineId: "not-a-uuid" }]) {
+      expect((await api.request("POST", "/auth/machine-token", { body })).status, JSON.stringify(body)).toBe(400);
+    }
+  });
+
+  it("reports the signed-in identity so the client never has to invent one", async () => {
+    const me = await api.request("GET", "/auth/me");
+    expect(me.status).toBe(200);
+    expect(str(me.body, "email")).toBe("demo@memoar.dev");
+    expect(str(me.body, "displayName").length).toBeGreaterThan(0);
+    expect(str(me.body, "id")).toBeTruthy();
+    // The identity comes from the token, never from the request.
+    expect((await api.request("GET", "/auth/me", { token: null })).status).toBe(401);
   });
 
   it("rejects tampered, truncated, and foreign-signature bearer tokens", async () => {

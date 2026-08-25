@@ -60,9 +60,29 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
     synchronize: false,
     migrationsRun: false,
   });
-  await dataSource.initialize();
+  // pg_isready passes while the image's entrypoint still has Postgres up for
+  // initialization, and the server is restarted immediately afterwards. A
+  // connection opened in that window is reset, which showed up as suites that
+  // passed alone and failed when several containers started at once. Readiness
+  // is therefore a connection that survives, not a single probe.
+  await connectWithRetry(dataSource, fixture);
   await dataSource.runMigrations({ transaction: "all" });
   return dataSource;
+}
+
+async function connectWithRetry(dataSource: DataSource, fixture: PostgresFixture): Promise<void> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      await dataSource.initialize();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (dataSource.isInitialized) await dataSource.destroy().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw new Error(`${fixture.container} never accepted a stable connection: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 
 export async function stopPostgres(dataSource: DataSource | null, fixture: PostgresFixture = CONTRACT_FIXTURE): Promise<void> {

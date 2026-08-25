@@ -4,7 +4,7 @@ import { Shell } from './components/Shell';
 import { Button } from './components/ui';
 import { memoarApi } from './lib/api';
 import { demoDashboard } from './lib/demo';
-import type { DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
+import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
 import { CollectionsView } from './views/Collections';
 import { ImportView } from './views/Import';
 import { MachinesView } from './views/Machines';
@@ -40,6 +40,7 @@ export function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<SessionSummary | null>(null);
   const [detail, setDetail] = useState<SessionDetailData | null>(null);
+  const [user, setUser] = useState<CurrentUser | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -56,6 +57,13 @@ export function App() {
   useEffect(() => {
     if (memoarApi.configured && !memoarApi.authenticated) return;
     let active = true;
+    if (memoarApi.configured) {
+      void memoarApi.currentUser().then((current) => { if (active) setUser(current); }).catch(() => {
+        // Identity is not worth failing the whole archive over; the shell falls
+        // back to showing no name rather than a name it cannot stand behind.
+        if (active) setUser(null);
+      });
+    }
     void memoarApi.loadDashboard().then((nextDashboard) => {
       if (!active) return;
       setDashboard(nextDashboard);
@@ -124,7 +132,7 @@ export function App() {
     }
   };
   const signIn = async (email: string, password: string) => {
-    if (memoarApi.configured) await memoarApi.login(email, password);
+    if (memoarApi.configured) setUser(await memoarApi.login(email, password));
     await loadDashboard();
     navigate('timeline');
   };
@@ -155,7 +163,7 @@ export function App() {
   } else if (view === 'machines') {
     content = <MachinesView machines={dashboard.machines} onConnect={() => navigate('onboarding')} />;
   } else if (view === 'settings') {
-    content = <SettingsView apiKeys={dashboard.apiKeys} mcpEndpoint={memoarApi.mcpEndpoint} onCreateKey={async (name, scopes) => {
+    content = <SettingsView apiKeys={dashboard.apiKeys} user={user} mcpEndpoint={memoarApi.mcpEndpoint} onCreateKey={async (name, scopes) => {
       const created = await memoarApi.createApiKey(name, scopes);
       setDashboard((current) => ({ ...current, apiKeys: [created.apiKey, ...current.apiKeys] }));
       return created.secret;
@@ -176,7 +184,7 @@ export function App() {
   }
 
   return (
-    <Shell view={view} mode={dashboard.mode} onNavigate={navigate}>
+    <Shell view={view} mode={dashboard.mode} user={user} machines={dashboard.machines} onNavigate={navigate}>
       {loading ? <div className="connection-toast" role="status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
       {content}
     </Shell>

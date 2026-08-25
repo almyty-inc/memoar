@@ -16,7 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import type { ViewId } from '../lib/types';
+import { accountInitials } from '../lib/account';
+import type { CurrentUser, Machine, ViewId } from '../lib/types';
 import { Badge, Button, IconButton, cn } from './ui';
 
 const navGroups: Array<{
@@ -60,12 +61,16 @@ const titles: Partial<Record<ViewId, string>> = {
   session: 'Session',
 };
 
-export function Shell({ view, mode, children, onNavigate }: {
+export function Shell({ view, mode, user, machines, children, onNavigate }: {
   view: ViewId;
   mode: 'connected' | 'demo';
+  user: CurrentUser | null;
+  machines: Machine[];
   children: ReactNode;
   onNavigate: (view: ViewId) => void;
 }) {
+  const sources = machines.flatMap((machine) => machine.sources);
+  const connectedSources = sources.filter((source) => source.enabled).length;
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -129,12 +134,12 @@ export function Shell({ view, mode, children, onNavigate }: {
         <div className="sidebar-foot">
           <button className="help-card" type="button" onClick={() => navigate('onboarding')}>
             <span><CircleHelp size={16} /> Setup guide</span>
-            <small>2 of 3 sources connected</small>
+            <small>{sources.length === 0 ? 'No sources connected yet' : `${connectedSources} of ${sources.length} sources connected`}</small>
             <span className="mini-progress"><span /></span>
           </button>
           <button className="user-switcher" type="button" onClick={() => navigate('signin')}>
-            <span className="avatar">FK</span>
-            <span><strong>Frane K.</strong><small>Personal archive</small></span>
+            <span className="avatar">{user ? accountInitials(user.displayName) : '·'}</span>
+            <span><strong>{user?.displayName ?? 'Account'}</strong><small>{user?.email ?? 'Not signed in'}</small></span>
             <ChevronsUpDown size={14} />
           </button>
         </div>

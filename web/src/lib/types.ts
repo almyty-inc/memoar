@@ -10,6 +10,13 @@ export type ViewId =
   | 'signin'
   | 'session';
 
+/** The signed-in account, as reported by the server. Never assembled locally. */
+export interface CurrentUser {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
 export type RedactionStatus = 'clear' | 'findings' | 'reviewed';
 export type SourceId = string;
 

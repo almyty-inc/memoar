@@ -17,7 +17,10 @@ describe("HTTP surface: health and auth", () => {
   it("rejects unauthenticated archive reads and bad credentials", async () => {
     expect((await api.request("GET", "/sessions", { token: null })).status).toBe(401);
     expect((await api.request("GET", "/sessions", { token: "not-a-token" })).status).toBe(401);
-    const badLogin = await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "wrong" } });
+    // Well-formed but wrong is 401. A body that violates the contract's own
+    // shape is 400, and is covered in auth.test.ts alongside the rest of the
+    // auth surface, which used to answer 500 for every malformed request.
+    const badLogin = await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "wrong-but-long-enough" } });
     expect(badLogin.status).toBe(401);
   });
 
