@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { SessionSummary, ShareGrant, Transfer } from '../lib/types';
-import { Badge, Button, CopyButton, Modal, cn, formatDate, formatRelative } from '../components/ui';
+import { Badge, Button, Modal, cn, formatDate, formatRelative } from '../components/ui';
 
 type StatusFilter = 'all' | ShareGrant['status'];
 
@@ -21,11 +21,10 @@ const STATUS_FILTERS: StatusFilter[] = ['all', 'active', 'revoked', 'expired'];
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function SharingView({ grants, transfers, sessions, shareOrigin, asOf, onAcceptTransfer, onDeclineTransfer, onRevokeGrant, onRequestTransfer }: {
+export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfer, onDeclineTransfer, onRevokeGrant, onRequestTransfer }: {
   grants: ShareGrant[];
   transfers: Transfer[];
   sessions: SessionSummary[];
-  shareOrigin: string;
   /** When the dashboard was loaded, used for expiry maths. */
   asOf: number;
   onAcceptTransfer: (id: string) => Promise<void>;
@@ -111,12 +110,18 @@ export function SharingView({ grants, transfers, sessions, shareOrigin, asOf, on
             {visibleGrants.map((grant) => (
               <article className="share-row" key={grant.id}>
                 <span className="row-icon"><Link2 size={16} /></span>
+                {/*
+                  No token here on purpose: GET /sharing/links does not return
+                  one. A share token is a bearer secret, shown once when the
+                  link is minted and never listed again, so this row identifies
+                  the grant rather than reproducing the secret.
+                */}
                 <div className="share-main">
                   <strong>{grant.sessionTitle}</strong>
-                  {grant.token ? <div><code>{grant.token}</code><CopyButton value={`${shareOrigin}/s/${grant.token}`} label="Copy link" /></div> : null}
+                  <small>Created {formatRelative(grant.createdAt)}</small>
                 </div>
                 <div className="share-meta"><Badge className="permission-badge">{grant.permission}</Badge></div>
-                <div className="share-meta"><span>Created {formatRelative(grant.createdAt)}</span><span>{grant.expiresAt ? `Expires ${formatDate(grant.expiresAt)}` : 'No expiry'}</span></div>
+                <div className="share-meta"><span>{grant.expiresAt ? `Expires ${formatDate(grant.expiresAt)}` : 'No expiry'}</span></div>
                 <Badge className={cn(grant.status === 'active' && 'status-active')}><span /> {grant.status}</Badge>
                 {grant.status === 'active' ? (
                   <Button size="sm" variant="ghost" disabled={busy === grant.id} onClick={() => void run(grant.id, () => onRevokeGrant(grant.id))}>

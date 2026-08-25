@@ -49,7 +49,7 @@ import {
   formatRelative,
 } from '../components/ui';
 
-export function SessionDetailView({ detail, collections, machines, onBack, onBuildPack, onConvert, onDeleted, onCollectionsChanged }: {
+export function SessionDetailView({ detail, collections, machines, onBack, onBuildPack, onConvert, onDeleted, onArchiveChanged }: {
   detail: SessionDetailData;
   collections: CollectionRecord[];
   machines: Machine[];
@@ -57,7 +57,8 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   onBuildPack: (query: string, budget: number, freshness: 'strict' | 'mixed') => Promise<PackResponse>;
   onConvert: (target: ConversionJob['target']) => Promise<ConversionJob>;
   onDeleted: () => void;
-  onCollectionsChanged: () => void;
+  /** Something durable changed; the dashboard's copy is now stale. */
+  onArchiveChanged: () => void;
 }) {
   const [showThinking, setShowThinking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -143,7 +144,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
     try {
       await memoarApi.addSessionToCollection(collectionId, session.id);
       setCollectionOpen(false);
-      onCollectionsChanged();
+      onArchiveChanged();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Session could not be added');
     } finally {
@@ -319,6 +320,10 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
               // Surface the link rather than closing: a token shown once and
               // discarded is a link the user cannot actually use.
               setShareLink(grant.token ? `${window.location.origin}/s/${grant.token}` : null);
+              // The Sharing view reads grants from the dashboard, which was
+              // loaded before this link existed. Without this the link is
+              // simply absent there until the page is reloaded.
+              onArchiveChanged();
             })
             .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Share link could not be created'))
             .finally(() => setSharing(false));

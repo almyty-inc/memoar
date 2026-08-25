@@ -275,13 +275,19 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Sharing', exact: true }).first().click();
 
-    // The link the session just minted must be listed, and revoking it must
-    // actually change its status rather than just remove a row locally.
-    await expect(page.getByText(String(body.token), { exact: false }).first()).toBeVisible();
+    // The grant must reach the Sharing view without a reload — its list is
+    // loaded with the dashboard, which predates the link. The token itself is
+    // deliberately absent here: the API does not return it after creation.
+    const active = page.locator('.share-row').filter({ has: page.getByRole('button', { name: 'Revoke' }) });
+    await expect(active.first()).toBeVisible();
+    const before = await active.count();
+
+    // Revoking must change the grant server-side, not just drop a row locally.
     const revoked = page.waitForResponse((response) =>
       response.url().includes('/v1/sharing/grants/') && response.request().method() === 'DELETE');
-    await page.getByRole('button', { name: 'Revoke' }).first().click();
+    await active.first().getByRole('button', { name: 'Revoke' }).click();
     expect((await revoked).status()).toBe(204);
+    await expect(active).toHaveCount(before - 1);
 
     await page.getByRole('tab', { name: /Transfers/ }).click();
     await expect(page.getByRole('heading', { name: 'Session transfers' })).toBeVisible();

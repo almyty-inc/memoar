@@ -181,7 +181,6 @@ export function App() {
         grants={dashboard.grants}
         transfers={dashboard.transfers}
         sessions={allSessions}
-        shareOrigin={window.location.origin}
         asOf={loadedAt}
         onAcceptTransfer={async (id) => { await memoarApi.acceptTransfer(id); await loadDashboard(); }}
         onDeclineTransfer={async (id) => { await memoarApi.declineTransfer(id); await loadDashboard(); }}
@@ -209,7 +208,7 @@ export function App() {
         detail={detail}
         collections={dashboard.collections}
         machines={dashboard.machines}
-        onCollectionsChanged={() => void loadDashboard()}
+        onArchiveChanged={() => void loadDashboard()}
         onBack={() => navigate('timeline')}
         onBuildPack={(query, budget, freshness) => memoarApi.buildPack(query, budget, freshness)}
         onConvert={(target) => memoarApi.requestConversion(detail.session.id, target)}
