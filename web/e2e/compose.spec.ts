@@ -258,11 +258,57 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await expect(page.getByRole('button', { name: /Create secure link/ })).toHaveCount(0);
     await page.getByRole('button', { name: /Approve redactions/ }).click();
     await expect(page.getByRole('dialog', { name: 'Create share link' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Create secure link/ })).toBeVisible();
+
+    // Asserting the button is VISIBLE is what let this ship with no click
+    // handler at all: the dialog rendered, the gate passed, and no link was
+    // ever minted. Press it and require the round trip and the resulting token.
+    const created = page.waitForResponse((response) =>
+      response.url().endsWith('/v1/sharing/links') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: /Create secure link/ }).click();
+    const grant = await created;
+    expect(grant.status(), `share link POST returned ${grant.status()}`).toBe(201);
+    const body = await grant.json() as { token?: string; status?: string };
+    expect(body.status).toBe('active');
+    expect(body.token, 'a share link without a token cannot be opened').toBeTruthy();
+    await expect(page.getByText(String(body.token), { exact: false })).toBeVisible();
+
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Sharing', exact: true }).first().click();
+
+    // The link the session just minted must be listed, and revoking it must
+    // actually change its status rather than just remove a row locally.
+    await expect(page.getByText(String(body.token), { exact: false }).first()).toBeVisible();
+    const revoked = page.waitForResponse((response) =>
+      response.url().includes('/v1/sharing/grants/') && response.request().method() === 'DELETE');
+    await page.getByRole('button', { name: 'Revoke' }).first().click();
+    expect((await revoked).status()).toBe(204);
+
     await page.getByRole('tab', { name: /Transfers/ }).click();
     await expect(page.getByRole('heading', { name: 'Session transfers' })).toBeVisible();
+  });
+
+  test('keeps a rearranged workspace across a reload', async ({ page }) => {
+    await signIn(page);
+    await page.getByRole('button', { name: 'Overview', exact: true }).first().click();
+    const tile = page.getByRole('region', { name: /Machines tile/ });
+    await expect(tile).toBeVisible();
+
+    const before = await tile.boundingBox();
+    // Keyboard rather than a synthetic drag: it exercises the same layout code
+    // and does not depend on hit-testing a 26px corner in CI.
+    await tile.focus();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Shift+ArrowDown');
+    const after = await tile.boundingBox();
+    expect(after!.x, 'the tile should have moved a column left').toBeLessThan(before!.x);
+    expect(after!.height, 'shift and arrow should have made the tile taller').toBeGreaterThan(before!.height);
+
+    // A layout that is not remembered is not a layout.
+    await page.reload();
+    await page.getByRole('button', { name: 'Overview', exact: true }).first().click();
+    const restored = await page.getByRole('region', { name: /Machines tile/ }).boundingBox();
+    expect(restored!.x).toBeCloseTo(after!.x, 0);
+    expect(restored!.height).toBeCloseTo(after!.height, 0);
   });
 
   test('builds a cited pack preview and queues a live conversion', async ({ page }) => {
