@@ -566,6 +566,26 @@ export class MemoarApiClient {
     return this.request<{ id: string; maskCount: number }>(`/sessions/${sessionId}/redaction-reviews`, { method: 'POST' });
   }
 
+  /**
+   * Mints a share link. The redaction review id is required by the contract, so
+   * a link can only exist for a session whose mask someone approved.
+   */
+  createShareLink(input: { sessionId: string; permission: ShareGrant['permission']; redactionReviewId: string; expiresAt: string | null }): Promise<ShareGrant> {
+    return this.request<ShareGrant>('/sharing/links', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  revokeShareLink(grantId: string): Promise<void> {
+    return this.request<void>(`/sharing/grants/${grantId}`, { method: 'DELETE' });
+  }
+
+  requestTransfer(input: { sessionId: string; recipientEmail: string; redactionReviewId: string }): Promise<Transfer> {
+    return this.request<Transfer>('/sharing/transfers', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  deleteSession(sessionId: string): Promise<void> {
+    return this.request<void>(`/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
   async updateSessionVisibility(
     sessionId: string,
     visibility: { scope: 'private' | 'team' | 'org' | 'link'; teamId?: string; orgId?: string },

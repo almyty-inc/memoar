@@ -177,6 +177,12 @@ export function App() {
         onBack={() => navigate('timeline')}
         onBuildPack={(query, budget, freshness) => memoarApi.buildPack(query, budget, freshness)}
         onConvert={(target) => memoarApi.requestConversion(detail.session.id, target)}
+        onDeleted={() => {
+          setSelected(null);
+          setDetail(null);
+          void loadDashboard();
+          navigate('timeline');
+        }}
       />
     ) : <div className="session-loading"><LoaderCircle size={24} /><p>Loading canonical session…</p></div>;
   } else {

@@ -35,7 +35,7 @@ import {
 import { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { memoarApi } from '../lib/api';
-import type { ContentBlock, ConversionJob, PackResponse, SessionDetailData } from '../lib/types';
+import type { ContentBlock, ConversionJob, PackResponse, SessionDetailData, ShareGrant } from '../lib/types';
 import {
   Badge,
   Button,
@@ -44,25 +44,30 @@ import {
   Modal,
   RedactionBadge,
   SourceBadge,
-  Toggle,
   cn,
   formatDate,
   formatNumber,
   formatRelative,
 } from '../components/ui';
 
-export function SessionDetailView({ detail, onBack, onBuildPack, onConvert }: {
+export function SessionDetailView({ detail, onBack, onBuildPack, onConvert, onDeleted }: {
   detail: SessionDetailData;
   onBack: () => void;
   onBuildPack: (query: string, budget: number, freshness: 'strict' | 'mixed') => Promise<PackResponse>;
   onConvert: (target: ConversionJob['target']) => Promise<ConversionJob>;
+  onDeleted: () => void;
 }) {
   const [showThinking, setShowThinking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const [packOpen, setPackOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [redactionApproved, setRedactionApproved] = useState(false);
+  // The review id, not just the fact of approval: the contract requires it to
+  // create a link, so a link can only exist for an approved mask.
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [target, setTarget] = useState<ConversionJob['target']>('codex');
   const [pack, setPack] = useState<PackResponse | null>(null);
   const [packLoading, setPackLoading] = useState(false);
@@ -216,13 +221,28 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert }: {
 
       <ShareReviewModal
         open={shareOpen}
-        approved={redactionApproved}
+        approved={reviewId !== null}
+        link={shareLink}
+        busy={sharing}
         onApprove={() => {
           void memoarApi.completeRedactionReview(session.id)
-            .then(() => setRedactionApproved(true))
+            .then((review) => setReviewId(review.id))
             .catch(() => setActionError('Redaction review failed'));
         }}
-        onClose={() => { setShareOpen(false); setRedactionApproved(false); }}
+        onCreate={(permission, expiresAt) => {
+          if (!reviewId) return;
+          setSharing(true);
+          setActionError(null);
+          void memoarApi.createShareLink({ sessionId: session.id, permission, redactionReviewId: reviewId, expiresAt })
+            .then((grant) => {
+              // Surface the link rather than closing: a token shown once and
+              // discarded is a link the user cannot actually use.
+              setShareLink(grant.token ? `${window.location.origin}/s/${grant.token}` : null);
+            })
+            .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Share link could not be created'))
+            .finally(() => setSharing(false));
+        }}
+        onClose={() => { setShareOpen(false); setReviewId(null); setShareLink(null); }}
       />
 
       <Modal
@@ -275,7 +295,21 @@ export function SessionDetailView({ detail, onBack, onBuildPack, onConvert }: {
 
       <Modal open={deleteOpen} title="Delete this session?" description="Captured data and raw artifacts enter the configured 30-day recovery window." onClose={() => setDeleteOpen(false)}>
         <div className="modal-body warning-body"><AlertTriangle size={22} /><p>This removes the session from search, collections, share links, and agent memory. Existing exports are not recalled.</p></div>
-        <footer className="modal-actions"><Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button><Button variant="danger">Delete session</Button></footer>
+        <footer className="modal-actions">
+          <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button
+            variant="danger"
+            disabled={deleting}
+            onClick={() => {
+              setDeleting(true);
+              setActionError(null);
+              void memoarApi.deleteSession(session.id)
+                .then(() => { setDeleteOpen(false); onDeleted(); })
+                .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Session could not be deleted'))
+                .finally(() => setDeleting(false));
+            }}
+          >{deleting ? 'Deleting…' : 'Delete session'}</Button>
+        </footer>
       </Modal>
     </div>
   );
@@ -337,14 +371,28 @@ function SyntaxCode({ value, language }: { value: string; language: 'json' | 'te
     })}</code></pre>
   );
 }
-function ShareReviewModal({ open, approved, onApprove, onClose }: {
+/** Turns the chosen expiry option into the timestamp the contract expects. */
+function expiresAt(option: string): string | null {
+  if (option === 'never') return null;
+  const days = Number(option);
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function ShareReviewModal({ open, approved, link, busy, onApprove, onCreate, onClose }: {
   open: boolean;
   approved: boolean;
+  link: string | null;
+  busy: boolean;
   onApprove: () => void;
+  onCreate: (permission: ShareGrant['permission'], expiresAt: string | null) => void;
   onClose: () => void;
 }) {
   const [maskPath, setMaskPath] = useState(true);
   const [maskEmail, setMaskEmail] = useState(true);
+  // These drive the request. They were uncontrolled inputs whose values were
+  // read by nothing, so every choice offered here was discarded.
+  const [permission, setPermission] = useState<ShareGrant['permission']>('viewer');
+  const [expiry, setExpiry] = useState('7');
   return (
     <Modal
       open={open}
@@ -367,11 +415,31 @@ function ShareReviewModal({ open, approved, onApprove, onClose }: {
       ) : (
         <>
           <div className="modal-body">
-            <div className="permission-row"><label><input type="radio" name="permission" defaultChecked /><span><strong>Viewer</strong><small>Read the redacted session</small></span></label><label><input type="radio" name="permission" /><span><strong>Importer</strong><small>Copy it into another archive</small></span></label></div>
-            <label className="field-label">Link expires<select defaultValue="7"><option value="7">In 7 days</option><option value="30">In 30 days</option><option value="never">Never</option></select></label>
-            <Toggle checked={true} onChange={() => undefined} label="Apply reviewed redactions" hint="Required while link is active" />
+            <div className="permission-row">
+              <label><input type="radio" name="permission" checked={permission === 'viewer'} onChange={() => setPermission('viewer')} /><span><strong>Viewer</strong><small>Read the redacted session</small></span></label>
+              <label><input type="radio" name="permission" checked={permission === 'importer'} onChange={() => setPermission('importer')} /><span><strong>Importer</strong><small>Copy it into another archive</small></span></label>
+            </div>
+            <label className="field-label">Link expires
+              <select value={expiry} onChange={(event) => setExpiry(event.target.value)}>
+                <option value="7">In 7 days</option><option value="30">In 30 days</option><option value="never">Never</option>
+              </select>
+            </label>
+            {/*
+              Redactions are applied by the server for the life of the link, so
+              this states a guarantee rather than offering a choice. It was a
+              toggle wired to nothing, which read as an option to turn it off.
+            */}
+            <p className="redaction-safe"><ShieldCheck size={15} /><span>The reviewed redaction mask is applied for as long as this link is active.</span></p>
+            {link ? <div className="share-link-result"><CopyButton value={link} label="Copy share link" /><code>{link}</code></div> : null}
           </div>
-          <footer className="modal-actions"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary"><Link2 size={15} /> Create secure link</Button></footer>
+          <footer className="modal-actions">
+            <Button variant="ghost" onClick={onClose}>{link ? 'Done' : 'Cancel'}</Button>
+            {link ? null : (
+              <Button variant="primary" disabled={busy} onClick={() => onCreate(permission, expiresAt(expiry))}>
+                <Link2 size={15} /> {busy ? 'Creating…' : 'Create secure link'}
+              </Button>
+            )}
+          </footer>
         </>
       )}
     </Modal>
