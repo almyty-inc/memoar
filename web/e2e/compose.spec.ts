@@ -368,7 +368,7 @@ test.describe('Memoar live Compose browser acceptance', () => {
       `archive artifact PUT returned HTTP ${artifactResponse.status()}: ${artifactBody}`,
     ).toBeTruthy();
     expect((await manifest).status()).toBe(202);
-    await expect(page.getByRole('status')).toContainText('ready', { timeout: 60_000 });
+    await expect(page.getByRole('status', { name: 'Import progress' })).toContainText('ready', { timeout: 60_000 });
     await expect(page.getByRole('button', { name: /Open imported session/ })).toBeVisible();
   });
 });

@@ -68,7 +68,7 @@ export function ImportView({ machines, onImport, onOpen }: {
         </form>
       </section>
 
-      {progress ? <section className="privacy-banner" role="status"><span>{progress.stage === 'ready' ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}</span><div><strong>{progress.stage}</strong><p>{progress.detail}</p></div></section> : null}
+      {progress ? <section className="privacy-banner" role="status" aria-label="Import progress"><span>{progress.stage === 'ready' ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}</span><div><strong>{progress.stage}</strong><p>{progress.detail}</p></div></section> : null}
       {error ? <section className="privacy-banner" role="alert"><span><AlertCircle size={20} /></span><div><strong>Import failed</strong><p>{error}</p></div></section> : null}
       {imported ? <section className="settings-section"><header><div><h2>{imported.title}</h2><p>{imported.sourceLabel} · {imported.workspace}</p></div><Button variant="primary" onClick={() => onOpen(imported)}>Open imported session <ArrowRight size={14} /></Button></header></section> : null}
     </div>

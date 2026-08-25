@@ -227,7 +227,7 @@ export function App() {
 
   return (
     <Shell view={view} mode={dashboard.mode} user={user} machines={dashboard.machines} onNavigate={navigate}>
-      {loading ? <div className="connection-toast" role="status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
+      {loading ? <div className="connection-toast" role="status" aria-label="Connection status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
       {content}
     </Shell>
   );
