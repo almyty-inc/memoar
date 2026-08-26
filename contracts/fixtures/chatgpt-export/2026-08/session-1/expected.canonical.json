@@ -40,6 +40,9 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "chatgpt-export"
+  },
   "turns": [
     {
       "id": "0191cafe-0000-7000-8000-000000000141",
@@ -49,7 +52,7 @@
       "createdAt": "2026-08-03T09:00:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000143",
+          "id": "0191cafe-0000-7000-8000-000002000141",
           "kind": "text",
           "text": "Find the cause of the failing archive test."
         }
@@ -61,19 +64,14 @@
       "parentId": "0191cafe-0000-7000-8000-000000000141",
       "role": "assistant",
       "createdAt": "2026-08-03T09:00:00.000Z",
-      "model": "gpt-5",
-      "tokens": {
-        "input": 66,
-        "output": 87
-      },
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000144",
+          "id": "0191cafe-0000-7000-8000-000002000142",
           "kind": "thinking",
           "text": "I will inspect the parser boundary and the fixture."
         },
         {
-          "id": "0191cafe-0000-7000-8000-000000000145",
+          "id": "0191cafe-0000-7000-8000-000002000143",
           "kind": "tool_call",
           "name": "read_file",
           "callId": "fixture-call-32",
@@ -82,14 +80,16 @@
           }
         },
         {
-          "id": "0191cafe-0000-7000-8000-000000000146",
+          "id": "0191cafe-0000-7000-8000-000002000144",
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
-      ]
+      ],
+      "model": "gpt-5",
+      "tokens": {
+        "input": 66,
+        "output": 87
+      }
     }
-  ],
-  "ext": {
-    "fixtureSource": "chatgpt-export"
-  }
+  ]
 }

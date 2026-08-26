@@ -29,6 +29,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_STRIDE = 4096;
 
 /**
+ * Distance the fallback ids sit from the seed.
+ *
+ * Turn ids in a real export are UUIDs allocated near the session's own id, and
+ * their block ids are derived by adding small numbers to them. A fallback that
+ * also counted up from the seed landed on those same values — a session id of
+ * …140 and a turn id of …141 both minted …142. This moves the fallback range
+ * far enough away that the two schemes cannot meet.
+ */
+const FALLBACK_BASE = 0x1000000;
+
+/**
  * Id for a block that carries none of its own.
  *
  * Derived from the turn id when that is a UUID, which is the normal case. When
@@ -39,7 +50,7 @@ const FALLBACK_STRIDE = 4096;
  */
 export function derivedBlockId(turnId: string, index: number, seedId: string, ordinal: number): string {
   if (UUID.test(turnId)) return incrementUuid(turnId, index);
-  return incrementUuid(seedId, ordinal * FALLBACK_STRIDE + index);
+  return incrementUuid(seedId, FALLBACK_BASE + ordinal * FALLBACK_STRIDE + index);
 }
 
 const kinds = new Set<ContentBlockKind>(["text", "thinking", "tool_call", "tool_result", "diff", "artifact", "attachment", "system", "error"]);

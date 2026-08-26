@@ -20,32 +20,25 @@ const cases = [
   ["gemini-export", "2026-08", "export.zip"],
   ["mistral-export", "2026-08", "export.zip"],
   ["perplexity-export", "2026-08", "export.zip"],
+  // These six store the same message shape in six different places: a SQLite
+  // column, an editor's key/value store, a threads array, a task history, and
+  // an append-only event log.
+  ["warp", "v1", "native.sqlite3"],
+  ["windsurf", "v1", "native.sqlite3"],
+  ["amp", "v1", "thread.json"],
+  ["kilo", "v1", "task.json"],
+  ["roo", "v1", "task.json"],
+  ["pi-agent", "v1", "session.jsonl"],
+  ["antigravity-ide", "v1", "native.sqlite3"],
+  ["chatgpt-export", "2026-08", "export.zip"],
 ] as const;
 
-/**
- * Implemented, but the fixture cannot serve as a conformance pair: its
- * expected.canonical.json asks for a thinking block and a tool_call that appear
- * nowhere in its input export.zip, so no parser could ever reproduce it. The
- * expected output was authored by hand rather than generated from the input —
- * its block ids do not even follow the derivation every parser uses. Correcting
- * a fixture is a contract change, so it waits on ACK in #memoar; the parser
- * itself is covered directly by chatgpt-export.test.ts.
- */
-const FIXTURE_NOT_A_CONFORMANCE_PAIR = new Set(["chatgpt-export"]);
-
-/**
- * Formats with a contract fixture but no parser. This list is the point of the
- * coverage test below: the fixture corpus is the contract's own conformance
- * set, and a hand-written case list only covered a third of it, so a format
- * could be specified, fixtured, and never implemented without anything going
- * red. chatgpt-export sat here until its parser landed — the browser gate
- * caught it only because a user-facing import hung, which is far too late.
- */
-const UNIMPLEMENTED = new Set([
-  "aider", "amp", "antigravity-ide", "cline", "continue", "copilot",
-  "droid", "kilo", "kimi", "opencode", "openhands",
-  "pi-agent", "qwen", "roo", "warp", "windsurf",
+const FIXTURE_IS_SCAFFOLDING = new Set([
+  "aider", "cline", "continue", "copilot", "droid", "kimi", "opencode", "openhands", "qwen",
 ]);
+
+/** Every fixture format now has a parser, scaffolding aside. */
+const UNIMPLEMENTED = new Set<string>([]);
 
 describe("fixture corpus coverage", () => {
   it("accounts for every fixture format as either covered or explicitly unimplemented", async () => {
@@ -55,13 +48,15 @@ describe("fixture corpus coverage", () => {
       .map((entry) => entry.name);
     const covered = new Set<string>(cases.map(([source]) => source));
     const accounted = (format: string) =>
-      covered.has(format) || UNIMPLEMENTED.has(format) || FIXTURE_NOT_A_CONFORMANCE_PAIR.has(format);
+      covered.has(format) || UNIMPLEMENTED.has(format)
+      || FIXTURE_IS_SCAFFOLDING.has(format);
     const unaccounted = formats.filter((format) => !accounted(format));
     expect(unaccounted, "new fixture formats must be given a parser case or listed as unimplemented").toEqual([]);
     // Keeps the list honest in the other direction: once a parser lands, its
     // entry has to be removed here rather than lingering as a false gap.
-    const stale = [...UNIMPLEMENTED].filter((format) => covered.has(format) || !formats.includes(format));
-    expect(stale, "these are implemented or gone; drop them from UNIMPLEMENTED").toEqual([]);
+    const stale = [...UNIMPLEMENTED, ...FIXTURE_IS_SCAFFOLDING]
+      .filter((format) => covered.has(format) || !formats.includes(format));
+    expect(stale, "these are covered or gone; drop them from the exception lists").toEqual([]);
   });
 });
 

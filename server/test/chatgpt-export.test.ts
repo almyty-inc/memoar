@@ -91,7 +91,7 @@ describe("chatgpt-export parser", () => {
     expect(turns[0]!.parentId).toBeNull();
   });
 
-  it("keeps the model's reasoning as thinking rather than as spoken text", () => {
+  it("gathers one answer's reasoning and reply into a single assistant turn", () => {
     const conversation = {
       id: "conv-3",
       mapping: Object.fromEntries([
@@ -104,10 +104,15 @@ describe("chatgpt-export parser", () => {
     expect(result.kind).toBe("parsed");
     if (result.kind !== "parsed") return;
     const turns = result.sessions[0]!.turns;
-    expect(turns[1]!.blocks[0]!.kind).toBe("thinking");
-    expect(turns[2]!.blocks[0]!.kind).toBe("text");
+    // ChatGPT writes reasoning and reply as separate nodes. Kept apart they
+    // become two assistant turns, which reads nothing like the same exchange
+    // captured from any other agent.
+    expect(turns).toHaveLength(2);
+    expect(turns[1]!.role).toBe("assistant");
+    expect(turns[1]!.blocks.map((block) => block.kind)).toEqual(["thinking", "text"]);
+    expect(turns[1]!.blocks[1]!.text).toBe("because");
     // The export states the model per message; the seed is only a fallback.
-    expect(turns[2]!.model).toBe("gpt-5-thinking");
+    expect(turns[1]!.model).toBe("gpt-5-thinking");
   });
 
   it("splits a multi-conversation account export into distinct sessions", () => {

@@ -14,31 +14,7 @@ export class AntigravityCliV1Parser implements VersionedParser {
   }
 
   private parseDatabase(request: ParseRequest): ParseResult {
-    try {
-      const turns = withSqlite(request.raw, (database) => {
-        const meta = database
-          .prepare("SELECT trajectory_id FROM trajectory_meta LIMIT 1")
-          .get() as { trajectory_id?: string } | undefined;
-        if (!meta?.trajectory_id) throw new Error("antigravity database lacks trajectory_meta");
-        const rows = database
-          .prepare("SELECT idx, step_payload FROM steps ORDER BY idx")
-          .all() as { idx: number; step_payload: string | Uint8Array | null }[];
-        if (!rows.length) throw new Error("antigravity database has no steps");
-        return rows.map((row, ordinal): Turn => {
-          const payload = ensureRecord(parseJsonColumn(row.step_payload, `steps.step_payload idx ${row.idx}`), `step payload idx ${row.idx}`);
-          return turnFromRow({
-            id: typeof payload.id === "string" ? payload.id : undefined,
-            parentId: typeof payload.parentId === "string" ? payload.parentId : null,
-            role: typeof payload.role === "string" ? payload.role : undefined,
-            createdAt: typeof payload.createdAt === "string" ? payload.createdAt : undefined,
-            blocks: payload.parts,
-          }, ordinal, request.seed);
-        });
-      });
-      return { kind: "parsed", parser: "antigravity-cli:v1:0.2.0", sessions: [{ ...request.seed, turns }] };
-    } catch (error) {
-      return { kind: "unknown", diagnostic: `antigravity-cli v1 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`, raw: request.raw };
-    }
+    return parseTrajectoryDatabase(request, this.source);
   }
 
   private parseJsonl(request: ParseRequest): ParseResult {
@@ -61,5 +37,51 @@ export class AntigravityCliV1Parser implements VersionedParser {
       }, request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
     });
     return { kind: "parsed", parser: "antigravity-cli:v1:0.1.0", sessions: [{ ...request.seed, turns }] };
+  }
+}
+
+/**
+ * Reads Antigravity's trajectory database. The CLI and the IDE write the same
+ * trajectory_meta/steps tables, so they share this rather than keeping two
+ * copies of the same SQL to drift apart.
+ */
+export function parseTrajectoryDatabase(request: ParseRequest, source: string): ParseResult {
+  try {
+    const turns = withSqlite(request.raw, (database) => {
+      const meta = database
+        .prepare("SELECT trajectory_id FROM trajectory_meta LIMIT 1")
+        .get() as { trajectory_id?: string } | undefined;
+      if (!meta?.trajectory_id) throw new Error("antigravity database lacks trajectory_meta");
+      const rows = database
+        .prepare("SELECT idx, step_payload FROM steps ORDER BY idx")
+        .all() as { idx: number; step_payload: string | Uint8Array | null }[];
+      if (!rows.length) throw new Error("antigravity database has no steps");
+      return rows.map((row, ordinal): Turn => {
+        const payload = ensureRecord(parseJsonColumn(row.step_payload, `steps.step_payload idx ${row.idx}`), `step payload idx ${row.idx}`);
+        return turnFromRow({
+          id: typeof payload.id === "string" ? payload.id : undefined,
+          parentId: typeof payload.parentId === "string" ? payload.parentId : null,
+          role: typeof payload.role === "string" ? payload.role : undefined,
+          createdAt: typeof payload.createdAt === "string" ? payload.createdAt : undefined,
+          blocks: payload.parts,
+        }, ordinal, request.seed);
+      });
+    });
+    return { kind: "parsed", parser: `${source}:v1:0.2.0`, sessions: [{ ...request.seed, turns }] };
+  } catch (error) {
+    return { kind: "unknown", diagnostic: `${source} v1 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`, raw: request.raw };
+  }
+}
+
+/** The IDE writes the same trajectory tables as the CLI. */
+export class AntigravityIdeV1Parser implements VersionedParser {
+  readonly source = "antigravity-ide";
+  readonly versions = ["v1"] as const;
+
+  parse(request: ParseRequest): ParseResult {
+    if (!isSqliteBytes(request.raw)) {
+      return { kind: "unknown", diagnostic: "antigravity-ide v1 requires a native SQLite trajectory database", raw: request.raw };
+    }
+    return parseTrajectoryDatabase(request, this.source);
   }
 }

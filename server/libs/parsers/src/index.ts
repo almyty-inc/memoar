@@ -1,4 +1,5 @@
-import { AntigravityCliV1Parser } from "./antigravity-cli.js";
+import { AmpV1Parser, TaskHistoryParser, WarpV1Parser, WindsurfV1Parser } from "./agent-conversations.js";
+import { AntigravityCliV1Parser, AntigravityIdeV1Parser } from "./antigravity-cli.js";
 import { CanonicalBundleParser } from "./canonical-bundle.js";
 import { CassExportParser } from "./cass-export.js";
 import { ChatgptExportParser } from "./chatgpt-export.js";
@@ -8,6 +9,7 @@ import { CodexRolloutV1Parser } from "./codex.js";
 import { CrushV1Parser } from "./crush.js";
 import { CursorV3Parser } from "./cursor.js";
 import { GooseV1Parser } from "./goose.js";
+import { PiAgentV1Parser } from "./pi-agent.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { ZedV1Parser } from "./zed.js";
 
@@ -19,6 +21,7 @@ export class ParserRegistry {
     new ClaudeCodeV1Parser(),
     new CodexRolloutV1Parser(),
     new AntigravityCliV1Parser(),
+    new AntigravityIdeV1Parser(),
     new CursorV3Parser(),
     new GooseV1Parser(),
     new CrushV1Parser(),
@@ -31,6 +34,12 @@ export class ParserRegistry {
     // file diverging over time.
     ...["claude-ai-export", "gemini-export", "mistral-export", "perplexity-export"]
       .map((source) => new ConsumerExportParser(source)),
+    new WarpV1Parser(),
+    new WindsurfV1Parser(),
+    new AmpV1Parser(),
+    new PiAgentV1Parser(),
+    // Kilo and Roo share the task format they both inherited.
+    ...["kilo", "roo"].map((source) => new TaskHistoryParser(source)),
   ]) {}
 
   parse(request: ParseRequest): ParseResult {

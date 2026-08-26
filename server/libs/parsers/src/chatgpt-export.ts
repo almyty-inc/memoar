@@ -57,34 +57,55 @@ function role(message: Record<string, unknown>): Turn["role"] {
   return author === "assistant" || author === "tool" || author === "system" ? author : "user";
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
- * Block ids are derived from the turn id, but only when that id is a UUID we
- * can do arithmetic on. ChatGPT's are, yet an export with any other id shape
- * must not cost the reader the whole conversation, so those fall back to the
- * seed and stay unique through the caller's running offset.
+ * Distance block ids sit from the session id.
+ *
+ * Turn ids come from the export's own node ids, which sit near the session id,
+ * so numbering blocks upward from either lands on a turn id: a session …140
+ * with turns …141 and …142 minted a block …142. Blocks get their own range and
+ * a counter that runs for the whole session, which also keeps them unique when
+ * one turn is assembled from several export nodes — numbering per node gave
+ * every step of an answer the same block id.
  */
-function blockId(turnId: string, index: number, fallbackBase: string, fallbackOffset: number): string {
-  return UUID.test(turnId) ? incrementUuid(turnId, index) : incrementUuid(fallbackBase, fallbackOffset);
-}
+const BLOCK_ID_BASE = 0x2000000;
 
 /**
  * `parts` entries are strings for ordinary text and objects for images and
  * other attachments. content_type distinguishes the model's private reasoning
- * from what it said, which the canonical model keeps as separate block kinds.
+ * from what it said, and a message addressed to a tool rather than to the user
+ * is a call, which the canonical model keeps as separate block kinds.
  */
-function blocks(message: Record<string, unknown>, turnId: string, fallbackBase = turnId, fallbackStart = 0): ContentBlock[] {
+function blocks(message: Record<string, unknown>, mint: () => string): ContentBlock[] {
   const content = isRecord(message.content) ? message.content : null;
   if (!content) return [];
   const contentType = stringValue(content, "content_type") ?? "text";
+  const produced: ContentBlock[] = [];
+
+  const recipient = stringValue(message, "recipient");
+  if (contentType === "code" && recipient && recipient !== "all") {
+    const argumentText = Array.isArray(content.parts)
+      ? content.parts.filter((part): part is string => typeof part === "string").join("")
+      : stringValue(content, "text") ?? "";
+    let data: Record<string, unknown> = {};
+    try {
+      const decoded: unknown = JSON.parse(argumentText);
+      if (isRecord(decoded)) data = decoded;
+    } catch {
+      // Arguments that are not JSON are still worth keeping verbatim.
+      if (argumentText.length > 0) data = { arguments: argumentText };
+    }
+    const metadata = isRecord(message.metadata) ? message.metadata : {};
+    const callId = stringValue(metadata, "call_id") ?? stringValue(message, "id") ?? mint();
+    produced.push({ id: mint(), kind: "tool_call", name: recipient, callId, data });
+    return produced;
+  }
+
   const kind = contentType === "thoughts" || contentType === "reasoning_recap" ? "thinking" : "text";
   const parts = Array.isArray(content.parts) ? content.parts : [];
-  const produced: ContentBlock[] = [];
   for (const part of parts) {
     const text = typeof part === "string" ? part : isRecord(part) ? stringValue(part, "text") : null;
     if (text === null || text.length === 0) continue;
-    produced.push({ id: blockId(turnId, produced.length + 1, fallbackBase, fallbackStart + produced.length + 1), kind, text });
+    produced.push({ id: mint(), kind, text });
   }
   return produced;
 }
@@ -129,20 +150,52 @@ export class ChatgptExportParser implements VersionedParser {
     const ordered = depthFirst(nodes).filter((node) => node.message !== null);
     // The mapping's synthetic root carries no author content; dropping empty
     // nodes keeps ordinals contiguous rather than leaving gaps in the timeline.
-    const kept = ordered.filter((node) => blocks(node.message!, node.id, seed.id).length > 0);
+    // A probe mint: this only asks whether a node has content, so it must not
+    // consume ids that the real numbering would then skip.
+    const kept = ordered.filter((node) => blocks(node.message!, () => "probe").length > 0);
     if (kept.length === 0) return null;
 
-    const retained = new Set(kept.map((node) => node.id));
-    let blockOffset = 0;
-    const turns = kept.map((node, ordinal): Turn => {
+    let blockOrdinal = 0;
+    const mint = () => incrementUuid(seed.id, BLOCK_ID_BASE + (blockOrdinal += 1));
+
+    // ChatGPT writes one node per step, so a single answer arrives as a run of
+    // assistant nodes: private reasoning, then any tool calls, then the reply.
+    // Left as they are, one answer becomes three turns, which reads nothing
+    // like the same conversation captured from any other agent. A contiguous
+    // run by the same non-user author is one turn whose blocks are the steps.
+    const groups: MappingNode[][] = [];
+    for (const node of kept) {
+      const previous = groups.at(-1);
+      const author = role(node.message!);
+      const continues = previous !== undefined && author !== "user" && role(previous[0]!.message!) === author;
+      if (continues) previous.push(node);
+      else groups.push([node]);
+    }
+
+    // A run is named by its last step: that is the reply, and it is the node
+    // the following message points at. Naming it after the first step would
+    // identify the turn by private reasoning and break every parent link.
+    const representative = new Map<string, string>();
+    for (const group of groups) {
+      const head = group.at(-1)!.id;
+      for (const step of group) representative.set(step.id, head);
+    }
+
+    const turns = groups.map((group, ordinal): Turn => {
+      const node = group.at(-1)!;
       const message = node.message!;
       // Reattach across dropped nodes so the thread stays connected instead of
       // pointing at a parent that is not in the archive.
-      let parentId: string | null = node.parent;
-      while (parentId !== null && !retained.has(parentId)) parentId = nodes.get(parentId)?.parent ?? null;
-      const model = isRecord(message.metadata) ? stringValue(message.metadata, "model_slug") : null;
-      const turnBlocks = blocks(message, node.id, seed.id, blockOffset);
-      blockOffset += turnBlocks.length;
+      let parentId: string | null = group[0]!.parent;
+      while (parentId !== null && !representative.has(parentId)) parentId = nodes.get(parentId)?.parent ?? null;
+      parentId = parentId === null ? null : representative.get(parentId) ?? null;
+      // The model is declared on the step that produced the reply, not on the
+      // reasoning that preceded it, so it is taken from whichever step in the
+      // run names one rather than from the step that happens to be first.
+      const model = group
+        .map((step) => (isRecord(step.message?.metadata) ? stringValue(step.message.metadata, "model_slug") : null))
+        .findLast((slug) => slug !== null) ?? null;
+      const turnBlocks = group.flatMap((step) => blocks(step.message!, mint));
       return withModelAndTokens({
         id: node.id,
         ordinal,
