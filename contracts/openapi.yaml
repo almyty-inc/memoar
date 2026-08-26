@@ -133,6 +133,24 @@ paths:
         '201': { description: Artifact stored }
         '208': { description: Artifact already exists }
         '422': { $ref: '#/components/responses/ProblemResponse' }
+  /ingest/artifacts/{sha256}/status:
+    get:
+      tags: [Ingest]
+      operationId: getRawArtifactStatus
+      description: >-
+        Ingest outcome for one uploaded artifact. Without this a client can only
+        poll for a canonical session and time out, reporting nothing, while the
+        server already knows the artifact was an unrecognised format and why.
+        Returns the record only, never the stored bytes.
+      parameters:
+        - { name: sha256, in: path, required: true, schema: { type: string, pattern: '^[a-f0-9]{64}$' } }
+      responses:
+        '200':
+          description: Ingest status and diagnostic for the artifact
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RawArtifactStatus' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
   /ingest/manifests:
     post:
       tags: [Ingest]
@@ -978,6 +996,20 @@ components:
         id: { $ref: '#/components/schemas/Uuid' }
         email: { type: string, format: email }
         displayName: { type: string }
+    RawArtifactStatus:
+      type: object
+      additionalProperties: false
+      required: [sha256, status, sessionIds, source, capturedAt]
+      properties:
+        sha256: { type: string }
+        status: { type: string, enum: [stored, queued, parsed, unknown_format, failed] }
+        sessionIds: { type: array, items: { $ref: '#/components/schemas/Uuid' } }
+        source: { type: string }
+        sourcePath: { type: [string, 'null'] }
+        capturedAt: { type: string, format: date-time }
+        diagnostic:
+          type: [string, 'null']
+          description: Why the artifact could not be parsed, when it could not be.
     ApiKey:
       type: object
       required: [id, name, prefix, scopes, createdAt]

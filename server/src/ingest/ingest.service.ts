@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Headers, HttpCode, Inject, Injectable, Param, Post, Put, Res, UnprocessableEntityException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Injectable, NotFoundException, Param, Post, Put, Res, UnprocessableEntityException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Response } from "express";
 import type { AnnotationKind } from "../../libs/canonical/src/generated.js";
@@ -20,6 +20,27 @@ export class IngestService {
     @Inject(OBJECT_STORAGE) private readonly objects: ObjectStorage,
     @Inject(JOB_QUEUE) private readonly queue: JobQueue,
   ) {}
+
+  /**
+   * The ingest outcome for one artifact, without its bytes.
+   *
+   * The server records exactly why an artifact could not be parsed, but until
+   * now nothing could read it back, so a client could only poll for a canonical
+   * session that was never going to appear and give up with a timeout.
+   */
+  async status(context: TenantContext, sha256: string): Promise<Record<string, unknown>> {
+    const artifact = await this.store.getRawArtifact(context, sha256);
+    if (!artifact) throw new NotFoundException("Artifact not found");
+    return {
+      sha256: artifact.sha256,
+      status: artifact.status,
+      sessionIds: artifact.sessionIds,
+      source: artifact.source,
+      sourcePath: artifact.sourcePath,
+      capturedAt: artifact.capturedAt,
+      diagnostic: artifact.diagnostic,
+    };
+  }
 
   async putRaw(context: TenantContext, sha256: string, source: string, sourcePath: string, bytes: Uint8Array): Promise<{ created: boolean; artifact: RawArtifactRecord }> {
     const actual = createHash("sha256").update(bytes).digest("hex");
@@ -159,6 +180,8 @@ export class IngestWorker {
   }
 }
 
+const SHA256 = /^[a-f0-9]{64}$/;
+
 @Controller("ingest")
 export class IngestController {
   constructor(@Inject(IngestService) private readonly ingest: IngestService) {}
@@ -176,6 +199,14 @@ export class IngestController {
     const result = await this.ingest.putRaw(context, sha256, source, sourcePath, body);
     response.status(result.created ? 201 : 208);
     return { id: result.artifact.id, status: result.created ? "stored" : "duplicate" };
+  }
+
+  @Get("artifacts/:sha256/status")
+  status(@Tenant() context: TenantContext, @Param("sha256") sha256: string): Promise<Record<string, unknown>> {
+    // The contract pins the digest shape; anything else is a malformed request
+    // rather than a lookup that happens to miss.
+    if (!SHA256.test(sha256)) throw new BadRequestException("sha256 must be a 64 character lowercase hex digest");
+    return this.ingest.status(context, sha256);
   }
 
   @Post("manifests")

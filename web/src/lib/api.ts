@@ -164,6 +164,16 @@ const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   updatedAt: null,
 };
 
+export interface RawArtifactStatus {
+  sha256: string;
+  status: 'stored' | 'queued' | 'parsed' | 'unknown_format' | 'failed';
+  sessionIds: string[];
+  source: string;
+  sourcePath: string | null;
+  capturedAt: string;
+  diagnostic: string | null;
+}
+
 export interface ImportProgress {
   stage: ImportStage;
   detail: string;
@@ -775,9 +785,31 @@ export class MemoarApiClient {
         onProgress({ stage: 'ready', detail: imported.title });
         return mapSession(imported);
       }
+
+      // The server knows when an artifact will never produce a session, and
+      // has recorded why. Polling on regardless is how an unsupported format
+      // used to spend thirty seconds on a progress bar and then report a
+      // timeout that explained nothing.
+      const status = await this.artifactStatus(sha256);
+      if (status && (status.status === 'unknown_format' || status.status === 'failed')) {
+        throw new Error(status.diagnostic ?? `The archive could not be parsed (${status.status}).`);
+      }
       await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
     }
     throw new Error('Import was queued but no canonical session appeared within 30 seconds');
+  }
+
+  /**
+   * Ingest outcome for an uploaded artifact, or null when it cannot be read.
+   * A missing status must not fail an import that is otherwise progressing, so
+   * this reports absence rather than throwing.
+   */
+  private async artifactStatus(sha256: string): Promise<RawArtifactStatus | null> {
+    try {
+      return await this.request<RawArtifactStatus>(`/ingest/artifacts/${sha256}/status`);
+    } catch {
+      return null;
+    }
   }
 
   acceptTransfer(transferId: string): Promise<SessionSummary> {

@@ -81,4 +81,31 @@ describe("binary raw ingest HTTP", () => {
       .expect(422);
     expect(response.body).toMatchObject({ code: "missing_artifact_hashes", missing: [ghost] });
   });
+
+  it("reports the ingest outcome so a client need not guess why nothing appeared", async () => {
+    const bytes = Buffer.from("not any format this archive understands");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    await request(httpServer(app))
+      .put(`/v1/ingest/artifacts/${sha256}`)
+      .set("content-type", "application/octet-stream")
+      .set("x-memoar-source", "future-vendor@v9")
+      .set("x-memoar-source-path", "future/session.bin")
+      .send(bytes)
+      .expect(201);
+
+    const stored = await request(httpServer(app)).get(`/v1/ingest/artifacts/${sha256}/status`).expect(200);
+    const body = stored.body as { status: string; sha256: string; source: string };
+    expect(body.status).toBe("stored");
+    expect(body.sha256).toBe(sha256);
+    expect(body.source).toBe("future-vendor@v9");
+    // The bytes themselves must never come back through this route.
+    expect(body).not.toHaveProperty("objectKey");
+    expect(JSON.stringify(body)).not.toContain("not any format");
+  });
+
+  it("answers 404 for an unknown digest and 400 for one that is not a digest", async () => {
+    const absent = createHash("sha256").update("never uploaded").digest("hex");
+    await request(httpServer(app)).get(`/v1/ingest/artifacts/${absent}/status`).expect(404);
+    await request(httpServer(app)).get("/v1/ingest/artifacts/not-a-digest/status").expect(400);
+  });
 });
