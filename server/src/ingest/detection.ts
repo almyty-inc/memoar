@@ -20,6 +20,10 @@ const SOURCE_ALIASES: Readonly<Record<string, { source: string; version: string 
   cass: { source: "cass-export", version: "2026-08" },
   "cass-export": { source: "cass-export", version: "2026-08" },
   "chatgpt-export": { source: "chatgpt-export", version: "2026-08" },
+  "claude-ai-export": { source: "claude-ai-export", version: "2026-08" },
+  "gemini-export": { source: "gemini-export", version: "2026-08" },
+  "mistral-export": { source: "mistral-export", version: "2026-08" },
+  "perplexity-export": { source: "perplexity-export", version: "2026-08" },
 };
 
 export class FormatDetector {

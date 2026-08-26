@@ -1,5 +1,5 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, parseBlock, stringValue, withModelAndTokens } from "./common.js";
+import { derivedBlockId, isRecord, parseBlock, stringValue, withModelAndTokens } from "./common.js";
 import type { SessionSeed } from "./types.js";
 
 interface RowShape {
@@ -17,7 +17,7 @@ export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed): 
   const roleValue = stringValue(record, "role") ?? "user";
   const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
   const rawBlocks = Array.isArray(row.blocks) ? row.blocks : [];
-  const blocks = rawBlocks.map((block, index) => parseBlock(block, incrementUuid(id, index + 1))).filter((block) => block !== null);
+  const blocks = rawBlocks.map((block, index) => parseBlock(block, derivedBlockId(id, index + 1, seed.id, ordinal))).filter((block) => block !== null);
   return withModelAndTokens({
     id,
     ordinal,

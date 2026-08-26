@@ -14,16 +14,14 @@ const cases = [
   ["zed", "v1", "native.sqlite3"],
   ["canonical-bundle", "v1", "bundle.json"],
   ["cass-export", "2026-08", "cass.json"],
+  // These four carry an identical envelope and are genuine conformance pairs:
+  // every id, block and title in the expected output derives from the input.
+  ["claude-ai-export", "2026-08", "export.zip"],
+  ["gemini-export", "2026-08", "export.zip"],
+  ["mistral-export", "2026-08", "export.zip"],
+  ["perplexity-export", "2026-08", "export.zip"],
 ] as const;
 
-/**
- * Formats with a contract fixture but no parser. This list is the point of the
- * test below: the fixture corpus is the contract's own conformance set, and the
- * case list above only covers a third of it, so a format could be specified,
- * fixtured, and never implemented without anything going red. chatgpt-export
- * sat here until its parser landed — the browser gate caught it only because a
- * user-facing import hung, which is far too late.
- */
 /**
  * Implemented, but the fixture cannot serve as a conformance pair: its
  * expected.canonical.json asks for a thinking block and a tool_call that appear
@@ -35,10 +33,18 @@ const cases = [
  */
 const FIXTURE_NOT_A_CONFORMANCE_PAIR = new Set(["chatgpt-export"]);
 
+/**
+ * Formats with a contract fixture but no parser. This list is the point of the
+ * coverage test below: the fixture corpus is the contract's own conformance
+ * set, and a hand-written case list only covered a third of it, so a format
+ * could be specified, fixtured, and never implemented without anything going
+ * red. chatgpt-export sat here until its parser landed — the browser gate
+ * caught it only because a user-facing import hung, which is far too late.
+ */
 const UNIMPLEMENTED = new Set([
-  "aider", "amp", "antigravity-ide", "claude-ai-export", "cline", "continue", "copilot",
-  "droid", "gemini-export", "kilo", "kimi", "mistral-export", "opencode", "openhands",
-  "perplexity-export", "pi-agent", "qwen", "roo", "warp", "windsurf",
+  "aider", "amp", "antigravity-ide", "cline", "continue", "copilot",
+  "droid", "kilo", "kimi", "opencode", "openhands",
+  "pi-agent", "qwen", "roo", "warp", "windsurf",
 ]);
 
 describe("fixture corpus coverage", () => {

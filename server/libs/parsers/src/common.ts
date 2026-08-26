@@ -23,6 +23,25 @@ export function incrementUuid(uuid: string, amount: number): string {
   return `${incremented.slice(0, 8)}-${incremented.slice(8, 12)}-${incremented.slice(12, 16)}-${incremented.slice(16, 20)}-${incremented.slice(20)}`;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Blocks per turn that a fallback id scheme can hold without colliding. */
+const FALLBACK_STRIDE = 4096;
+
+/**
+ * Id for a block that carries none of its own.
+ *
+ * Derived from the turn id when that is a UUID, which is the normal case. When
+ * it is not, arithmetic on it throws, and an export whose ids happen to be
+ * short strings would lose the entire conversation to a parse error rather than
+ * one generated identifier. Those fall back to the seed, spaced by ordinal so
+ * two turns cannot mint the same block id.
+ */
+export function derivedBlockId(turnId: string, index: number, seedId: string, ordinal: number): string {
+  if (UUID.test(turnId)) return incrementUuid(turnId, index);
+  return incrementUuid(seedId, ordinal * FALLBACK_STRIDE + index);
+}
+
 const kinds = new Set<ContentBlockKind>(["text", "thinking", "tool_call", "tool_result", "diff", "artifact", "attachment", "system", "error"]);
 
 export function parseBlock(value: unknown, fallbackId: string): ContentBlock | null {

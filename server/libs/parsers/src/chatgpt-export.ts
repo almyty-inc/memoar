@@ -1,39 +1,16 @@
-import { unzipSync } from "fflate";
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
+import { readArchiveEntry } from "./archive.js";
 import { incrementUuid, isRecord, stringValue, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
 /** ChatGPT exports arrive as a ZIP whose payload is this file. */
 const CONVERSATIONS_ENTRY = "conversations.json";
-const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 
 interface MappingNode {
   readonly id: string;
   readonly parent: string | null;
   readonly children: readonly string[];
   readonly message: Record<string, unknown> | null;
-}
-
-function isZipBytes(bytes: Uint8Array): boolean {
-  return bytes.byteLength >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
-}
-
-/**
- * Accepts either the ZIP a user downloads from ChatGPT or a bare
- * conversations.json, because both are things people actually upload.
- */
-function conversationsJson(raw: Uint8Array): string {
-  if (!isZipBytes(raw)) return Buffer.from(raw).toString("utf8");
-  const entries = unzipSync(raw, {
-    filter: (entry) =>
-      entry.name.endsWith(CONVERSATIONS_ENTRY)
-      && !entry.name.includes("..")
-      && !entry.name.startsWith("/")
-      && entry.originalSize <= MAX_ENTRY_BYTES,
-  });
-  const found = Object.entries(entries).sort(([left], [right]) => left.length - right.length)[0];
-  if (!found) throw new Error(`archive contains no ${CONVERSATIONS_ENTRY}`);
-  return Buffer.from(found[1]).toString("utf8");
 }
 
 function readMapping(value: unknown): Map<string, MappingNode> {
@@ -124,7 +101,7 @@ export class ChatgptExportParser implements VersionedParser {
 
   parse(request: ParseRequest): ParseResult {
     try {
-      const decoded = JSON.parse(conversationsJson(request.raw)) as unknown;
+      const decoded = JSON.parse(readArchiveEntry(request.raw, CONVERSATIONS_ENTRY)) as unknown;
       // A single-conversation export is an object; a full account export is an array.
       const conversations = Array.isArray(decoded) ? decoded : [decoded];
       const sessions: Session[] = [];
