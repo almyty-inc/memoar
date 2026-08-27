@@ -166,3 +166,49 @@ describe("codex rollouts", () => {
     expect(result.diagnostic).toContain("no readable messages");
   });
 });
+
+describe("antigravity-cli transcripts", () => {
+  it("reads the step log the CLI writes, in step order", () => {
+    // The CLI writes a log of steps, not of messages, and does not write them
+    // in order: a real transcript had step 3 on the line before step 2. The
+    // parser required message records with id and parts, which the CLI has
+    // never written, so it refused every real transcript.
+    const raw = lines([
+      { step_index: 0, source: "USER_EXPLICIT", type: "USER_INPUT", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "why?" },
+      { step_index: 1, source: "SYSTEM", type: "CONVERSATION_HISTORY", status: "DONE", created_at: "2026-08-01T00:00:00.000Z" },
+      { step_index: 3, source: "MODEL", type: "VIEW_FILE", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "file contents" },
+      { step_index: 2, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", thinking: "weighing it", tool_calls: [{ name: "view_file", args: { AbsolutePath: "/a.ts" } }] },
+      { step_index: 4, source: "SYSTEM", type: "CHECKPOINT", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "{{ CHECKPOINT 0 }}" },
+      { step_index: 5, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "because" },
+    ]);
+    const result = parse("antigravity-cli", "v1", raw);
+    expect(result.kind, result.kind === "unknown" ? result.diagnostic : "").toBe("parsed");
+    if (result.kind !== "parsed") return;
+    const turns = result.sessions[0]!.turns;
+    expect(turns.map((turn) => turn.role)).toEqual(["user", "assistant"]);
+    // Step 2 precedes step 3 despite the file order, so the reasoning and the
+    // call come before the result they produced.
+    expect(turns[1]!.blocks.map((block) => block.kind)).toEqual(["thinking", "tool_call", "tool_result", "text"]);
+    expect(turns[1]!.blocks[1]!.name).toBe("view_file");
+    expect(turns[1]!.blocks[1]!.data).toEqual({ AbsolutePath: "/a.ts" });
+  });
+
+  it("ignores the CLI's own bookkeeping and unfamiliar step types", () => {
+    const raw = lines([
+      { step_index: 0, source: "USER_EXPLICIT", type: "USER_INPUT", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "hello" },
+      { step_index: 1, source: "SYSTEM", type: "SOMETHING_ADDED_LATER", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "opaque" },
+    ]);
+    const result = parse("antigravity-cli", "v1", raw);
+    expect(result.kind).toBe("parsed");
+    if (result.kind !== "parsed") return;
+    expect(result.sessions[0]!.turns).toHaveLength(1);
+  });
+
+  it("reports a transcript with no readable steps", () => {
+    const raw = lines([{ step_index: 0, source: "SYSTEM", type: "CHECKPOINT", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "marker" }]);
+    const result = parse("antigravity-cli", "v1", raw);
+    expect(result.kind).toBe("unknown");
+    if (result.kind !== "unknown") return;
+    expect(result.diagnostic).toContain("no readable steps");
+  });
+});

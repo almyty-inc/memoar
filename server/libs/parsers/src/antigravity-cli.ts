@@ -1,5 +1,5 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, parseBlock, parseJsonLines, stringValue, withModelAndTokens } from "./common.js";
+import { isRecord, incrementUuid, parseBlock, parseJsonLines, stringValue, withModelAndTokens } from "./common.js";
 import { ensureRecord, parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
@@ -17,26 +17,99 @@ export class AntigravityCliV1Parser implements VersionedParser {
     return parseTrajectoryDatabase(request, this.source);
   }
 
+  /**
+   * Reads the transcript log the CLI writes beside a session.
+   *
+   * It is a log of steps, not of messages: each line records something that
+   * happened — the user's request, the planner's response with its reasoning
+   * and tool calls, the output of a command or a file read, and the
+   * checkpoints and history markers the CLI keeps for itself. Steps are not
+   * written in order, so they are sorted by step_index before being read.
+   */
   private parseJsonl(request: ParseRequest): ParseResult {
     const records = parseJsonLines(request.raw);
-    if (!records?.length || records.some((record) => record.type !== "message" || !stringValue(record, "id") || !Array.isArray(record.parts))) {
-      return { kind: "unknown", diagnostic: "antigravity-cli v1 requires a native SQLite trajectory database or message records with id and parts", raw: request.raw };
+    if (!records?.length) {
+      return { kind: "unknown", diagnostic: "antigravity-cli v1 requires a native SQLite trajectory database or a transcript log", raw: request.raw };
     }
-    const turns: Turn[] = records.map((record, ordinal) => {
-      const id = stringValue(record, "id")!;
-      const roleValue = stringValue(record, "role") ?? "user";
-      const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
-      const blocks = (record.parts as unknown[]).map((block, index) => parseBlock(block, incrementUuid(id, index + 1))).filter((block) => block !== null);
-      return withModelAndTokens({
-        id,
-        ordinal,
-        parentId: stringValue(record, "parentId"),
-        role,
-        createdAt: stringValue(record, "createdAt") ?? request.seed.createdAt,
-        blocks,
+
+    const steps = [...records]
+      .filter((record) => stringValue(record, "type") !== null)
+      .sort((left, right) => Number(left.step_index ?? 0) - Number(right.step_index ?? 0));
+
+    const turns: Turn[] = [];
+    let blockOrdinal = 0;
+    const mint = () => incrementUuid(request.seed.id, 0x10000000 + (blockOrdinal += 1));
+
+    const openAssistant = (createdAt: string): Turn => {
+      const last = turns.at(-1);
+      if (last && last.role === "assistant") return last;
+      const turn = withModelAndTokens({
+        id: incrementUuid(request.seed.id, turns.length + 1),
+        ordinal: turns.length,
+        parentId: turns.at(-1)?.id ?? null,
+        role: "assistant" as const,
+        createdAt,
+        blocks: [],
       }, request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
-    });
-    return { kind: "parsed", parser: "antigravity-cli:v1:0.1.0", sessions: [{ ...request.seed, turns }] };
+      turns.push(turn);
+      return turn;
+    };
+
+    for (const step of steps) {
+      const type = stringValue(step, "type");
+      const createdAt = stringValue(step, "created_at") ?? request.seed.createdAt;
+      const content = stringValue(step, "content");
+
+      if (type === "USER_INPUT") {
+        if (content === null || content.length === 0) continue;
+        turns.push({
+          id: incrementUuid(request.seed.id, turns.length + 1),
+          ordinal: turns.length,
+          parentId: turns.at(-1)?.id ?? null,
+          role: "user",
+          createdAt,
+          blocks: [{ id: mint(), kind: "text", text: content }],
+        });
+        continue;
+      }
+
+      if (type === "PLANNER_RESPONSE") {
+        const turn = openAssistant(createdAt);
+        const thinking = stringValue(step, "thinking");
+        if (thinking) turn.blocks.push({ id: mint(), kind: "thinking", text: thinking });
+        const calls = Array.isArray(step.tool_calls) ? step.tool_calls : [];
+        for (const call of calls) {
+          if (!isRecord(call)) continue;
+          turn.blocks.push({
+            id: mint(),
+            kind: "tool_call",
+            name: stringValue(call, "name") ?? "tool",
+            callId: stringValue(call, "id") ?? mint(),
+            data: isRecord(call.args) ? call.args : {},
+          });
+        }
+        if (content) turn.blocks.push({ id: mint(), kind: "text", text: content });
+        continue;
+      }
+
+      // Step types that report what a tool did. Their output belongs to the
+      // assistant turn that asked for it.
+      if (type === "VIEW_FILE" || type === "RUN_COMMAND" || type === "EDIT_FILE" || type === "SEARCH") {
+        if (content === null || content.length === 0) continue;
+        openAssistant(createdAt).blocks.push({ id: mint(), kind: "tool_result", text: content });
+        continue;
+      }
+      // CHECKPOINT and CONVERSATION_HISTORY are the CLI's own bookkeeping, and
+      // anything unrecognised is a step type added since this was written.
+    }
+
+    const withOrdinals = turns
+      .filter((turn) => turn.blocks.length > 0)
+      .map((turn, ordinal) => ({ ...turn, ordinal }));
+    if (withOrdinals.length === 0) {
+      return { kind: "unknown", diagnostic: "antigravity-cli v1 transcript contained no readable steps", raw: request.raw };
+    }
+    return { kind: "parsed", parser: "antigravity-cli:v1:0.2.0", sessions: [{ ...request.seed, turns: withOrdinals }] };
   }
 }
 
