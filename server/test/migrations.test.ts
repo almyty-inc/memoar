@@ -3,7 +3,7 @@ import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "../src/data-source.js";
 import { ENTITIES } from "../src/entities.js";
-import { dockerAvailable, queryRows } from "./helpers/postgres.js";
+import { connectWithRetry, dockerAvailable, queryRows } from "./helpers/postgres.js";
 
 const CONTAINER = "memoar-migrations-test";
 const PORT = 55981;
@@ -45,7 +45,9 @@ beforeAll(async () => {
     type: "postgres", url: OWNER_URL, entities: [...ENTITIES],
     migrations: MIGRATIONS, synchronize: false, migrationsRun: false,
   });
-  await owner.initialize();
+  // Shares the readiness retry: pg_isready passes while the image is still
+  // initialising and about to restart, so a first connection can be reset.
+  await connectWithRetry(owner, { container: CONTAINER, port: PORT });
 }, 180_000);
 
 afterAll(async () => {
@@ -91,7 +93,7 @@ suite("migrations", () => {
 
   it("enforces those policies for the runtime role, not just in the catalog", async () => {
     const appRole = new DataSource({ type: "postgres", url: APP_URL, entities: [], synchronize: false });
-    await appRole.initialize();
+    await connectWithRetry(appRole, { container: CONTAINER, port: PORT });
     try {
       const role = await queryRows<{ rolsuper: boolean; rolbypassrls: boolean }>(
         appRole,

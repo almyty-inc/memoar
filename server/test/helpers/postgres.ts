@@ -70,7 +70,7 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
   return dataSource;
 }
 
-async function connectWithRetry(dataSource: DataSource, fixture: PostgresFixture): Promise<void> {
+export async function connectWithRetry(dataSource: DataSource, fixture: PostgresFixture): Promise<void> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
