@@ -40,56 +40,56 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "opencode"
+  },
   "turns": [
     {
-      "id": "0191cafe-0000-7000-8000-000000000083",
+      "id": "0191cafe-0000-7000-8000-000000000151",
       "ordinal": 0,
       "parentId": null,
       "role": "user",
-      "createdAt": "2026-08-14T09:00:00.000Z",
+      "createdAt": "2026-08-17T11:13:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000085",
+          "id": "0191cafe-0000-7000-8000-000000000153",
           "kind": "text",
           "text": "Find the cause of the failing archive test."
         }
       ]
     },
     {
-      "id": "0191cafe-0000-7000-8000-000000000084",
+      "id": "0191cafe-0000-7000-8000-000000000152",
       "ordinal": 1,
-      "parentId": "0191cafe-0000-7000-8000-000000000083",
+      "parentId": "0191cafe-0000-7000-8000-000000000151",
       "role": "assistant",
-      "createdAt": "2026-08-14T09:00:00.000Z",
-      "model": "vendor-model",
-      "tokens": {
-        "input": 47,
-        "output": 68
-      },
+      "createdAt": "2026-08-17T11:13:01.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000086",
+          "id": "0191cafe-0000-7000-8000-000000000155",
           "kind": "thinking",
           "text": "I will inspect the parser boundary and the fixture."
         },
         {
-          "id": "0191cafe-0000-7000-8000-000000000087",
+          "id": "0191cafe-0000-7000-8000-000000000156",
           "kind": "tool_call",
           "name": "read_file",
-          "callId": "fixture-call-13",
+          "callId": "fixture-call-34",
           "data": {
             "path": "src/archive.ts"
           }
         },
         {
-          "id": "0191cafe-0000-7000-8000-000000000088",
+          "id": "0191cafe-0000-7000-8000-000000000157",
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
-      ]
+      ],
+      "model": "gpt-5-codex",
+      "tokens": {
+        "input": 69,
+        "output": 90
+      }
     }
-  ],
-  "ext": {
-    "fixtureSource": "opencode"
-  }
+  ]
 }

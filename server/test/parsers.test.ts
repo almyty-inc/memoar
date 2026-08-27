@@ -31,10 +31,17 @@ const cases = [
   ["pi-agent", "v1", "session.jsonl"],
   ["antigravity-ide", "v1", "native.sqlite3"],
   ["chatgpt-export", "2026-08", "export.zip"],
+  // Written against the real schema, read off an opencode install on this
+  // machine, and verified against that database before the fixture was built.
+  ["opencode", "v1", "native.sqlite3"],
+  // Real schema, read off an installed Copilot CLI; that install had no
+  // recorded exchanges, so this is verified against the schema, not a
+  // transcript.
+  ["copilot", "v1", "native.sqlite3"],
 ] as const;
 
 const FIXTURE_IS_SCAFFOLDING = new Set([
-  "aider", "cline", "continue", "copilot", "droid", "kimi", "opencode", "openhands", "qwen",
+  "aider", "cline", "continue", "droid", "kimi", "openhands", "qwen",
 ]);
 
 /** Every fixture format now has a parser, scaffolding aside. */

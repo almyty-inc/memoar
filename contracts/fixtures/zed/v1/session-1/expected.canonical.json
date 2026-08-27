@@ -17,7 +17,7 @@
   "title": "Zed fixture 1",
   "summary": "Scrubbed session used to verify canonical normalization.",
   "models": [
-    "vendor-model"
+    "claude-sonnet"
   ],
   "tokenTotals": {
     "input": 61,
@@ -40,56 +40,51 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "zed"
+  },
   "turns": [
     {
-      "id": "0191cafe-0000-7000-8000-00000000010f",
+      "id": "0191cafe-0000-7000-8000-000000000161",
       "ordinal": 0,
       "parentId": null,
       "role": "user",
-      "createdAt": "2026-08-13T09:00:00.000Z",
+      "createdAt": "2026-08-06T09:00:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000111",
+          "id": "0191cafe-0000-7000-8000-000000000162",
           "kind": "text",
           "text": "Find the cause of the failing archive test."
         }
       ]
     },
     {
-      "id": "0191cafe-0000-7000-8000-000000000110",
+      "id": "0191cafe-0000-7000-8000-000000000162",
       "ordinal": 1,
-      "parentId": "0191cafe-0000-7000-8000-00000000010f",
+      "parentId": "0191cafe-0000-7000-8000-000000000161",
       "role": "assistant",
-      "createdAt": "2026-08-13T09:00:00.000Z",
-      "model": "vendor-model",
-      "tokens": {
-        "input": 61,
-        "output": 82
-      },
+      "createdAt": "2026-08-06T09:00:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000112",
+          "id": "0191cafe-0000-7000-8000-000000000163",
           "kind": "thinking",
           "text": "I will inspect the parser boundary and the fixture."
         },
         {
-          "id": "0191cafe-0000-7000-8000-000000000113",
+          "id": "0191cafe-0000-7000-8000-000000000164",
           "kind": "tool_call",
           "name": "read_file",
-          "callId": "fixture-call-27",
+          "callId": "fixture-call-35",
           "data": {
             "path": "src/archive.ts"
           }
         },
         {
-          "id": "0191cafe-0000-7000-8000-000000000114",
+          "id": "0191cafe-0000-7000-8000-000000000165",
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
       ]
     }
-  ],
-  "ext": {
-    "fixtureSource": "zed"
-  }
+  ]
 }

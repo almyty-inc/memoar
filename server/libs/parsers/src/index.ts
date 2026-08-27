@@ -6,9 +6,11 @@ import { ChatgptExportParser } from "./chatgpt-export.js";
 import { ConsumerExportParser } from "./consumer-export.js";
 import { ClaudeCodeV1Parser } from "./claude-code.js";
 import { CodexRolloutV1Parser } from "./codex.js";
+import { CopilotV1Parser } from "./copilot.js";
 import { CrushV1Parser } from "./crush.js";
 import { CursorV3Parser } from "./cursor.js";
 import { GooseV1Parser } from "./goose.js";
+import { OpencodeV1Parser } from "./opencode.js";
 import { PiAgentV1Parser } from "./pi-agent.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { ZedV1Parser } from "./zed.js";
@@ -38,6 +40,8 @@ export class ParserRegistry {
     new WindsurfV1Parser(),
     new AmpV1Parser(),
     new PiAgentV1Parser(),
+    new OpencodeV1Parser(),
+    new CopilotV1Parser(),
     // Kilo and Roo share the task format they both inherited.
     ...["kilo", "roo"].map((source) => new TaskHistoryParser(source)),
   ]) {}
