@@ -1,3 +1,8 @@
-{"timestamp":"2026-08-05T09:00:00.000Z","type":"session_meta","payload":{"id":"0191cafe-0000-7000-8000-000000000028","cwd":"/workspace/example-1","source":"cli"}}
-{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"role":"user","content":[{"id":"0191cafe-0000-7000-8000-00000000002b","kind":"text","text":"Find the cause of the failing archive test."}]}}
-{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"role":"assistant","content":[{"id":"0191cafe-0000-7000-8000-00000000002c","kind":"thinking","text":"I will inspect the parser boundary and the fixture."},{"id":"0191cafe-0000-7000-8000-00000000002d","kind":"tool_call","name":"read_file","callId":"fixture-call-4","data":{"path":"src/archive.ts"}},{"id":"0191cafe-0000-7000-8000-00000000002e","kind":"text","text":"The parser dropped parent references. Preserve the native parent id during normalization."}]}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"session_meta","payload":{"id":"codex-1","cwd":"/workspace/example-1","source":"cli"}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"turn_context","payload":{"cwd":"/workspace/example-1"}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Find the cause of the failing archive test."}]}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"I will inspect the parser boundary and the fixture."}],"content":[]}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"type":"function_call","name":"read_file","call_id":"fixture-call-4","arguments":"{\"path\":\"src/archive.ts\"}"}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"fixture-call-4","output":"parentId: nativeParentId"}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"event_msg","payload":{"type":"agent_message_delta"}}
+{"timestamp":"2026-08-05T09:00:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The parser dropped parent references. Preserve the native parent id during normalization."}]}}

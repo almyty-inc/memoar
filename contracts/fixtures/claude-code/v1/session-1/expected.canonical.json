@@ -40,6 +40,9 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "claude-code"
+  },
   "turns": [
     {
       "id": "0191cafe-0000-7000-8000-00000000000b",
@@ -49,7 +52,7 @@
       "createdAt": "2026-08-02T09:00:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-00000000000d",
+          "id": "0191cafe-0000-7000-8000-00000800000b",
           "kind": "text",
           "text": "Find the cause of the failing archive test."
         }
@@ -61,11 +64,6 @@
       "parentId": "0191cafe-0000-7000-8000-00000000000b",
       "role": "assistant",
       "createdAt": "2026-08-02T09:00:00.000Z",
-      "model": "claude-sonnet",
-      "tokens": {
-        "input": 35,
-        "output": 56
-      },
       "blocks": [
         {
           "id": "0191cafe-0000-7000-8000-00000000000e",
@@ -86,10 +84,12 @@
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
-      ]
+      ],
+      "model": "claude-sonnet",
+      "tokens": {
+        "input": 35,
+        "output": 56
+      }
     }
-  ],
-  "ext": {
-    "fixtureSource": "claude-code"
-  }
+  ]
 }

@@ -53,26 +53,46 @@ export function derivedBlockId(turnId: string, index: number, seedId: string, or
   return incrementUuid(seedId, FALLBACK_BASE + ordinal * FALLBACK_STRIDE + index);
 }
 
+/**
+ * Vendor names for block kinds that mean something the canonical model already
+ * has. Without these, a Claude Code transcript stored every one of its tool
+ * calls as text carrying an ext.nativeKind note — 1,480 of them in a single
+ * real session — so the archive rendered tool use as prose.
+ */
+const KIND_ALIASES: Readonly<Record<string, ContentBlockKind>> = {
+  tool_use: "tool_call",
+  toolu: "tool_call",
+  function_call: "tool_call",
+  tool_output: "tool_result",
+  function_call_output: "tool_result",
+  image: "attachment",
+  input_text: "text",
+  output_text: "text",
+  thought: "thinking",
+  reasoning: "thinking",
+};
+
 const kinds = new Set<ContentBlockKind>(["text", "thinking", "tool_call", "tool_result", "diff", "artifact", "attachment", "system", "error"]);
 
 export function parseBlock(value: unknown, fallbackId: string): ContentBlock | null {
   if (typeof value === "string") return { id: fallbackId, kind: "text", text: value };
   if (!isRecord(value)) return null;
   const kindValue = stringValue(value, "kind") ?? stringValue(value, "type") ?? "text";
-  const kind = kinds.has(kindValue as ContentBlockKind) ? kindValue as ContentBlockKind : "text";
+  const aliased = KIND_ALIASES[kindValue] ?? kindValue;
+  const kind = kinds.has(aliased as ContentBlockKind) ? aliased as ContentBlockKind : "text";
   const id = stringValue(value, "id") ?? fallbackId;
   const block: ContentBlock = {
     id,
     kind,
     ...(typeof value.text === "string" ? { text: value.text } : {}),
     ...(typeof value.name === "string" ? { name: value.name } : {}),
-    ...(typeof value.callId === "string" ? { callId: value.callId } : {}),
+    ...(typeof value.callId === "string" ? { callId: value.callId } : typeof value.tool_use_id === "string" ? { callId: value.tool_use_id } : typeof value.id === "string" && aliased === "tool_call" ? { callId: value.id } : {}),
     ...(typeof value.language === "string" ? { language: value.language } : {}),
     ...(typeof value.mimeType === "string" ? { mimeType: value.mimeType } : {}),
     ...(typeof value.artifactRef === "string" ? { artifactRef: value.artifactRef } : {}),
-    ...(isRecord(value.data) ? { data: value.data } : {}),
+    ...(isRecord(value.data) ? { data: value.data } : isRecord(value.input) ? { data: value.input } : {}),
   };
-  if (!kinds.has(kindValue as ContentBlockKind)) block.ext = { nativeKind: kindValue, native: value };
+  if (!kinds.has(aliased as ContentBlockKind)) block.ext = { nativeKind: kindValue, native: value };
   return block;
 }
 

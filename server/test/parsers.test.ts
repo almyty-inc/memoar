@@ -87,14 +87,19 @@ describe("Tier-1 parsers", () => {
   }
 
   it("converts parser crashes into unknown results that preserve the bytes", () => {
+    // A record whose uuid is not hexadecimal used to crash claude-code, because
+    // block ids were derived by doing arithmetic on it. Block ids now come from
+    // the seed, so that input parses; a genuine crash needs something the
+    // parser cannot survive at all, which is what the seed below provides.
     const raw = Buffer.from(`${JSON.stringify({
-      uuid: "0191cafe-0000-7000-8000-0000000take0b",
+      uuid: "0191cafe-0000-7000-8000-00000000000b",
       parentUuid: null,
       type: "user",
       message: { role: "user", content: "corrupted identifiers" },
     })}\n`);
     const seed = {
-      id: "0191cafe-0000-7000-8000-00000000f011",
+      // Not a UUID, so deriving any id from it throws inside the parser.
+      id: "not-a-uuid-at-all",
       source: { vendor: "anthropic", tool: "claude-code", version: "v1", machineId: "0191cafe-0000-7000-8000-00000000f012" },
       workspace: { path: "/workspace/broken" },
       createdAt: "2026-08-20T00:00:00.000Z",
