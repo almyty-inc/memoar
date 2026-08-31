@@ -40,6 +40,9 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "kilo"
+  },
   "turns": [
     {
       "id": "0191cafe-0000-7000-8000-0000000000bf",
@@ -49,7 +52,7 @@
       "createdAt": "2026-08-05T09:00:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-0000000000c1",
+          "id": "0191cafe-0000-7000-8000-0000010000bf",
           "kind": "text",
           "text": "Find the cause of the failing archive test."
         }
@@ -61,19 +64,14 @@
       "parentId": "0191cafe-0000-7000-8000-0000000000bf",
       "role": "assistant",
       "createdAt": "2026-08-05T09:00:00.000Z",
-      "model": "vendor-model",
-      "tokens": {
-        "input": 53,
-        "output": 74
-      },
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-0000000000c2",
+          "id": "0191cafe-0000-7000-8000-0000010010bf",
           "kind": "thinking",
           "text": "I will inspect the parser boundary and the fixture."
         },
         {
-          "id": "0191cafe-0000-7000-8000-0000000000c3",
+          "id": "0191cafe-0000-7000-8000-0000010010c0",
           "kind": "tool_call",
           "name": "read_file",
           "callId": "fixture-call-19",
@@ -82,14 +80,11 @@
           }
         },
         {
-          "id": "0191cafe-0000-7000-8000-0000000000c4",
+          "id": "0191cafe-0000-7000-8000-0000010010c1",
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
       ]
     }
-  ],
-  "ext": {
-    "fixtureSource": "kilo"
-  }
+  ]
 }

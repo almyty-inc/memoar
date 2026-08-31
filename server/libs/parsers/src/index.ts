@@ -1,4 +1,5 @@
-import { AmpV1Parser, TaskHistoryParser, WarpV1Parser, WindsurfV1Parser } from "./agent-conversations.js";
+import { AmpV1Parser, WarpV1Parser, WindsurfV1Parser } from "./agent-conversations.js";
+import { TaskHistoryParser } from "./task-history.js";
 import { AntigravityCliV1Parser, AntigravityIdeV1Parser } from "./antigravity-cli.js";
 import { CanonicalBundleParser } from "./canonical-bundle.js";
 import { CassExportParser } from "./cass-export.js";

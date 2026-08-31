@@ -100,26 +100,3 @@ export class AmpV1Parser implements VersionedParser {
     }
   }
 }
-
-/**
- * Kilo and Roo both descend from the same task format: one task per file, whose
- * messages are called `history` and whose id is `taskId`.
- */
-export class TaskHistoryParser implements VersionedParser {
-  readonly versions = ["v1"] as const;
-
-  constructor(readonly source: string) {}
-
-  parse(request: ParseRequest): ParseResult {
-    try {
-      const input = JSON.parse(Buffer.from(request.raw).toString("utf8")) as unknown;
-      const conversation = readConversation(input, "history", "taskId");
-      if (!conversation) {
-        return { kind: "unknown", diagnostic: `${this.source} v1 requires a task with a history array`, raw: request.raw };
-      }
-      return build(this.source, [conversation], request);
-    } catch (error) {
-      return failed(`${this.source} v1`, error, request.raw);
-    }
-  }
-}

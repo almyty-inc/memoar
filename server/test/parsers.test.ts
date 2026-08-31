@@ -47,7 +47,64 @@ const FIXTURE_IS_SCAFFOLDING = new Set([
 /** Every fixture format now has a parser, scaffolding aside. */
 const UNIMPLEMENTED = new Set<string>([]);
 
+/**
+ * Formats whose shape was confirmed against the tool itself — a real file from
+ * an install, the project's own schema, or a reference implementation — rather
+ * than against a fixture someone wrote to match the parser.
+ *
+ * This distinction is the point. Every parser here once passed its fixture
+ * while being unable to read a single real file, because fixture and parser
+ * were written from the same guess and agreed with each other. A fixture only
+ * tests something when it comes from a source the parser did not.
+ */
+const VERIFIED_AGAINST_THE_TOOL: Readonly<Record<string, string>> = {
+  "claude-code": "parsed a real 4,369-turn session from this machine",
+  codex: "parsed a real rollout from this machine",
+  zed: "parsed a real threads.db from this machine",
+  "antigravity-cli": "parsed a real transcript log from this machine",
+  opencode: "parsed a real 47-turn session from this machine",
+  copilot: "schema read from an installed Copilot CLI; that install had no recorded turns",
+  goose: "schema from block/goose session_manager.rs",
+  crush: "schema from charmbracelet/crush initial migration",
+  cursor: "two-table layout from the community reference implementations",
+  kilo: "api_conversation_history.json shape from RooCodeInc/Roo-Code",
+  roo: "api_conversation_history.json shape from RooCodeInc/Roo-Code",
+  "canonical-bundle": "memoar's own export format",
+  "cass-export": "memoar's own import format",
+  "chatgpt-export": "written against the mapping tree ChatGPT exports",
+};
+
+/**
+ * Parsers that exist and pass a fixture, but whose shape has never been checked
+ * against the tool. Treat every one as probably wrong: of the nine formats that
+ * have been checked, eight were.
+ *
+ * warp and windsurf are closed source and not installed here. amp keeps threads
+ * on Sourcegraph's servers rather than on disk, so there may be no local
+ * artifact to import at all. The four consumer exports read the shape the
+ * contract fixture describes, which is not what those vendors download —
+ * they stay out of the Import UI for that reason.
+ */
+const UNCONFIRMED_SHAPE = new Set([
+  "warp", "windsurf", "amp", "pi-agent", "antigravity-ide",
+  "claude-ai-export", "gemini-export", "mistral-export", "perplexity-export",
+]);
+
 describe("fixture corpus coverage", () => {
+  it("says of every parser whether its shape was ever checked against the tool", () => {
+    // A parser is either confirmed against something the author did not write,
+    // or it is listed as unconfirmed. Silence is what let eight parsers ship
+    // unable to read their own tool's output.
+    const covered = cases.map(([source]) => source);
+    const unaccounted = covered.filter((source) =>
+      VERIFIED_AGAINST_THE_TOOL[source] === undefined && !UNCONFIRMED_SHAPE.has(source));
+    expect(unaccounted, "state whether these were checked against the tool").toEqual([]);
+
+    const contradictory = [...UNCONFIRMED_SHAPE].filter((source) => VERIFIED_AGAINST_THE_TOOL[source] !== undefined);
+    expect(contradictory, "these cannot be both confirmed and unconfirmed").toEqual([]);
+  });
+
+
   it("accounts for every fixture format as either covered or explicitly unimplemented", async () => {
     const root = resolve(process.cwd(), "../contracts/fixtures");
     const formats = (await readdir(root, { withFileTypes: true }))
@@ -103,6 +160,31 @@ describe("Tier-1 parsers", () => {
     for (const session of result.sessions) {
       const ids = session.turns.flatMap((turn) => [turn.id, ...turn.blocks.map((block) => block.id)]);
       expect(new Set(ids).size, `${source} minted a duplicate id`).toBe(ids.length);
+    }
+  });
+
+  it.each(cases)("gives %s@%s canonical uuids for every generated id", async (source, version, filename) => {
+    // A tool call names itself with an id that is the id of the *call*
+    // — "toolu_01…" from Anthropic — and taking it as the block's own id put a
+    // non-uuid where the contract requires one. Only the contract check caught
+    // it, and only for one fixture.
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    const fixture = resolve(process.cwd(), "../contracts/fixtures", source, version, "session-1");
+    const [raw, expectedBytes] = await Promise.all([
+      readFile(resolve(fixture, "input", filename)),
+      readFile(resolve(fixture, "expected.canonical.json")),
+    ]);
+    const expected = JSON.parse(expectedBytes.toString("utf8")) as Session;
+    const seed = Object.fromEntries(Object.entries(expected).filter(([key]) => key !== "turns")) as SessionSeed;
+    const result = new ParserRegistry().parse({ source, version, raw, seed });
+    expect(result.kind).toBe("parsed");
+    if (result.kind !== "parsed") return;
+    for (const session of result.sessions) {
+      for (const turn of session.turns) {
+        for (const block of turn.blocks) {
+          expect(uuid.test(block.id), `${source} block id is not a uuid: ${block.id}`).toBe(true);
+        }
+      }
     }
   });
 

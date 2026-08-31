@@ -88,7 +88,13 @@ export function parseBlock(value: unknown, fallbackId: string): ContentBlock | n
   const kindValue = stringValue(value, "kind") ?? stringValue(value, "type") ?? "text";
   const aliased = KIND_ALIASES[kindValue] ?? kindValue;
   const kind = kinds.has(aliased as ContentBlockKind) ? aliased as ContentBlockKind : "text";
-  const id = stringValue(value, "id") ?? fallbackId;
+  // On a tool call, `id` is the id of the call, not of the block: Anthropic
+  // writes {type:"tool_use", id:"toolu_..."} and that value belongs in callId.
+  // Taking it as the block id put "toolu_..." and "fixture-call-18" where a
+  // UUID belongs. A block that names its call separately is stating its own id.
+  const namesItsCall = typeof value.callId === "string" || typeof value.tool_use_id === "string";
+  const ownId = aliased === "tool_call" && !namesItsCall ? null : stringValue(value, "id");
+  const id = ownId ?? fallbackId;
   const block: ContentBlock = {
     id,
     kind,
