@@ -427,28 +427,44 @@ mod tests {
     }
 
     #[test]
-    fn full_source_table_includes_amp_warp_and_windsurf_paths() {
-        for id in ["amp", "warp", "windsurf"] {
-            assert!(source(id).is_some(), "missing source {id}");
+    fn every_capture_source_names_a_path_on_some_platform() {
+        // This used to assert that amp, warp and windsurf were present. They
+        // were captured and uploaded while the server had no parser for any of
+        // them, so every file collected from them became an unknown_format
+        // artifact. A source belongs here only if a session read from it can
+        // actually be archived.
+        assert!(!SOURCES.is_empty(), "the capture table is empty");
+        for spec in SOURCES {
+            let has_path = !spec.common_paths.is_empty()
+                || !spec.linux_paths.is_empty()
+                || !spec.macos_paths.is_empty()
+                || !spec.windows_paths.is_empty();
+            assert!(has_path, "source {} names no path on any platform", spec.id);
         }
-        assert!(
-            source("amp")
-                .unwrap()
-                .common_paths
-                .contains(&".local/share/amp/threads")
-        );
-        assert!(
-            source("warp")
-                .unwrap()
-                .macos_paths
-                .iter()
-                .any(|path| path.ends_with("Warp-Stable/warp.sqlite"))
-        );
-        assert!(
-            source("windsurf")
-                .unwrap()
-                .windows_paths
-                .contains(&"AppData/Roaming/Windsurf/User/globalStorage/state.vscdb")
+    }
+
+    #[test]
+    fn captures_only_what_the_archive_can_parse() {
+        // Kept in step with the server by server/test/agent-server-agreement,
+        // which reads this table; this is the same list stated once here so a
+        // change to SOURCES has to be deliberate.
+        let mut ids: Vec<&str> = SOURCES.iter().map(|spec| spec.id).collect();
+        ids.sort_unstable();
+        assert_eq!(
+            ids,
+            [
+                "antigravity-cli",
+                "claude-code",
+                "codex",
+                "copilot",
+                "crush",
+                "cursor",
+                "goose",
+                "kilo",
+                "opencode",
+                "roo",
+                "zed",
+            ]
         );
     }
 
