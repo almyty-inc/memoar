@@ -19,8 +19,8 @@ const SEED: SessionSeed = {
   visibility: { scope: "private", ownerId: "0191cafe-0000-7000-8000-000000000003" },
 };
 
-function parse(source: string, raw: Uint8Array) {
-  return new ParserRegistry().parse({ source, version: "v1", raw, seed: SEED });
+function parse(source: string, raw: Uint8Array, version = "v1") {
+  return new ParserRegistry().parse({ source, version, raw, seed: SEED });
 }
 
 /** Every one of these stores lives in SQLite, so a non-database upload is the
@@ -220,3 +220,62 @@ function buildDatabase(schema: string, rows: [string, unknown[]][]): Uint8Array 
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+describe("cursor", () => {
+  function cursorDatabase(rows: [string, unknown][]): Uint8Array {
+    return buildDatabase(
+      "CREATE TABLE cursorDiskKV (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);",
+      rows.map(([key, value]) => ["cursorDiskKV", [key, JSON.stringify(value)]] as [string, unknown[]]),
+    );
+  }
+
+  it("reads turns from the bubble rows the header index points at", () => {
+    // composerData holds the ordered index; the turns themselves are separate
+    // bubbleId rows. Reading composerData alone found the index and never the
+    // content, because the conversation is not stored there.
+    const raw = cursorDatabase([
+      ["composerData:c1", {
+        composerId: "c1",
+        name: "Titled",
+        createdAt: 1785661200000,
+        fullConversationHeadersOnly: [{ bubbleId: "b1", type: 1 }, { bubbleId: "b2", type: 2 }],
+      }],
+      ["bubbleId:c1:b1", { type: 1, text: "why?" }],
+      ["bubbleId:c1:b2", { type: 2, text: "because", allThinkingBlocks: [{ text: "weighing it" }], toolResults: [{ toolCallId: "call_1", result: "output" }] }],
+    ]);
+    const result = parse("cursor", raw, "v3");
+    expect(result.kind, result.kind === "unknown" ? result.diagnostic : "").toBe("parsed");
+    if (result.kind !== "parsed") return;
+    const session = result.sessions[0]!;
+    expect(session.title).toBe("Titled");
+    expect(session.source.nativeSessionId).toBe("c1");
+    expect(session.turns.map((turn) => turn.role)).toEqual(["user", "assistant"]);
+    expect(session.turns[1]!.blocks.map((block) => block.kind)).toEqual(["thinking", "text", "tool_result"]);
+    expect(session.turns[1]!.parentId).toBe("b1");
+    expect(session.turns[0]!.createdAt).toBe("2026-08-02T09:00:00.000Z");
+  });
+
+  it("keeps the conversation when a bubble the index names is missing", () => {
+    // Bubbles can be pruned independently of the index; losing one must not
+    // lose the turns around it.
+    const raw = cursorDatabase([
+      ["composerData:c1", { composerId: "c1", fullConversationHeadersOnly: [{ bubbleId: "b1", type: 1 }, { bubbleId: "gone", type: 2 }, { bubbleId: "b3", type: 1 }] }],
+      ["bubbleId:c1:b1", { type: 1, text: "first" }],
+      ["bubbleId:c1:b3", { type: 1, text: "third" }],
+    ]);
+    const result = parse("cursor", raw, "v3");
+    expect(result.kind).toBe("parsed");
+    if (result.kind !== "parsed") return;
+    const turns = result.sessions[0]!.turns;
+    expect(turns.map((turn) => turn.blocks[0]!.text)).toEqual(["first", "third"]);
+    expect(turns.map((turn) => turn.ordinal)).toEqual([0, 1]);
+    expect(turns[1]!.parentId).toBe("b1");
+  });
+
+  it("reports a database with no composer rows", () => {
+    const result = parse("cursor", cursorDatabase([["someOtherKey", { unrelated: true }]]), "v3");
+    expect(result.kind).toBe("unknown");
+    if (result.kind !== "unknown") return;
+    expect(result.diagnostic).toContain("no composerData rows");
+  });
+});
