@@ -41,6 +41,8 @@ export interface RequestOptions {
 export interface TestResponse {
   status: number;
   body: JsonBody;
+  /** Response headers, for assertions about caching, limits and the like. */
+  headers: Headers;
 }
 
 export interface TestApi {
@@ -58,6 +60,10 @@ export interface TestApi {
  * the global ValidationPipe, route prefixes, and status codes.
  */
 export async function startTestApi(env: Record<string, string> = {}): Promise<TestApi> {
+  // A suite makes far more requests from one address than a person would, so
+  // the budget is raised here; that the limit works is proven in rate-limit.test.
+  process.env.MEMOAR_RATE_LIMIT ??= "100000/60";
+  process.env.MEMOAR_CREDENTIAL_RATE_LIMIT ??= "100000/60";
   delete process.env.DATABASE_URL;
   delete process.env.REDIS_URL;
   delete process.env.S3_ENDPOINT;
@@ -89,7 +95,7 @@ export async function startTestApi(env: Record<string, string> = {}): Promise<Te
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     });
     const text = await response.text();
-    return { status: response.status, body: (text ? JSON.parse(text) : {}) as JsonBody };
+    return { status: response.status, body: (text ? JSON.parse(text) : {}) as JsonBody, headers: response.headers };
   };
 
   const login = await call("POST", "/auth/login", { body: { email: "demo@memoar.dev", password: "memoar-demo-password" }, token: null });

@@ -6,6 +6,7 @@ import { Public, Tenant } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
 import { CreateApiKeyDto, EmailLoginDto, IssueMachineTokenDto } from "./auth.dto.js";
+import { CREDENTIAL_LIMIT, Throttle } from "../rate-limit.js";
 
 @Controller("auth")
 export class AuthController {
@@ -14,6 +15,9 @@ export class AuthController {
   @Public()
   @Post("login")
   @HttpCode(200)
+  // Unauthenticated: the only thing between an attacker and every password
+  // they care to try is how often they are allowed to ask.
+  @Throttle(CREDENTIAL_LIMIT)
   login(@Body() body: EmailLoginDto): Promise<Record<string, unknown>> {
     return this.auth.login(body.email, body.password);
   }
@@ -29,6 +33,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(CREDENTIAL_LIMIT)
   @Get("oauth/:provider")
   @Redirect(undefined, 302)
   beginOAuth(@Param("provider") provider: string): { url: string } {
@@ -56,6 +61,7 @@ export class AuthController {
     return this.auth.createApiKey(context, body.name, body.scopes);
   }
 
+  @Throttle(CREDENTIAL_LIMIT)
   @Post("machine-token")
   issueMachineToken(@Tenant() context: TenantContext, @Body() body: IssueMachineTokenDto): Promise<{ token: string; expiresAt: string }> {
     return this.auth.issueMachineToken(context, body.machineId);
