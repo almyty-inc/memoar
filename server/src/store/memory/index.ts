@@ -45,6 +45,7 @@ export class DevArchiveStore implements ArchiveStore {
 
   listAnnotations(context: TenantContext, sessionId?: string): Promise<Annotation[]> { return this.annotationStore.listAnnotations(context, sessionId); }
   createAnnotation(context: TenantContext, input: { sessionId: string; turnId?: string; blockId?: string; kind: AnnotationKind; value: Record<string, unknown> }): Promise<Annotation> { return this.annotationStore.createAnnotation(context, input); }
+  replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[]): Promise<Annotation[]> { return this.annotationStore.replaceAnnotations(context, sessionId, kind, values); }
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> { return this.annotationStore.updateAnnotation(context, annotationId, value); }
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean> { return this.annotationStore.deleteAnnotation(context, annotationId); }
 

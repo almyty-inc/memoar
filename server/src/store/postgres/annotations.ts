@@ -1,4 +1,4 @@
-import type { Annotation } from "../../../libs/canonical/src/generated.js";
+import type { Annotation, AnnotationKind } from "../../../libs/canonical/src/generated.js";
 import { AnnotationEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { TenantContext } from "../context.js";
@@ -47,6 +47,32 @@ export class PostgresAnnotationStore implements AnnotationStore {
         value: input.value,
       }));
       return toAnnotation(row);
+    });
+  }
+
+  async replaceAnnotations(
+    context: TenantContext,
+    sessionId: string,
+    kind: AnnotationKind,
+    values: Record<string, unknown>[],
+  ): Promise<Annotation[]> {
+    return this.runner.inTenant(context, async (manager) => {
+      const repository = manager.getRepository(AnnotationEntity);
+      // One delete and one multi-row insert, whatever the count: the delete has
+      // to happen even when there is nothing to write, or a session that was
+      // cleaned up keeps the findings from the capture before it.
+      await repository.delete({ tenantId: context.tenantId, sessionId, kind });
+      if (values.length === 0) return [];
+      const rows = values.map((value) => repository.create({
+        id: uuidV7(),
+        tenantId: context.tenantId,
+        sessionId,
+        turnId: null,
+        blockId: null,
+        kind,
+        value,
+      }));
+      return (await repository.save(rows)).map(toAnnotation);
     });
   }
 

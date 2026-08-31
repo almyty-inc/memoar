@@ -1,5 +1,5 @@
 import type { DataSource } from "typeorm";
-import type { Annotation, Visibility } from "../../../libs/canonical/src/generated.js";
+import type { Annotation, AnnotationKind, Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { AnnotationStore, ArchiveStore } from "../interfaces.js";
 import type {
@@ -60,6 +60,7 @@ export class PostgresArchiveStore implements ArchiveStore {
 
   listAnnotations(context: TenantContext, sessionId?: string): Promise<Annotation[]> { return this.annotations.listAnnotations(context, sessionId); }
   createAnnotation(context: TenantContext, input: Parameters<AnnotationStore["createAnnotation"]>[1]): Promise<Annotation> { return this.annotations.createAnnotation(context, input); }
+  replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[]): Promise<Annotation[]> { return this.annotations.replaceAnnotations(context, sessionId, kind, values); }
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> { return this.annotations.updateAnnotation(context, annotationId, value); }
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean> { return this.annotations.deleteAnnotation(context, annotationId); }
 

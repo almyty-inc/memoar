@@ -1,8 +1,8 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD, Reflector } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR, Reflector } from "@nestjs/core";
 import { Redis } from "ioredis";
 import { AuthController, AuthGuard, AuthService, TokenService } from "./auth.js";
-import { MemoryRateLimitStore, RateLimitGuard, RedisRateLimitStore, type RateLimitStore } from "./rate-limit.js";
+import { CredentialFailureInterceptor, MemoryRateLimitStore, RateLimitGuard, RedisRateLimitStore, type RateLimitStore } from "./rate-limit.js";
 
 export const RATE_LIMIT_STORE = Symbol("RATE_LIMIT_STORE");
 
@@ -33,6 +33,11 @@ export const RATE_LIMIT_STORE = Symbol("RATE_LIMIT_STORE");
       inject: [Reflector, RATE_LIMIT_STORE],
     },
     { provide: APP_GUARD, useExisting: AuthGuard },
+    {
+      provide: APP_INTERCEPTOR,
+      useFactory: (reflector: Reflector, store: RateLimitStore) => new CredentialFailureInterceptor(reflector, store),
+      inject: [Reflector, RATE_LIMIT_STORE],
+    },
   ],
   exports: [TokenService, AuthService, AuthGuard],
 })

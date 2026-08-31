@@ -43,6 +43,31 @@ export class ClaudeCodeV1Parser implements VersionedParser {
         blocks,
       }, typeof message.model === "string" ? message.model : request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
     });
-    return { kind: "parsed", parser: "claude-code:v1:0.2.0", sessions: [{ ...request.seed, turns }] };
+    // A transcript names its own conversation, its working directory and its
+    // branch. Without the session id the archive identified a capture by the
+    // hash of the file, so the same conversation captured again after it grew
+    // looked like a different session — and then failed to save, because its
+    // turns already belonged to the first one. An ongoing session stopped being
+    // archived after its first capture.
+    const first = records[0]!;
+    const nativeSessionId = stringValue(first, "sessionId");
+    const cwd = stringValue(first, "cwd");
+    const branch = stringValue(first, "gitBranch");
+    return {
+      kind: "parsed",
+      parser: "claude-code:v1:0.2.0",
+      sessions: [{
+        ...request.seed,
+        ...(nativeSessionId ? { source: { ...request.seed.source, nativeSessionId } } : {}),
+        ...(cwd || branch ? {
+          workspace: {
+            ...request.seed.workspace,
+            ...(cwd ? { path: cwd } : {}),
+            ...(branch ? { branch } : {}),
+          },
+        } : {}),
+        turns,
+      }],
+    };
   }
 }

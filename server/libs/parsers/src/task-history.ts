@@ -1,16 +1,17 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
-import { derivedBlockId, epochToIso, incrementUuid, isRecord, parseBlock, stringValue } from "./common.js";
+import { arrayValue, derivedBlockId, epochToIso, incrementUuid, isRecord, parseBlock, stringValue } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
 /** Keys an exported task might carry its messages under. */
 const MESSAGE_KEYS = ["apiConversationHistory", "history", "messages", "conversation"];
 
 function messageArray(input: unknown): unknown[] | null {
-  if (Array.isArray(input)) return input;
+  const direct = arrayValue(input);
+  if (direct) return direct;
   if (!isRecord(input)) return null;
   for (const key of MESSAGE_KEYS) {
-    const value = input[key];
-    if (Array.isArray(value)) return value;
+    const value = arrayValue(input[key]);
+    if (value) return value;
   }
   return null;
 }

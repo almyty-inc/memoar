@@ -41,6 +41,21 @@ export interface AnnotationStore {
     context: TenantContext,
     input: { sessionId: string; turnId?: string; blockId?: string; kind: AnnotationKind; value: Record<string, unknown> },
   ): Promise<Annotation>;
+  /**
+   * Replaces every annotation of one kind on a session.
+   *
+   * Ingest writes one annotation per secret it finds, and writing them one at a
+   * time cost a round trip each: the price of storing a transcript scaled with
+   * how leaky it was rather than with how large it was, and a file that
+   * mentioned a credential on every line was the worst case for the database
+   * rather than merely for the reader.
+   */
+  replaceAnnotations(
+    context: TenantContext,
+    sessionId: string,
+    kind: AnnotationKind,
+    values: Record<string, unknown>[],
+  ): Promise<Annotation[]>;
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null>;
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean>;
 }

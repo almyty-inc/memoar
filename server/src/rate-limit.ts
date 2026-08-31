@@ -1,4 +1,5 @@
-import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable, SetMetadata } from "@nestjs/common";
+import { CallHandler, CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable, NestInterceptor, SetMetadata } from "@nestjs/common";
+import { Observable, catchError, throwError } from "rxjs";
 import { Reflector } from "@nestjs/core";
 import { Redis } from "ioredis";
 import type { Request, Response } from "express";
@@ -48,6 +49,8 @@ function budgetFor(name: BudgetName): RateLimit {
 /** Counts requests per caller per window, sharing the count across instances. */
 export interface RateLimitStore {
   hit(key: string, windowSeconds: number): Promise<number>;
+  /** Reads a count without spending from it. */
+  peek(key: string): Promise<number>;
 }
 
 /**
@@ -64,6 +67,11 @@ export class RedisRateLimitStore implements RateLimitStore {
     // cannot keep pushing the deadline out and hold the window open forever.
     if (count === 1) await this.redis.expire(key, windowSeconds);
     return count;
+  }
+
+  async peek(key: string): Promise<number> {
+    const value = await this.redis.get(key);
+    return value === null ? 0 : Number(value);
   }
 }
 
@@ -88,6 +96,24 @@ export class MemoryRateLimitStore implements RateLimitStore {
     existing.count += 1;
     return Promise.resolve(existing.count);
   }
+
+  peek(key: string): Promise<number> {
+    const window = this.windows.get(key);
+    return Promise.resolve(!window || window.expiresAt <= Date.now() ? 0 : window.count);
+  }
+}
+
+/**
+ * The account a credential request is aimed at, so guessing is counted per
+ * account rather than per address. Counting only by address locks out everyone
+ * behind a shared one the moment a single person mistypes a password.
+ */
+function credentialSubject(request: Request): string {
+  const body = (request as { body?: { email?: unknown; machineId?: unknown } }).body;
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : null;
+  if (email) return `email:${email}`;
+  const machineId = typeof body?.machineId === "string" ? body.machineId : null;
+  return machineId ? `machine:${machineId}` : "anonymous";
 }
 
 /**
@@ -107,6 +133,22 @@ function callerKey(request: Request): string {
   return `ip:${address}`;
 }
 
+/** Key under which failed credential attempts against one account are counted. */
+export function credentialFailureKey(request: Request): string {
+  const pattern = (request as { route?: { path?: string } }).route?.path ?? request.path;
+  return `${RATE_LIMIT_KEY}:failed:${pattern}:${credentialSubject(request)}:${callerKey(request)}`;
+}
+
+function tooMany(response: Response, windowSeconds: number): HttpException {
+  response.setHeader("Retry-After", windowSeconds);
+  return new HttpException({
+    type: "https://memoar.dev/problems/rate-limited",
+    title: "Too many requests",
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    detail: `Try again in ${windowSeconds} seconds.`,
+  }, HttpStatus.TOO_MANY_REQUESTS);
+}
+
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(
@@ -118,29 +160,81 @@ export class RateLimitGuard implements CanActivate {
     if (context.getType() !== "http") return true;
     const http = context.switchToHttp();
     const request = http.getRequest<Request>();
-    const budget = budgetFor(this.reflector.getAllAndOverride<BudgetName>(RATE_LIMIT_KEY, [
+    const response = http.getResponse<Response>();
+    const name = this.reflector.getAllAndOverride<BudgetName>(RATE_LIMIT_KEY, [
       context.getHandler(),
       context.getClass(),
-    ]) ?? "default");
+    ]) ?? "default";
+    // Every route gets the ordinary budget, which is about the volume one
+    // caller may generate. The credential budget is a different question — how
+    // often somebody may be *wrong* about an account — and is checked below
+    // against failures rather than against requests, so signing in successfully
+    // as often as you like costs nothing.
+    const flood = budgetFor("default");
 
     // The route pattern, not the concrete path, so a per-session URL cannot be
     // used to mint a fresh budget for every request.
     const pattern = (request as { route?: { path?: string } }).route?.path ?? request.path;
     const route = `${request.method}:${pattern}`;
-    const key = `${RATE_LIMIT_KEY}:${route}:${callerKey(request)}`;
-    const count = await this.store.hit(key, budget.windowSeconds);
+    const count = await this.store.hit(`${RATE_LIMIT_KEY}:${route}:${callerKey(request)}`, flood.windowSeconds);
 
-    const response = http.getResponse<Response>();
-    response.setHeader("RateLimit-Limit", budget.limit);
-    response.setHeader("RateLimit-Remaining", Math.max(0, budget.limit - count));
-    if (count <= budget.limit) return true;
+    response.setHeader("RateLimit-Limit", flood.limit);
+    response.setHeader("RateLimit-Remaining", Math.max(0, flood.limit - count));
+    if (count > flood.limit) throw tooMany(response, flood.windowSeconds);
 
-    response.setHeader("Retry-After", budget.windowSeconds);
-    throw new HttpException({
-      type: "https://memoar.dev/problems/rate-limited",
-      title: "Too many requests",
-      status: HttpStatus.TOO_MANY_REQUESTS,
-      detail: `Try again in ${budget.windowSeconds} seconds.`,
-    }, HttpStatus.TOO_MANY_REQUESTS);
+    if (name !== "credential") return true;
+    const budget = budgetFor("credential");
+
+    // Guessing is measured in failures, not in requests. Counting every attempt
+    // locks out the person who signs in repeatedly for legitimate reasons while
+    // barely inconveniencing an attacker, who only needs one success anyway.
+    const failures = await this.store.peek(credentialFailureKey(request));
+    if (failures >= budget.limit) {
+      // Describe the budget that actually refused, not the flood budget.
+      response.setHeader("RateLimit-Limit", budget.limit);
+      response.setHeader("RateLimit-Remaining", 0);
+      throw tooMany(response, budget.windowSeconds);
+    }
+    return true;
+  }
+}
+
+/**
+ * Records a failed credential attempt.
+ *
+ * The guard refuses once too many attempts against one account have failed, so
+ * something has to notice the failures. A successful sign-in costs nothing,
+ * which is what keeps the limit from punishing the person who signs in often.
+ */
+/** The statuses that mean a credential was offered and refused. */
+const REJECTED_CREDENTIAL: readonly number[] = [HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN];
+
+@Injectable()
+export class CredentialFailureInterceptor implements NestInterceptor {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly store: RateLimitStore,
+  ) {}
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const name = this.reflector.getAllAndOverride<BudgetName>(RATE_LIMIT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (context.getType() !== "http" || name !== "credential") return next.handle();
+
+    const request = context.switchToHttp().getRequest<Request>();
+    const window = budgetFor("credential").windowSeconds;
+    return next.handle().pipe(
+      catchError((error: unknown) => {
+        const status = error instanceof HttpException ? error.getStatus() : 0;
+        // Only a rejected credential counts. A malformed body is the caller
+        // getting the shape wrong, not an attempt at somebody's account.
+        if (REJECTED_CREDENTIAL.includes(status)) {
+          void this.store.hit(credentialFailureKey(request), window);
+        }
+        return throwError(() => error);
+      }),
+    );
   }
 }

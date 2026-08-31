@@ -44,6 +44,22 @@ export class MemoryAnnotationStore implements AnnotationStore {
     return publicAnnotation(annotation);
   }
 
+  async replaceAnnotations(
+    context: TenantContext,
+    sessionId: string,
+    kind: AnnotationKind,
+    values: Record<string, unknown>[],
+  ): Promise<Annotation[]> {
+    for (const [entry, annotation] of this.tables.annotations) {
+      if (annotation.tenantId === context.tenantId && annotation.sessionId === sessionId && annotation.kind === kind) {
+        this.tables.annotations.delete(entry);
+      }
+    }
+    const created: Annotation[] = [];
+    for (const value of values) created.push(await this.createAnnotation(context, { sessionId, kind, value }));
+    return created;
+  }
+
   async updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> {
     const annotation = this.tables.annotations.get(key(context.tenantId, annotationId));
     if (!annotation) return null;

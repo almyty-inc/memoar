@@ -118,3 +118,13 @@ export function withModelAndTokens(turn: Turn, model: string | undefined, input:
     tokens: { input, output },
   };
 }
+
+/**
+ * Reads a value as an array of unknowns.
+ *
+ * `Array.isArray` narrows an unknown to `any[]`, and every element taken from
+ * it is then an `any` that no later check can catch.
+ */
+export function arrayValue(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? (value as unknown[]) : null;
+}

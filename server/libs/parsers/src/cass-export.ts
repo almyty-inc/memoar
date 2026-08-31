@@ -15,7 +15,6 @@ export class CassExportParser implements VersionedParser {
       }
       const sessions = input.sessions.map((entry, sessionIndex): Session => {
         if (!isRecord(entry) || !Array.isArray(entry.messages)) throw new Error(`cass session ${sessionIndex} has no messages array`);
-        const record = entry as Record<string, unknown>;
         const turns = entry.messages.map((message, ordinal): Turn => {
           if (!isRecord(message)) throw new Error(`cass session ${sessionIndex} message ${ordinal} is not an object`);
           return turnFromRow({
@@ -26,8 +25,8 @@ export class CassExportParser implements VersionedParser {
             blocks: message.parts,
           }, ordinal, request.seed);
         });
-        const nativeSessionId = stringValue(record, "id") ?? `${request.seed.source.nativeSessionId ?? "cass"}:${sessionIndex}`;
-        const title = stringValue(record, "title");
+        const nativeSessionId = stringValue(entry, "id") ?? `${request.seed.source.nativeSessionId ?? "cass"}:${sessionIndex}`;
+        const title = stringValue(entry, "title");
         return {
           ...request.seed,
           id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),

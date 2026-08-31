@@ -6,7 +6,7 @@ import { ParserRegistry, type SessionSeed } from "../../libs/parsers/src/index.j
 import type { EmbeddingProvider } from "../search.js";
 import type { AnnotationStore, ArtifactStore, RawArtifactRecord, SessionStore, TenantContext } from "../archive-store.js";
 import { Tenant } from "../auth.js";
-import { uuidV7 } from "../ids.js";
+import { uuidV5, uuidV7 } from "../ids.js";
 import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "../tokens.js";
 import { type JobQueue, type QueueJob } from "./queues.js";
 import type { ObjectStorage } from "./object-storage.js";
@@ -86,13 +86,44 @@ export interface PipelineSeedFactory {
   create(context: TenantContext, artifact: RawArtifactRecord, format: { source: string; version: string }): SessionSeed;
 }
 
+/**
+ * Identifies a capture when the transcript itself carries no session id.
+ *
+ * The agent watches a session file and uploads it again whenever it changes, so
+ * a conversation arrives many times as it grows. Identity used to be the hash
+ * of the file, which changes on every append: each capture of the same
+ * conversation looked like a new session, and for formats whose turns carry
+ * their own ids the save then failed outright, because those turns already
+ * belonged to the session captured before. Ongoing sessions stopped being
+ * archived after their first capture.
+ *
+ * Where the file sits is the stable fact. Antigravity, for one, keeps the
+ * conversation id in the directory name and nowhere in the file. The machine is
+ * part of the key so the same path on two machines stays two conversations.
+ *
+ * An upload has no machine and its name is whatever the user's file was called,
+ * so it keeps the hash: merging two unrelated files that happen to share a name
+ * is worse than storing an edited export twice.
+ */
+export function fallbackNativeSessionId(context: TenantContext, artifact: RawArtifactRecord): string {
+  return context.machineId && artifact.sourcePath
+    ? `path:${context.machineId}:${artifact.sourcePath}`
+    : `sha:${artifact.sha256.slice(0, 16)}`;
+}
+
 export class DefaultPipelineSeedFactory implements PipelineSeedFactory {
   create(context: TenantContext, artifact: RawArtifactRecord, format: { source: string; version: string }): SessionSeed {
     const now = artifact.capturedAt;
-    const sessionId = uuidV7();
+    const native = fallbackNativeSessionId(context, artifact);
+    // Derived from the identity rather than minted, so a parser that numbers its
+    // turns from the seed gives the same turn the same id on every capture.
+    const sessionId = uuidV5(`${context.tenantId}:${format.source}:${format.version}:${native}`);
     return {
       id: sessionId,
-      source: { vendor: format.source, tool: format.source, version: format.version, machineId: context.machineId ?? uuidV7(), nativeSessionId: artifact.sha256.slice(0, 16) },
+      // An upload was captured by nobody, and the contract requires a machine.
+      // One derived id per tenant at least keeps every import pointing at the
+      // same origin instead of inventing a machine per file.
+      source: { vendor: format.source, tool: format.source, version: format.version, machineId: context.machineId ?? uuidV5(`${context.tenantId}:uploads`), nativeSessionId: native },
       workspace: { path: artifact.sourcePath ?? "/memoar/imports" },
       createdAt: now,
       updatedAt: now,
@@ -134,21 +165,18 @@ export class IngestPipeline {
       const canonicalSessionId = await this.store.resolveSessionIdentity(context, {
         sourceTool: parsedSession.source.tool,
         sourceVersion: parsedSession.source.version,
-        nativeSessionId: parsedSession.source.nativeSessionId ?? `${artifact.sha256.slice(0, 16)}:${index}`,
+        nativeSessionId: parsedSession.source.nativeSessionId ?? `${fallbackNativeSessionId(context, artifact)}:${index}`,
       }, artifact.sessionIds[index] ?? parsedSession.id);
       const session = { ...parsedSession, id: canonicalSessionId, redactionStatus: findings.length ? "findings" as const : "clear" as const };
       await this.store.saveSession(context, session);
-      const priorAnnotations = await this.store.listAnnotations(context, session.id);
-      for (const annotation of priorAnnotations) {
-        if (annotation.kind === "redaction_mask") await this.store.deleteAnnotation(context, annotation.id);
-      }
-      for (const finding of findings) {
-        await this.store.createAnnotation(context, {
-          sessionId: session.id,
-          kind: "redaction_mask" satisfies AnnotationKind,
-          value: { kind: finding.kind, start: finding.start, end: finding.end, preview: finding.preview },
-        });
-      }
+      // Every finding at once. Written one by one, a transcript that leaked a
+      // credential on a hundred lines cost a hundred round trips to store.
+      await this.store.replaceAnnotations(
+        context,
+        session.id,
+        "redaction_mask" satisfies AnnotationKind,
+        findings.map((finding) => ({ kind: finding.kind, start: finding.start, end: finding.end, preview: finding.preview })),
+      );
       if (this.embeddings) {
         try {
           const document = [session.title, session.summary ?? "", ...session.turns.flatMap((turn) => turn.blocks.map((block) => block.text ?? ""))].join("\n");

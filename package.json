@@ -17,7 +17,7 @@
     "contracts:check": "node contracts/scripts/check.mjs",
     "build": "npm run contracts:check && npm run build --workspace @memoar/server && npm run build --workspace @memoar/web",
     "test": "npm run contracts:check && npm test --workspace @memoar/server && npm test --workspace @memoar/web",
-    "lint": "eslint server/src server/test web/src web/e2e scripts --max-warnings=0",
+    "lint": "eslint server/src server/test server/libs web/src web/e2e scripts --max-warnings=0",
     "dev": "npm run dev --workspace @memoar/server",
     "format:check": "npm run format:check --if-present --workspaces"
   },

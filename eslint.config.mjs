@@ -3,12 +3,12 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-const typedFiles = ['server/src/**/*.ts', 'server/test/**/*.ts', 'web/src/**/*.{ts,tsx}'];
+const typedFiles = ['server/src/**/*.ts', 'server/test/**/*.ts', 'server/libs/**/*.ts', 'web/src/**/*.{ts,tsx}'];
 const testFiles = ['web/e2e/**/*.ts', 'web/*.ts'];
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/playwright-report/**', 'server/libs/canonical/src/generated.ts'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/playwright-report/**', 'server/libs/canonical/src/*.generated.ts', 'server/libs/canonical/src/generated.ts'],
   },
   {
     files: ['scripts/**/*.mjs'],
