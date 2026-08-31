@@ -40,6 +40,9 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "antigravity-cli"
+  },
   "turns": [
     {
       "id": "0191cafe-0000-7000-8000-000000000047",
@@ -49,7 +52,7 @@
       "createdAt": "2026-08-08T09:00:00.000Z",
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-000000000049",
+          "id": "0191cafe-0000-7000-8000-000010000047",
           "kind": "text",
           "text": "Find the cause of the failing archive test."
         }
@@ -61,35 +64,37 @@
       "parentId": "0191cafe-0000-7000-8000-000000000047",
       "role": "assistant",
       "createdAt": "2026-08-08T09:00:00.000Z",
-      "model": "gemini-pro",
-      "tokens": {
-        "input": 41,
-        "output": 62
-      },
       "blocks": [
         {
-          "id": "0191cafe-0000-7000-8000-00000000004a",
+          "id": "0191cafe-0000-7000-8000-000010000048",
           "kind": "thinking",
           "text": "I will inspect the parser boundary and the fixture."
         },
         {
-          "id": "0191cafe-0000-7000-8000-00000000004b",
+          "id": "0191cafe-0000-7000-8000-000010000049",
           "kind": "tool_call",
           "name": "read_file",
-          "callId": "fixture-call-7",
+          "callId": "0191cafe-0000-7000-8000-00001000004a",
           "data": {
             "path": "src/archive.ts"
           }
         },
         {
-          "id": "0191cafe-0000-7000-8000-00000000004c",
+          "id": "0191cafe-0000-7000-8000-00001000004b",
+          "kind": "tool_result",
+          "text": "Created At: 2026-08-08T09:00:00.000Z\nparentId: nativeParentId"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00001000004c",
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
-      ]
+      ],
+      "model": "gemini-pro",
+      "tokens": {
+        "input": 41,
+        "output": 62
+      }
     }
-  ],
-  "ext": {
-    "fixtureSource": "antigravity-cli"
-  }
+  ]
 }

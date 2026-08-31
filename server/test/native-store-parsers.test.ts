@@ -25,7 +25,7 @@ function parse(source: string, raw: Uint8Array, version = "v1") {
 
 /** Every one of these stores lives in SQLite, so a non-database upload is the
  * first thing a user can get wrong. */
-describe.each(["opencode", "copilot", "zed", "warp", "windsurf"])("%s", (source) => {
+describe.each(["opencode", "copilot", "zed"])("%s", (source) => {
   it("refuses bytes that are not a database, keeping them for later", () => {
     const raw = Buffer.from("this is plainly not SQLite");
     const result = parse(source, raw);
@@ -153,49 +153,6 @@ describe("copilot", () => {
     // With no summary or cwd recorded, the seed's values stand.
     expect(session.title).toBe("seeded");
     expect(session.workspace.path).toBe("/workspace/seeded");
-  });
-});
-
-describe("pi-agent", () => {
-  function log(lines: unknown[]): Uint8Array {
-    return Buffer.from(lines.map((line) => JSON.stringify(line)).join("\n"));
-  }
-
-  it("ignores event types it does not recognise", () => {
-    const result = new ParserRegistry().parse({
-      source: "pi-agent",
-      version: "v1",
-      seed: SEED,
-      raw: log([
-        { type: "event", event: "session_start", sessionId: "pi-1", title: "Titled" },
-        { type: "event", event: "telemetry_flush", at: "2026-08-01T00:00:00.000Z" },
-        { type: "event", event: "message", id: "m1", role: "user", at: "2026-08-01T00:00:00.000Z", payload: { parts: [{ id: "b1", kind: "text", text: "hello" }] } },
-      ]),
-    });
-    expect(result.kind, result.kind === "unknown" ? result.diagnostic : "").toBe("parsed");
-    if (result.kind !== "parsed") return;
-    expect(result.sessions[0]!.turns).toHaveLength(1);
-    expect(result.sessions[0]!.title).toBe("Titled");
-    expect(result.sessions[0]!.source.nativeSessionId).toBe("pi-1");
-  });
-
-  it("reports a log with no message events", () => {
-    const result = new ParserRegistry().parse({
-      source: "pi-agent",
-      version: "v1",
-      seed: SEED,
-      raw: log([{ type: "event", event: "session_start", sessionId: "pi-1" }]),
-    });
-    expect(result.kind).toBe("unknown");
-    if (result.kind !== "unknown") return;
-    expect(result.diagnostic).toContain("no message events");
-  });
-
-  it("refuses bytes that are not JSON lines", () => {
-    const result = new ParserRegistry().parse({ source: "pi-agent", version: "v1", seed: SEED, raw: Buffer.from("{not json") });
-    expect(result.kind).toBe("unknown");
-    if (result.kind !== "unknown") return;
-    expect(result.diagnostic).toContain("JSON lines");
   });
 });
 

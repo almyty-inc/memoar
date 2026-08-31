@@ -30,7 +30,7 @@
       "version": "rollout-v1",
       "fixture": "session-1",
       "input": "contracts/fixtures/codex/rollout-v1/session-1/input/session.jsonl",
-      "inputSha256": "f4759a8d452878785f88fe12e294e58f8a7587ae3b9ec94e42d686726f3f5e98",
+      "inputSha256": "95bdbe2b201c7bfbb7d6eb11dd203adaaf438f6ff26005905b7fb3624bdef75e",
       "expected": "contracts/fixtures/codex/rollout-v1/session-1/expected.canonical.json"
     },
     {
@@ -53,24 +53,24 @@
       "source": "antigravity-cli",
       "version": "v1",
       "fixture": "session-1",
-      "input": "contracts/fixtures/antigravity-cli/v1/session-1/input/native.sqlite3",
-      "inputSha256": "3678733862e36dc2d721f808a03b4bb9d9f8f19060a9d777b13002e7c3ef49c1",
+      "input": "contracts/fixtures/antigravity-cli/v1/session-1/input/transcript.jsonl",
+      "inputSha256": "95dab193911849a92e63a6be3f48ad7375387a6921837df5127bf566cabbd304",
       "expected": "contracts/fixtures/antigravity-cli/v1/session-1/expected.canonical.json"
     },
     {
       "source": "antigravity-cli",
       "version": "v1",
       "fixture": "session-2",
-      "input": "contracts/fixtures/antigravity-cli/v1/session-2/input/native.sqlite3",
-      "inputSha256": "6b92fa11d96a2b1eb36e764d910d7a85b65b21b6ae41061ad37aa33133d95649",
+      "input": "contracts/fixtures/antigravity-cli/v1/session-2/input/transcript.jsonl",
+      "inputSha256": "e1afe5084b558b555ac850b1d32a09fef75043f42ba38fe50cb0d5b5cc426ecc",
       "expected": "contracts/fixtures/antigravity-cli/v1/session-2/expected.canonical.json"
     },
     {
       "source": "antigravity-cli",
       "version": "v1",
       "fixture": "session-3",
-      "input": "contracts/fixtures/antigravity-cli/v1/session-3/input/native.sqlite3",
-      "inputSha256": "50b2c859e2fbc22b22593e5183e58673232495833c36a25636f214e33478d5c9",
+      "input": "contracts/fixtures/antigravity-cli/v1/session-3/input/transcript.jsonl",
+      "inputSha256": "21a20c639d9ee82c108b4de7d41f7389fb159d32dec7ee3f5b60f22fa3f002f9",
       "expected": "contracts/fixtures/antigravity-cli/v1/session-3/expected.canonical.json"
     },
     {
@@ -78,7 +78,7 @@
       "version": "v3",
       "fixture": "session-1",
       "input": "contracts/fixtures/cursor/v3/session-1/input/native.sqlite3",
-      "inputSha256": "0f852b96c2c013d67795a2b32ff835487bb9ec4d9d81cdc1a9aed5af451f9860",
+      "inputSha256": "547d726d85f8495c32b724dfa7d882292944d3f9b8deab8b397bd0ca5575e402",
       "expected": "contracts/fixtures/cursor/v3/session-1/expected.canonical.json"
     },
     {
@@ -101,16 +101,16 @@
       "source": "opencode",
       "version": "v1",
       "fixture": "session-1",
-      "input": "contracts/fixtures/opencode/v1/session-1/input/session.json",
-      "inputSha256": "761c59c0462b9282f33ded1480c8acce9eafd5fc89515e3134354ca091c01779",
+      "input": "contracts/fixtures/opencode/v1/session-1/input/native.sqlite3",
+      "inputSha256": "7abb42fa2744a2f2f5e8276a4ea0f3fb465d8cb09bfb0a4865c47941de0b12c0",
       "expected": "contracts/fixtures/opencode/v1/session-1/expected.canonical.json"
     },
     {
       "source": "copilot",
       "version": "v1",
       "fixture": "session-1",
-      "input": "contracts/fixtures/copilot/v1/session-1/input/session.json",
-      "inputSha256": "f43d667e3e3ffc60ed8cbf5a3fe2214c3978a1b370062654ddab4336a8c90c89",
+      "input": "contracts/fixtures/copilot/v1/session-1/input/native.sqlite3",
+      "inputSha256": "d86788de106c0b08c1546147b056865a14923dc1e4d4dd3bf9dd3f5c678c0fb6",
       "expected": "contracts/fixtures/copilot/v1/session-1/expected.canonical.json"
     },
     {
@@ -118,7 +118,7 @@
       "version": "v1",
       "fixture": "session-1",
       "input": "contracts/fixtures/goose/v1/session-1/input/native.sqlite3",
-      "inputSha256": "e482f1ae05a0db17deebe187897daa1fa2c1493b5bb2a26455baa7efe8eca7df",
+      "inputSha256": "7d113412969387a3ce34ef663b08d0cf355d88d7b466cc218f179e06f1eb3eed",
       "expected": "contracts/fixtures/goose/v1/session-1/expected.canonical.json"
     },
     {
@@ -126,7 +126,7 @@
       "version": "v1",
       "fixture": "session-1",
       "input": "contracts/fixtures/crush/v1/session-1/input/native.sqlite3",
-      "inputSha256": "191397e0b5d4b19b7e6187db1a10bedd83ef916269e18203c63a7ffe5ceaa28b",
+      "inputSha256": "23ab6d4a47ab7b73c4e0deb6dc86b4ca183b6b433708eabc5c413be684df5cd1",
       "expected": "contracts/fixtures/crush/v1/session-1/expected.canonical.json"
     },
     {
@@ -142,7 +142,7 @@
       "version": "v1",
       "fixture": "session-1",
       "input": "contracts/fixtures/roo/v1/session-1/input/task.json",
-      "inputSha256": "6aba48052943c5807a4046619ac0edd20ee18569adde9536c94812533b9f56da",
+      "inputSha256": "19baa9b84079d05d44b57e42f9df07bbfa3fb6d29ababa32b37064da64b09afd",
       "expected": "contracts/fixtures/roo/v1/session-1/expected.canonical.json"
     },
     {
@@ -150,16 +150,8 @@
       "version": "v1",
       "fixture": "session-1",
       "input": "contracts/fixtures/kilo/v1/session-1/input/task.json",
-      "inputSha256": "65d18a8e71c6e7ceb990492f6eeaf5494acfbea5c1f7fc918f90121df87ee8f0",
+      "inputSha256": "3833d42b610dc1f79a4ec74b0d27c0d06e69dc6a488646bfa89f1c02c1c801a8",
       "expected": "contracts/fixtures/kilo/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "antigravity-ide",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/antigravity-ide/v1/session-1/input/native.sqlite3",
-      "inputSha256": "06e63e8e6b15a5b5d9e356a188e8321dcb160c5254a086430da349adf04a04bd",
-      "expected": "contracts/fixtures/antigravity-ide/v1/session-1/expected.canonical.json"
     },
     {
       "source": "openhands",
@@ -214,80 +206,16 @@
       "version": "v1",
       "fixture": "session-1",
       "input": "contracts/fixtures/zed/v1/session-1/input/native.sqlite3",
-      "inputSha256": "65cdcc4953d96a6de0ec97764ba5b38aac5df813d16ed457f8ea56930d43ec1d",
+      "inputSha256": "34002007ba25178287c81759c5ad1cafde062aec64a38bf0d9790345c9e738e4",
       "expected": "contracts/fixtures/zed/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "pi-agent",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/pi-agent/v1/session-1/input/session.jsonl",
-      "inputSha256": "88a40b7eded16a48392f764ec888aa944589a513f59b3e17c0ee47b12985ee13",
-      "expected": "contracts/fixtures/pi-agent/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "amp",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/amp/v1/session-1/input/thread.json",
-      "inputSha256": "24227a533f49bfb08e4af1412a62610a807d1557221927728d642276c9df31ca",
-      "expected": "contracts/fixtures/amp/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "warp",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/warp/v1/session-1/input/native.sqlite3",
-      "inputSha256": "230625207b1213f798cdc2c9bdfe4b9b60d7655ef2f44c641e162713623fdd23",
-      "expected": "contracts/fixtures/warp/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "windsurf",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/windsurf/v1/session-1/input/native.sqlite3",
-      "inputSha256": "3bc93531b81d58a69a6dc7771902aff5d279b3c8c5cff497f590d4b9ee872340",
-      "expected": "contracts/fixtures/windsurf/v1/session-1/expected.canonical.json"
     },
     {
       "source": "chatgpt-export",
       "version": "2026-08",
       "fixture": "session-1",
       "input": "contracts/fixtures/chatgpt-export/2026-08/session-1/input/export.zip",
-      "inputSha256": "6673509fd9449dc1661ca613b113a8887126d3cfdc22890f26b4441410159e79",
+      "inputSha256": "798c5a1d037be8d0c2b2ffcf982f79a0d03325ac60d433ff57a09c55eb50afc6",
       "expected": "contracts/fixtures/chatgpt-export/2026-08/session-1/expected.canonical.json"
-    },
-    {
-      "source": "claude-ai-export",
-      "version": "2026-08",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/claude-ai-export/2026-08/session-1/input/export.zip",
-      "inputSha256": "00e9c387d6c9118e063061e0c546280d836ec1803bed3263d7fc707bdaf0d48d",
-      "expected": "contracts/fixtures/claude-ai-export/2026-08/session-1/expected.canonical.json"
-    },
-    {
-      "source": "gemini-export",
-      "version": "2026-08",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/gemini-export/2026-08/session-1/input/export.zip",
-      "inputSha256": "fdef275557b4770eee9191e2fa5eec50fa31de2a2b9e9f88320d2774b666af92",
-      "expected": "contracts/fixtures/gemini-export/2026-08/session-1/expected.canonical.json"
-    },
-    {
-      "source": "mistral-export",
-      "version": "2026-08",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/mistral-export/2026-08/session-1/input/export.zip",
-      "inputSha256": "28ff5159c381a4fa88ba1bbdda561d288945d96c2023248f5610dd9d974b5bcc",
-      "expected": "contracts/fixtures/mistral-export/2026-08/session-1/expected.canonical.json"
-    },
-    {
-      "source": "perplexity-export",
-      "version": "2026-08",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/perplexity-export/2026-08/session-1/input/export.zip",
-      "inputSha256": "1172f0300d7376c6a5bc6d4f8abc5f61e3881d9890d7d2ebd395015001fa0053",
-      "expected": "contracts/fixtures/perplexity-export/2026-08/session-1/expected.canonical.json"
     },
     {
       "source": "cass-export",

@@ -1,10 +1,8 @@
-import { AmpV1Parser, WarpV1Parser, WindsurfV1Parser } from "./agent-conversations.js";
 import { TaskHistoryParser } from "./task-history.js";
-import { AntigravityCliV1Parser, AntigravityIdeV1Parser } from "./antigravity-cli.js";
+import { AntigravityCliV1Parser } from "./antigravity-cli.js";
 import { CanonicalBundleParser } from "./canonical-bundle.js";
 import { CassExportParser } from "./cass-export.js";
 import { ChatgptExportParser } from "./chatgpt-export.js";
-import { ConsumerExportParser } from "./consumer-export.js";
 import { ClaudeCodeV1Parser } from "./claude-code.js";
 import { CodexRolloutV1Parser } from "./codex.js";
 import { CopilotV1Parser } from "./copilot.js";
@@ -12,7 +10,6 @@ import { CrushV1Parser } from "./crush.js";
 import { CursorV3Parser } from "./cursor.js";
 import { GooseV1Parser } from "./goose.js";
 import { OpencodeV1Parser } from "./opencode.js";
-import { PiAgentV1Parser } from "./pi-agent.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { ZedV1Parser } from "./zed.js";
 
@@ -24,7 +21,6 @@ export class ParserRegistry {
     new ClaudeCodeV1Parser(),
     new CodexRolloutV1Parser(),
     new AntigravityCliV1Parser(),
-    new AntigravityIdeV1Parser(),
     new CursorV3Parser(),
     new GooseV1Parser(),
     new CrushV1Parser(),
@@ -32,15 +28,6 @@ export class ParserRegistry {
     new CanonicalBundleParser(),
     new CassExportParser(),
     new ChatgptExportParser(),
-    // One implementation, four source names: the contract gives these formats
-    // an identical envelope, so a parser each would be four copies of the same
-    // file diverging over time.
-    ...["claude-ai-export", "gemini-export", "mistral-export", "perplexity-export"]
-      .map((source) => new ConsumerExportParser(source)),
-    new WarpV1Parser(),
-    new WindsurfV1Parser(),
-    new AmpV1Parser(),
-    new PiAgentV1Parser(),
     new OpencodeV1Parser(),
     new CopilotV1Parser(),
     // Kilo and Roo share the task format they both inherited.

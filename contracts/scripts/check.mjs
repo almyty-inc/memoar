@@ -29,8 +29,21 @@ for (const source of tierOne) {
   const count = manifest.fixtures.filter((fixture) => fixture.source === source).length;
   if (count < 3) failures.push(`fixture coverage: ${source} has ${count}, expected at least 3`);
 }
-if (fixturePaths.length < 38) failures.push(`fixture coverage: ${fixturePaths.length}, expected at least 38`);
-for (const source of ["chatgpt-export", "claude-ai-export", "gemini-export", "mistral-export", "perplexity-export"]) {
+// Every fixture on disk must be declared, and every declaration must exist.
+// A fixed floor froze a historical count and had to be lowered whenever an
+// unsupportable format was removed, which is the opposite of what it should
+// guard: that the manifest and the tree agree.
+const declared = new Set(manifest.fixtures.map((fixture) => resolve(root, fixture.expected)));
+for (const path of fixturePaths) {
+  if (!declared.has(path)) failures.push(`fixture is not in the manifest: ${path}`);
+}
+for (const fixture of manifest.fixtures) {
+  if (!fixturePaths.includes(resolve(root, fixture.expected))) {
+    failures.push(`manifest names a fixture that does not exist: ${fixture.expected}`);
+  }
+}
+// A consumer export arrives as the ZIP the vendor hands you.
+for (const source of ["chatgpt-export"]) {
   const fixture = manifest.fixtures.find((item) => item.source === source);
   if (!fixture?.input.endsWith(".zip")) failures.push(`consumer export fixture must be a ZIP: ${source}`);
 }

@@ -3,15 +3,14 @@ import { unzipSync } from "fflate";
 import { SECRET_PATTERNS } from "../redaction.js";
 
 
+/** Native stores whose schema was confirmed against the tool itself. */
 const SQLITE_SOURCE_VERSIONS: Readonly<Record<string, string>> = {
   cursor: "v3",
   goose: "v1",
   crush: "v1",
   zed: "v1",
-  "antigravity-cli": "v1",
-  "antigravity-ide": "v1",
-  warp: "v1",
-  windsurf: "v1",
+  opencode: "v1",
+  copilot: "v1",
 };
 
 const SOURCE_ALIASES: Readonly<Record<string, { source: string; version: string }>> = {
@@ -20,10 +19,6 @@ const SOURCE_ALIASES: Readonly<Record<string, { source: string; version: string 
   cass: { source: "cass-export", version: "2026-08" },
   "cass-export": { source: "cass-export", version: "2026-08" },
   "chatgpt-export": { source: "chatgpt-export", version: "2026-08" },
-  "claude-ai-export": { source: "claude-ai-export", version: "2026-08" },
-  "gemini-export": { source: "gemini-export", version: "2026-08" },
-  "mistral-export": { source: "mistral-export", version: "2026-08" },
-  "perplexity-export": { source: "perplexity-export", version: "2026-08" },
 };
 
 export class FormatDetector {

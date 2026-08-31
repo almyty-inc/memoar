@@ -7,7 +7,7 @@ import { ParserRegistry, type SessionSeed } from "../libs/parsers/src/index.js";
 const cases = [
   ["claude-code", "v1", "session.jsonl"],
   ["codex", "rollout-v1", "session.jsonl"],
-  ["antigravity-cli", "v1", "native.sqlite3"],
+  ["antigravity-cli", "v1", "transcript.jsonl"],
   ["cursor", "v3", "native.sqlite3"],
   ["goose", "v1", "native.sqlite3"],
   ["crush", "v1", "native.sqlite3"],
@@ -16,20 +16,11 @@ const cases = [
   ["cass-export", "2026-08", "cass.json"],
   // These four carry an identical envelope and are genuine conformance pairs:
   // every id, block and title in the expected output derives from the input.
-  ["claude-ai-export", "2026-08", "export.zip"],
-  ["gemini-export", "2026-08", "export.zip"],
-  ["mistral-export", "2026-08", "export.zip"],
-  ["perplexity-export", "2026-08", "export.zip"],
   // These six store the same message shape in six different places: a SQLite
   // column, an editor's key/value store, a threads array, a task history, and
   // an append-only event log.
-  ["warp", "v1", "native.sqlite3"],
-  ["windsurf", "v1", "native.sqlite3"],
-  ["amp", "v1", "thread.json"],
   ["kilo", "v1", "task.json"],
   ["roo", "v1", "task.json"],
-  ["pi-agent", "v1", "session.jsonl"],
-  ["antigravity-ide", "v1", "native.sqlite3"],
   ["chatgpt-export", "2026-08", "export.zip"],
   // Written against the real schema, read off an opencode install on this
   // machine, and verified against that database before the fixture was built.
@@ -71,7 +62,7 @@ const VERIFIED_AGAINST_THE_TOOL: Readonly<Record<string, string>> = {
   roo: "api_conversation_history.json shape from RooCodeInc/Roo-Code",
   "canonical-bundle": "memoar's own export format",
   "cass-export": "memoar's own import format",
-  "chatgpt-export": "written against the mapping tree ChatGPT exports",
+  "chatgpt-export": "mapping tree and content_type confirmed against an open-source export parser",
 };
 
 /**
@@ -85,10 +76,14 @@ const VERIFIED_AGAINST_THE_TOOL: Readonly<Record<string, string>> = {
  * contract fixture describes, which is not what those vendors download —
  * they stay out of the Import UI for that reason.
  */
-const UNCONFIRMED_SHAPE = new Set([
-  "warp", "windsurf", "amp", "pi-agent", "antigravity-ide",
-  "claude-ai-export", "gemini-export", "mistral-export", "perplexity-export",
-]);
+/**
+ * Nothing. A format whose shape cannot be checked against the tool is not
+ * supported: its parser and fixture are removed rather than kept passing.
+ * warp and windsurf are closed source and were not installable here, amp keeps
+ * its threads on Sourcegraph's servers rather than on disk, and the consumer
+ * exports read a shape the vendors do not write.
+ */
+const UNCONFIRMED_SHAPE = new Set<string>([]);
 
 describe("fixture corpus coverage", () => {
   it("says of every parser whether its shape was ever checked against the tool", () => {

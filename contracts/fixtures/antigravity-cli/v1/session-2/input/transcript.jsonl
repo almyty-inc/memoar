@@ -1,0 +1,2 @@
+{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-08-09T09:00:00.000Z","content":"Find the cause of the failing archive test."}
+{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-08-09T09:00:00.000Z","thinking":"I will inspect the parser boundary and the fixture.","tool_calls":[{"name":"read_file","args":{"path":"src/archive.ts"}}],"content":"The parser dropped parent references. Preserve the native parent id during normalization."}

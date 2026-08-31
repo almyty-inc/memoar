@@ -148,7 +148,7 @@ export class MemoarApiError extends Error {
   }
 }
 
-export type ImportSource = 'canonical' | 'cass' | 'claude-code' | 'codex' | 'antigravity-cli' | 'cursor' | 'chatgpt-export' | 'claude-ai-export' | 'gemini-export' | 'mistral-export' | 'perplexity-export';
+export type ImportSource = 'canonical' | 'cass' | 'claude-code' | 'codex' | 'antigravity-cli' | 'cursor' | 'chatgpt-export';
 
 export type ImportStage = 'hashing' | 'uploading' | 'queued' | 'processing' | 'ready';
 
