@@ -66,6 +66,10 @@ export class MemorySessionStore implements SessionStore {
     return session ? copy(session) : null;
   }
 
+  sessionExists(context: TenantContext, sessionId: string): Promise<boolean> {
+    return Promise.resolve(this.tables.sessions.has(key(context.tenantId, sessionId)));
+  }
+
   async getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> {
     const found: ArchivedSession[] = [];
     for (const sessionId of sessionIds) {

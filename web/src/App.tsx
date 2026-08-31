@@ -212,6 +212,7 @@ export function App() {
         onBack={() => navigate('timeline')}
         onBuildPack={(query, budget, freshness) => memoarApi.buildPack(query, budget, freshness)}
         onConvert={(target) => memoarApi.requestConversion(detail.session.id, target)}
+        onConversionStatus={(jobId) => memoarApi.getConversion(jobId)}
         onDeleted={() => {
           setSelected(null);
           setDetail(null);

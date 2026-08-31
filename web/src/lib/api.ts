@@ -730,6 +730,11 @@ export class MemoarApiClient {
     });
   }
 
+  /** A conversion is queued, not performed, when the request returns. */
+  getConversion(jobId: string): Promise<ConversionJob> {
+    return this.request<ConversionJob>(`/convert/${jobId}`);
+  }
+
   async importArtifact(file: File, source: ImportSource, machineId: string, onProgress: (progress: ImportProgress) => void): Promise<SessionSummary> {
     const before = await this.request<ListResponse<WireSessionSummary>>('/sessions?limit=100');
     const existing = new Set(before.items.map((session) => session.id));

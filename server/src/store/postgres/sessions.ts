@@ -156,6 +156,12 @@ export class PostgresSessionStore implements SessionStore {
     return this.runner.inTenant(context, (manager) => this.getSessionWithManager(manager, context, sessionId));
   }
 
+  /** One indexed count, rather than hydrating every turn to answer yes or no. */
+  async sessionExists(context: TenantContext, sessionId: string): Promise<boolean> {
+    return this.runner.inTenant(context, async (manager) =>
+      await manager.getRepository(SessionEntity).countBy({ id: sessionId, tenantId: context.tenantId }) > 0);
+  }
+
   /**
    * Hydrates many sessions with three queries instead of three per session.
    * Search results used to be fetched one at a time, which put dozens of round

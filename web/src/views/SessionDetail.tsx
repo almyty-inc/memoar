@@ -49,13 +49,14 @@ import {
   formatRelative,
 } from '../components/ui';
 
-export function SessionDetailView({ detail, collections, machines, onBack, onBuildPack, onConvert, onDeleted, onArchiveChanged }: {
+export function SessionDetailView({ detail, collections, machines, onBack, onBuildPack, onConvert, onConversionStatus, onDeleted, onArchiveChanged }: {
   detail: SessionDetailData;
   collections: CollectionRecord[];
   machines: Machine[];
   onBack: () => void;
   onBuildPack: (query: string, budget: number, freshness: 'strict' | 'mixed') => Promise<PackResponse>;
   onConvert: (target: ConversionJob['target']) => Promise<ConversionJob>;
+  onConversionStatus: (jobId: string) => Promise<ConversionJob>;
   onDeleted: () => void;
   /** Something durable changed; the dashboard's copy is now stale. */
   onArchiveChanged: () => void;
@@ -173,6 +174,20 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
       setActionError(error instanceof Error ? error.message : 'Conversion request failed');
     }
   };
+
+  // The conversion happens in the worker, so the request returns a queued job
+  // rather than a finished one. Follow it until it settles: converting inside
+  // the request starved everything else the API had to answer.
+  useEffect(() => {
+    if (!conversion || (conversion.status !== 'queued' && conversion.status !== 'running')) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void onConversionStatus(conversion.id)
+        .then((next) => { if (!cancelled) setConversion(next); })
+        .catch((error: unknown) => { if (!cancelled) setActionError(error instanceof Error ? error.message : 'Conversion status failed'); });
+    }, 700);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [conversion, onConversionStatus]);
 
   const toolCalls = useMemo(() => detail.turns.flatMap((turn) => turn.blocks)
     .filter((block): block is Extract<ContentBlock, { kind: 'tool_call' }> => block.kind === 'tool_call').length, [detail.turns]);
@@ -363,7 +378,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
               </select>
             )}
           </label>
-          <div className="conversion-note"><Sparkles size={16} /><p><strong>{conversion ? `Conversion ${conversion.status}` : 'Conversion report'}</strong><br />{conversion?.resumeCommand ?? 'Queue the canonical session to receive an exact resume command and mapping report.'}</p></div>
+          <div className="conversion-note"><Sparkles size={16} /><p><strong>{conversion ? `Conversion ${conversion.status}` : 'Conversion report'}</strong><br />{conversion?.resumeCommand ?? (conversion ? 'Converting in the background — this stays open until the bundle is ready.' : 'Queue the canonical session to receive an exact resume command and mapping report.')}</p></div>
           {actionError ? <p role="alert">{actionError}</p> : null}
         </div>
         <footer className="modal-actions"><Button variant="ghost" onClick={() => setConvertOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => void queueConversion()}>Queue conversion <ArrowRight size={14} /></Button></footer>

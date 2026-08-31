@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ConversionService } from "../src/convert.js";
 import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
-import type { ObjectStorage } from "../src/ingest.js";
+import { InMemoryJobQueue, type ObjectStorage } from "../src/ingest.js";
 import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackService, SearchService } from "../src/search.js";
 
 class MemoryObjects implements ObjectStorage {
@@ -20,7 +20,9 @@ function servicesFor(store: DevArchiveStore, packs?: PackService): { service: Co
   const search = new SearchService(new DeterministicLexicalBackend(store), new DisabledSemanticSearchProvider());
   const packService = packs ?? new PackService(search, () => new Date("2026-08-21T00:00:00.000Z"));
   const objects = new MemoryObjects();
-  return { service: new ConversionService(store, objects, packService), objects, packs: packService };
+  // The in-memory queue has no worker behind it, so the service runs the
+  // conversion inline — the same path a developer without Redis gets.
+  return { service: new ConversionService(store, objects, packService, new InMemoryJobQueue()), objects, packs: packService };
 }
 
 function storedPrelude(objects: MemoryObjects): string {

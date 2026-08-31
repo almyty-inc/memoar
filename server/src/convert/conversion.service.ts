@@ -2,10 +2,10 @@ import { Body, Controller, Get, HttpCode, Inject, Injectable, NotFoundException,
 import { Redirect } from "@nestjs/common";
 import type { ArchivedSession, JobRecord, JobStore, MachineStore, SessionStore, TenantContext } from "../archive-store.js";
 import { Tenant } from "../auth.js";
-import type { ObjectStorage } from "../ingest.js";
+import { InMemoryJobQueue, type JobQueue, type ObjectStorage } from "../ingest.js";
 import { uuidV7 } from "../ids.js";
 import { PackService } from "../search.js";
-import { ARCHIVE_STORE, OBJECT_STORAGE } from "../tokens.js";
+import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "../tokens.js";
 import { ConversionEngine } from "./engine.js";
 import { MaterializeDto, RequestConversionDto } from "../convert.dto.js";
 import { serializeBundle } from "./serialize.js";
@@ -21,6 +21,7 @@ export class ConversionService {
     @Inject(ARCHIVE_STORE) private readonly store: SessionStore & JobStore & MachineStore,
     @Inject(OBJECT_STORAGE) private readonly objects: ObjectStorage,
     @Inject(PackService) private readonly packs: PackService,
+    @Inject(JOB_QUEUE) private readonly queue: JobQueue,
   ) {}
 
   /**
@@ -46,16 +47,48 @@ export class ConversionService {
     }
   }
 
+  /**
+   * Accepts a conversion and hands the work to the worker.
+   *
+   * Converting is processor work — rendering every turn, hashing and base64ing
+   * the files, serialising the bundle — and it used to run inside the request.
+   * Measured against the Compose stack on a 2000-turn session, one conversion
+   * took 53ms and twenty at once took 1256ms: they did not overlap at all,
+   * because it is all synchronous work on one thread. Everything else queued
+   * behind it, including /health, whose latency went from 28ms to 403ms — long
+   * enough for an orchestrator to decide a busy container is a dead one.
+   *
+   * The contract has said `queued` since the beginning; only the implementation
+   * disagreed.
+   */
   async request(context: TenantContext, input: { sessionId: string; target: string; fallback: "fail" | "injection" }): Promise<Record<string, unknown>> {
-    const session = await this.store.getSession(context, input.sessionId);
-    if (!session) throw new NotFoundException("Session not found");
+    // Existence, not the session: accepting the work must not cost a hydration
+    // of every turn and block the conversion is about to re-read anyway.
+    if (!await this.store.sessionExists(context, input.sessionId)) throw new NotFoundException("Session not found");
     const id = uuidV7();
     const createdAt = new Date().toISOString();
     const job: JobRecord = {
-      id, tenantId: context.tenantId, kind: "convert", status: "running", payload: input,
+      id, tenantId: context.tenantId, kind: "convert", status: "queued", payload: input,
       result: null, error: null, createdAt, updatedAt: createdAt,
     };
     await this.store.saveJob(context, job);
+    await this.queue.enqueue("convert", { tenantId: context.tenantId, userId: context.userId, jobId: id }, { jobId: `convert-${id}`, attempts: 3 });
+    // Without a distributed queue there is no worker to pick the job up, which
+    // is development and tests. Running it here keeps that deployment working;
+    // the code that runs is the same code the worker calls.
+    if (this.queue instanceof InMemoryJobQueue) return this.run(context, id);
+    return { id, sessionId: input.sessionId, target: input.target, status: "queued", createdAt };
+  }
+
+  /** Performs a queued conversion. Called by the worker, and inline in development. */
+  async run(context: TenantContext, jobId: string): Promise<Record<string, unknown>> {
+    const job = await this.store.getJob(context, jobId);
+    if (!job || job.kind !== "convert") throw new NotFoundException("Conversion not found");
+    const input = job.payload as { sessionId: string; target: string; fallback: "fail" | "injection" };
+    const session = await this.store.getSession(context, input.sessionId);
+    if (!session) throw new NotFoundException("Session not found");
+    const { id, createdAt } = job;
+    await this.store.saveJob(context, { ...job, status: "running", updatedAt: new Date().toISOString() });
     try {
       const archiveEvidence = !this.engine.supportsNatively(input.target) && input.fallback === "injection"
         ? await this.archiveEvidenceFor(context, session)

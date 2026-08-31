@@ -55,6 +55,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean> { return this.sessions.updateSessionVisibility(context, sessionId, visibility); }
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage> { return this.sessions.listSessions(context, filter); }
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> { return this.sessions.getSession(context, sessionId); }
+  sessionExists(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessions.sessionExists(context, sessionId); }
   getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> { return this.sessions.getSessions(context, sessionIds); }
   deleteSession(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessions.deleteSession(context, sessionId); }
 

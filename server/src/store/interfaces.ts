@@ -28,6 +28,14 @@ export interface SessionStore {
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage>;
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null>;
   /**
+   * Whether a session exists, without reading it.
+   *
+   * Accepting a conversion only has to know the session is there. Loading it to
+   * find out meant hydrating every turn and block of a long session — for a
+   * 2000-turn session, on every request, to answer a yes-or-no question.
+   */
+  sessionExists(context: TenantContext, sessionId: string): Promise<boolean>;
+  /**
    * Hydrates many sessions in one round trip set. Search results are hydrated
    * in bulk; doing it one session at a time is an N+1 inside every query.
    */

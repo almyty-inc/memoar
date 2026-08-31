@@ -62,6 +62,13 @@ for (const implementation of implementations) {
       expect(loaded!.turns[0]!.blocks[0]!.text).toBe(session.turns[0]!.blocks[0]!.text);
       expect(loaded!.turns[1]!.parentId).toBe(session.turns[1]!.parentId);
 
+      // The cheap existence check has to answer exactly what the read answers.
+      // A query that forgets the tenant filter turns "does this exist" into an
+      // oracle for another tenant's session ids.
+      expect(await store.sessionExists(alice, session.id)).toBe(true);
+      expect(await store.sessionExists(bob, session.id)).toBe(false);
+      expect(await store.sessionExists(alice, "0191cafe-0000-7000-8000-00000000dead")).toBe(false);
+
       expect(await store.getSession(bob, session.id)).toBeNull();
       expect((await store.listSessions(bob, { limit: 10 })).items).toHaveLength(0);
     });

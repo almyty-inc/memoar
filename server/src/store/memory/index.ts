@@ -40,6 +40,7 @@ export class DevArchiveStore implements ArchiveStore {
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean> { return this.sessionStore.updateSessionVisibility(context, sessionId, visibility); }
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage> { return this.sessionStore.listSessions(context, filter); }
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> { return this.sessionStore.getSession(context, sessionId); }
+  sessionExists(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessionStore.sessionExists(context, sessionId); }
   getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> { return this.sessionStore.getSessions(context, sessionIds); }
   deleteSession(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessionStore.deleteSession(context, sessionId); }
 

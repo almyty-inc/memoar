@@ -27,6 +27,11 @@ describe("tenant isolation", () => {
     await store.saveSession(alpha, session);
 
     expect(await store.getSession(beta, session.id)).toBeNull();
+    // The cheap existence check must answer the same question as the read it
+    // replaced. A query that skips the tenant filter turns "does this exist"
+    // into an oracle for another tenant's session ids.
+    expect(await store.sessionExists(alpha, session.id)).toBe(true);
+    expect(await store.sessionExists(beta, session.id)).toBe(false);
     expect((await store.listSessions(beta, { limit: 10 })).items).toEqual([]);
     await expect(store.createAnnotation(beta, { sessionId: session.id, kind: "note", value: { markdown: "leak" } }))
       .rejects.toThrow("session_not_found");

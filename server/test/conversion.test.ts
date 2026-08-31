@@ -92,7 +92,7 @@ describe("conversion writers", () => {
   });
 
   /** A long conversation: 4000 turns of 400 characters, the odd short one. */
-  function longSession(turns: number, charactersFor = (index: number) => (index % 7 === 0 ? 20 : 400)) {
+  function longSession(turns: number, charactersFor: (index: number) => number = (index) => (index % 7 === 0 ? 20 : 400)) {
     return {
       ...DEMO_SESSION,
       turns: Array.from({ length: turns }, (_, index) => ({
