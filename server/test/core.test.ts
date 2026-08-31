@@ -103,7 +103,10 @@ describe("distillation cost cap", () => {
       enabled: true,
       monthlyBudgetCents: 5,
       monthlySpentCents: 4,
-      budgetWindowStartedAt: "2026-08-01T00:00:00.000Z",
+      // Relative to now, not a fixed date: the spend resets once the window is
+      // 30 days old, so a hardcoded date turns this into a test that passes
+      // until exactly 30 days after it was written and then stops.
+      budgetWindowStartedAt: new Date().toISOString(),
     });
     let called = false;
     const provider: DistillationProvider = {

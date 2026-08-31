@@ -86,6 +86,26 @@ describe("Tier-1 parsers", () => {
     });
   }
 
+  it.each(cases)("gives %s@%s distinct ids for every turn and block", async (source, version, filename) => {
+    // Block ids used to be derived from the turn id, and native stores allocate
+    // message ids sequentially, so a block id landed on the next turn's id.
+    // Duplicates here would collide on insert and silently lose content.
+    const fixture = resolve(process.cwd(), "../contracts/fixtures", source, version, "session-1");
+    const [raw, expectedBytes] = await Promise.all([
+      readFile(resolve(fixture, "input", filename)),
+      readFile(resolve(fixture, "expected.canonical.json")),
+    ]);
+    const expected = JSON.parse(expectedBytes.toString("utf8")) as Session;
+    const seed = Object.fromEntries(Object.entries(expected).filter(([key]) => key !== "turns")) as SessionSeed;
+    const result = new ParserRegistry().parse({ source, version, raw, seed });
+    expect(result.kind).toBe("parsed");
+    if (result.kind !== "parsed") return;
+    for (const session of result.sessions) {
+      const ids = session.turns.flatMap((turn) => [turn.id, ...turn.blocks.map((block) => block.id)]);
+      expect(new Set(ids).size, `${source} minted a duplicate id`).toBe(ids.length);
+    }
+  });
+
   it("converts parser crashes into unknown results that preserve the bytes", () => {
     // A record whose uuid is not hexadecimal used to crash claude-code, because
     // block ids were derived by doing arithmetic on it. Block ids now come from

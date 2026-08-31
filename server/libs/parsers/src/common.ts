@@ -23,33 +23,37 @@ export function incrementUuid(uuid: string, amount: number): string {
   return `${incremented.slice(0, 8)}-${incremented.slice(8, 12)}-${incremented.slice(12, 16)}-${incremented.slice(16, 20)}-${incremented.slice(20)}`;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * Converts an epoch stamp to ISO 8601, accepting both seconds and milliseconds.
+ *
+ * Several stores keep an integer here and differ on the unit, and a value read
+ * in the wrong one lands in 1970 or in the far future rather than failing
+ * visibly. Anything past this threshold cannot be seconds within any plausible
+ * lifetime of a transcript.
+ */
+export function epochToIso(value: unknown, fallback: string): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallback;
+  const milliseconds = value > 100_000_000_000 ? value : value * 1000;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.valueOf()) ? fallback : date.toISOString();
+}
 
 /** Blocks per turn that a fallback id scheme can hold without colliding. */
 const FALLBACK_STRIDE = 4096;
 
-/**
- * Distance the fallback ids sit from the seed.
- *
- * Turn ids in a real export are UUIDs allocated near the session's own id, and
- * their block ids are derived by adding small numbers to them. A fallback that
- * also counted up from the seed landed on those same values — a session id of
- * …140 and a turn id of …141 both minted …142. This moves the fallback range
- * far enough away that the two schemes cannot meet.
- */
+/** Distance block ids sit from the session id, clear of any turn id. */
 const FALLBACK_BASE = 0x1000000;
 
 /**
  * Id for a block that carries none of its own.
  *
- * Derived from the turn id when that is a UUID, which is the normal case. When
- * it is not, arithmetic on it throws, and an export whose ids happen to be
- * short strings would lose the entire conversation to a parse error rather than
- * one generated identifier. Those fall back to the seed, spaced by ordinal so
- * two turns cannot mint the same block id.
+ * Always derived from the session id, never from the turn id. Native stores
+ * allocate message ids sequentially, so `turnId + 1` frequently *is* the next
+ * turn's id — a session whose turns were …144 and …145 minted a block …145.
+ * Blocks live in their own range, spaced by ordinal so two turns cannot mint
+ * the same id.
  */
-export function derivedBlockId(turnId: string, index: number, seedId: string, ordinal: number): string {
-  if (UUID.test(turnId)) return incrementUuid(turnId, index);
+export function derivedBlockId(_turnId: string, index: number, seedId: string, ordinal: number): string {
   return incrementUuid(seedId, FALLBACK_BASE + ordinal * FALLBACK_STRIDE + index);
 }
 
@@ -61,6 +65,10 @@ export function derivedBlockId(turnId: string, index: number, seedId: string, or
  */
 const KIND_ALIASES: Readonly<Record<string, ContentBlockKind>> = {
   tool_use: "tool_call",
+  toolRequest: "tool_call",
+  toolResponse: "tool_result",
+  tool_request: "tool_call",
+  tool_response: "tool_result",
   toolu: "tool_call",
   function_call: "tool_call",
   tool_output: "tool_result",

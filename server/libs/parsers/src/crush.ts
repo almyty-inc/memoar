@@ -1,5 +1,5 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
-import { incrementUuid } from "./common.js";
+import { epochToIso, incrementUuid } from "./common.js";
 import { parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
@@ -14,21 +14,31 @@ export class CrushV1Parser implements VersionedParser {
     }
     try {
       const sessions = withSqlite(request.raw, (database) => {
+        // Columns per crush's own initial migration: messages carry no parent
+        // and no ordinal, and times are Unix milliseconds rather than text.
+        // Selecting parent_id and ordering by ordinal failed on a real database
+        // before either row could be read.
         const sessionRows = database
-          .prepare("SELECT id, title FROM sessions ORDER BY id")
-          .all() as { id: string; title: string | null }[];
-        if (!sessionRows.length) throw new Error("crush v1 database has no sessions");
+          .prepare("SELECT id, title FROM sessions ORDER BY created_at, id")
+          .all() as unknown as { id: string; title: string | null }[];
+        if (!sessionRows.length) throw new Error("database has no sessions");
         const messagesFor = database
-          .prepare("SELECT id, parent_id, role, created_at, parts FROM messages WHERE session_id = ? ORDER BY ordinal");
+          .prepare("SELECT id, role, parts, model, created_at FROM messages WHERE session_id = ? ORDER BY created_at, id");
         return sessionRows.map((sessionRow, sessionIndex): Session => {
-          const rows = messagesFor.all(sessionRow.id) as { id: string; parent_id: string | null; role: string; created_at: string; parts: string | Uint8Array }[];
-          const turns = rows.map((row, ordinal): Turn => turnFromRow({
-            id: row.id,
-            parentId: row.parent_id,
-            role: row.role,
-            createdAt: row.created_at,
-            blocks: parseJsonColumn(row.parts, `messages.parts row ${ordinal}`),
-          }, ordinal, request.seed));
+          const rows = messagesFor.all(sessionRow.id) as unknown as { id: string; role: string; parts: string | Uint8Array; model: string | null; created_at: number }[];
+          let previousId: string | null = null;
+          const turns = rows.map((row, ordinal): Turn => {
+            const turn = turnFromRow({
+              id: row.id,
+              // Crush stores a flat conversation, so the order is the chain.
+              parentId: previousId,
+              role: row.role,
+              createdAt: epochToIso(row.created_at, request.seed.createdAt),
+              blocks: parseJsonColumn(row.parts, `messages.parts row ${ordinal}`),
+            }, ordinal, request.seed);
+            previousId = row.id;
+            return row.model ? { ...turn, model: row.model } : turn;
+          });
           return {
             ...request.seed,
             id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
