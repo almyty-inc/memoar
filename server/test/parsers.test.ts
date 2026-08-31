@@ -16,9 +16,8 @@ const cases = [
   ["cass-export", "2026-08", "cass.json"],
   // These four carry an identical envelope and are genuine conformance pairs:
   // every id, block and title in the expected output derives from the input.
-  // These six store the same message shape in six different places: a SQLite
-  // column, an editor's key/value store, a threads array, a task history, and
-  // an append-only event log.
+  // Roo and Kilo share the task format they both inherited: an Anthropic
+  // message array written to api_conversation_history.json.
   ["kilo", "v1", "task.json"],
   ["roo", "v1", "task.json"],
   ["chatgpt-export", "2026-08", "export.zip"],
@@ -31,11 +30,12 @@ const cases = [
   ["copilot", "v1", "native.sqlite3"],
 ] as const;
 
-const FIXTURE_IS_SCAFFOLDING = new Set([
-  "aider", "cline", "continue", "droid", "kimi", "openhands", "qwen",
-]);
-
-/** Every fixture format now has a parser, scaffolding aside. */
+/**
+ * Nothing, deliberately. A fixture without a parser described a tool memoar
+ * cannot read, and a fixture whose shape came from the same guess as the parser
+ * proved nothing. Both kinds are deleted rather than excused, so every fixture
+ * in the corpus is a supported format whose shape was checked against the tool.
+ */
 const UNIMPLEMENTED = new Set<string>([]);
 
 /**
@@ -107,13 +107,12 @@ describe("fixture corpus coverage", () => {
       .map((entry) => entry.name);
     const covered = new Set<string>(cases.map(([source]) => source));
     const accounted = (format: string) =>
-      covered.has(format) || UNIMPLEMENTED.has(format)
-      || FIXTURE_IS_SCAFFOLDING.has(format);
+      covered.has(format) || UNIMPLEMENTED.has(format);
     const unaccounted = formats.filter((format) => !accounted(format));
     expect(unaccounted, "new fixture formats must be given a parser case or listed as unimplemented").toEqual([]);
     // Keeps the list honest in the other direction: once a parser lands, its
     // entry has to be removed here rather than lingering as a false gap.
-    const stale = [...UNIMPLEMENTED, ...FIXTURE_IS_SCAFFOLDING]
+    const stale = [...UNIMPLEMENTED]
       .filter((format) => covered.has(format) || !formats.includes(format));
     expect(stale, "these are covered or gone; drop them from the exception lists").toEqual([]);
   });

@@ -130,14 +130,6 @@
       "expected": "contracts/fixtures/crush/v1/session-1/expected.canonical.json"
     },
     {
-      "source": "cline",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/cline/v1/session-1/input/session.json",
-      "inputSha256": "e8f8fd0c5e7b157e62995529782e6e97257f1819be437895354554bd36c8dc4b",
-      "expected": "contracts/fixtures/cline/v1/session-1/expected.canonical.json"
-    },
-    {
       "source": "roo",
       "version": "v1",
       "fixture": "session-1",
@@ -152,54 +144,6 @@
       "input": "contracts/fixtures/kilo/v1/session-1/input/task.json",
       "inputSha256": "3833d42b610dc1f79a4ec74b0d27c0d06e69dc6a488646bfa89f1c02c1c801a8",
       "expected": "contracts/fixtures/kilo/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "openhands",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/openhands/v1/session-1/input/session.json",
-      "inputSha256": "47717fe2e8500cf507d08075de7d3430cd94f95debc6fa7b8c56fa95ade870a0",
-      "expected": "contracts/fixtures/openhands/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "droid",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/droid/v1/session-1/input/session.jsonl",
-      "inputSha256": "b67ffdc888f34a64a156dfd66e8a4bf0bb62680018fed93415218c1a7202d6a9",
-      "expected": "contracts/fixtures/droid/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "qwen",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/qwen/v1/session-1/input/session.jsonl",
-      "inputSha256": "eb5d71a743d0cb4da78828290bf248a48802107f8a8ec09bce579b559483de4a",
-      "expected": "contracts/fixtures/qwen/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "kimi",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/kimi/v1/session-1/input/session.jsonl",
-      "inputSha256": "93810f45f233dd438d622412ca67edcc8387e3d447631d5448da12a4d1b38022",
-      "expected": "contracts/fixtures/kimi/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "aider",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/aider/v1/session-1/input/session.json",
-      "inputSha256": "cc99f844171ee3323792a1de7a15ad8fa5a2ee897c4dac2ff3e7c859613ae8df",
-      "expected": "contracts/fixtures/aider/v1/session-1/expected.canonical.json"
-    },
-    {
-      "source": "continue",
-      "version": "v1",
-      "fixture": "session-1",
-      "input": "contracts/fixtures/continue/v1/session-1/input/session.json",
-      "inputSha256": "db5ef1cc6e3ab128619f321ef32e1a8a5746153cb25d29a378f3631e66e58079",
-      "expected": "contracts/fixtures/continue/v1/session-1/expected.canonical.json"
     },
     {
       "source": "zed",

@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { strToU8, zipSync } from "fflate";
 
@@ -19,26 +20,10 @@ const otherSources = [
   "copilot",
   "goose",
   "crush",
-  "cline",
   "roo",
   "kilo",
-  "antigravity-ide",
-  "openhands",
-  "droid",
-  "qwen",
-  "kimi",
-  "aider",
-  "continue",
   "zed",
-  "pi-agent",
-  "amp",
-  "warp",
-  "windsurf",
   "chatgpt-export",
-  "claude-ai-export",
-  "gemini-export",
-  "mistral-export",
-  "perplexity-export",
   "cass-export",
   "canonical-bundle"
 ];
@@ -55,19 +40,43 @@ for (const [position, fixture] of fixtures.entries()) {
   const directory = resolve(fixturesRoot, fixture.source, fixture.version, slug);
   const inputDirectory = resolve(directory, "input");
   await mkdir(inputDirectory, { recursive: true });
-  const canonical = makeCanonical(fixture, position + 1);
   const inputName = inputNameFor(fixture.source);
+  const inputPath = resolve(inputDirectory, inputName);
+  const expectedPath = resolve(directory, "expected.canonical.json");
+
+  // A fixture that exists is never regenerated.
+  //
+  // This script invents an input by working backwards from a canonical session,
+  // which is how the corpus came to describe shapes no tool writes: the
+  // generated input and the parser were derived from the same assumption, so
+  // every fixture passed while no parser could read a real file. The inputs
+  // here are now built from real schemas and real installs. Delete one
+  // deliberately if you mean to replace it.
+  if (existsSync(inputPath) && existsSync(expectedPath)) {
+    console.log(`kept: ${fixture.source}/${fixture.version}/${slug}`);
+    manifest.push({
+      source: fixture.source,
+      version: fixture.version,
+      fixture: slug,
+      input: relative(root, inputPath),
+      inputSha256: createHash("sha256").update(await readFile(inputPath)).digest("hex"),
+      expected: relative(root, expectedPath)
+    });
+    continue;
+  }
+
+  const canonical = makeCanonical(fixture, position + 1);
   const inputValue = nativeInput(fixture, canonical);
   const inputBytes = typeof inputValue === "string" ? Buffer.from(inputValue, "utf8") : Buffer.from(inputValue);
-  await writeFile(resolve(inputDirectory, inputName), inputBytes);
-  await writeFile(resolve(directory, "expected.canonical.json"), `${JSON.stringify(canonical, null, 2)}\n`);
+  await writeFile(inputPath, inputBytes);
+  await writeFile(expectedPath, `${JSON.stringify(canonical, null, 2)}\n`);
   manifest.push({
     source: fixture.source,
     version: fixture.version,
     fixture: slug,
-    input: `contracts/fixtures/${fixture.source}/${fixture.version}/${slug}/input/${inputName}`,
+    input: relative(root, inputPath),
     inputSha256: createHash("sha256").update(inputBytes).digest("hex"),
-    expected: `contracts/fixtures/${fixture.source}/${fixture.version}/${slug}/expected.canonical.json`
+    expected: relative(root, expectedPath)
   });
 }
 await writeFile(resolve(fixturesRoot, "manifest.json"), `${JSON.stringify({ version: contractVersion, fixtures: manifest }, null, 2)}\n`);
@@ -80,15 +89,16 @@ function versionFor(source) {
   return "v1";
 }
 
+/** The file each tool actually writes, matching the fixtures on disk. */
 function inputNameFor(source) {
-  if (["cursor", "goose", "crush", "zed", "antigravity-cli", "antigravity-ide", "warp", "windsurf"].includes(source)) return "native.sqlite3";
-  if (["claude-code", "codex", "droid", "qwen", "kimi", "pi-agent"].includes(source)) return "session.jsonl";
+  if (["cursor", "goose", "crush", "zed", "opencode", "copilot"].includes(source)) return "native.sqlite3";
+  if (["claude-code", "codex"].includes(source)) return "session.jsonl";
+  if (source === "antigravity-cli") return "transcript.jsonl";
   if (["roo", "kilo"].includes(source)) return "task.json";
-  if (source === "amp") return "thread.json";
   if (source === "cass-export") return "cass.json";
   if (source === "canonical-bundle") return "bundle.json";
   if (source.endsWith("export")) return "export.zip";
-  return "session.json";
+  throw new Error(`no input file name is defined for ${source}`);
 }
 
 function makeCanonical(fixture, index) {
@@ -161,7 +171,7 @@ function nativeInput(fixture, canonical) {
   const historyEntries = canonical.turns.map((turn) => ({
     id: turn.id, role: turn.role, at: turn.createdAt, parentId: turn.parentId, parts: turn.blocks
   }));
-  if (["cursor", "goose", "crush", "zed", "antigravity-cli", "antigravity-ide", "warp", "windsurf"].includes(fixture.source)) return sqliteInput(fixture.source, canonical);
+  if (["cursor", "goose", "crush", "zed", "opencode", "copilot"].includes(fixture.source)) return sqliteInput(fixture.source, canonical);
   if (fixture.source === "pi-agent") {
     return [
       { type: "event", event: "session_start", at: canonical.createdAt, sessionId: canonical.source.nativeSessionId, workspace: canonical.workspace.path },
