@@ -87,7 +87,80 @@ describe("conversion writers", () => {
     const tightMarkdown = Buffer.from(tight.files[0]!.bytes).toString("utf8");
     expect(tight.report.dropped.length).toBeGreaterThan(0);
     expect(tight.report.dropped[0]!.reason).toBe("injection_token_budget_exceeded");
-    expect(tightMarkdown).toContain("Omitted turns (budget exceeded):");
+    expect(tightMarkdown).toContain("Omitted turns");
     expect(tightMarkdown.length).toBeLessThan(Buffer.from(generous.files[0]!.bytes).byteLength + 1);
+  });
+
+  /** A long conversation: 4000 turns of 400 characters, the odd short one. */
+  function longSession(turns: number, charactersFor = (index: number) => (index % 7 === 0 ? 20 : 400)) {
+    return {
+      ...DEMO_SESSION,
+      turns: Array.from({ length: turns }, (_, index) => ({
+        id: `0191cafe-0000-7000-8000-${(0x2000 + index).toString(16).padStart(12, "0")}`,
+        ordinal: index,
+        parentId: null,
+        role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+        createdAt: DEMO_SESSION.createdAt,
+        blocks: [{ id: `0191cafe-0000-7000-8000-${(0x9000 + index).toString(16).padStart(12, "0")}`, kind: "text" as const, text: `${index} ${"x".repeat(charactersFor(index))}` }],
+      })),
+    };
+  }
+
+  /** The ordinals the prelude actually carries, in the order it carries them. */
+  function includedOrdinals(bundle: { files: { bytes: Uint8Array }[] }): number[] {
+    const markdown = Buffer.from(bundle.files[0]!.bytes).toString("utf8");
+    return [...markdown.matchAll(/turn (\d+)\]/gu)].map((match) => Number(match[1]));
+  }
+
+  it("gives a long session its recent end, not its opening", () => {
+    // Filling the budget from the start meant a four-thousand-turn session came
+    // out as turns 0 to 37: somebody resuming their work in another tool was
+    // handed the beginning of the conversation and nothing of what they had
+    // been doing. Resuming needs the task and the recent state, in that order.
+    const ordinals = includedOrdinals(new InjectionFallbackWriter().write(longSession(4000), "unknown-agent"));
+
+    expect(ordinals[0], "the first turn states the task").toBe(0);
+    expect(ordinals.at(-1), "and the excerpt runs to where the work stopped").toBe(3999);
+    expect(ordinals.length).toBeGreaterThan(10);
+  });
+
+  it("excerpts a run of turns rather than whichever ones happen to be short", () => {
+    // The budget loop used to keep scanning after the budget ran out, admitting
+    // any later turn small enough to squeeze in. That prefers the "ok"s and the
+    // "yes"es over the substantive turns and leaves the transcript full of
+    // holes. Turn 20 here is one big tool result, larger than the whole budget:
+    // reaching it must end the excerpt, not send it hunting further back.
+    const uneven = longSession(40, (index) => (index === 20 ? 20_000 : 200));
+    const ordinals = includedOrdinals(new InjectionFallbackWriter().write(uneven, "unknown-agent"));
+    const tail = ordinals.slice(1);
+
+    expect(tail.every((ordinal, index) => index === 0 || ordinal === tail[index - 1]! + 1), `not contiguous: ${tail.join(",")}`).toBe(true);
+    expect(tail, "the excerpt stops at the turn that does not fit").not.toContain(19);
+    expect(tail.at(-1)).toBe(39);
+  });
+
+  it("does not let the list of omissions outgrow the excerpt", () => {
+    // One dropped entry per omitted turn made the bundle grow with the session
+    // while its payload stayed capped: 4000 turns produced 452kB of which 91%
+    // was a list of what had been left out, and the prelude itself carried a
+    // wall of 3960 ordinals for a model to read.
+    const bundle = new InjectionFallbackWriter().write(longSession(4000), "unknown-agent");
+    const prelude = Buffer.from(bundle.files[0]!.bytes);
+
+    expect(bundle.report.dropped, "omissions are reported as ranges").toEqual([
+      { reference: "turns:1-3962", reason: "injection_token_budget_exceeded" },
+    ]);
+    expect(serializedBundleObject(bundle).files, "the payload is the bundle").toBeDefined();
+    expect(JSON.stringify(bundle.report).length, "the report stays a fraction of the excerpt").toBeLessThan(prelude.byteLength / 4);
+  });
+
+  it("carries something recent even when the last turn alone exceeds the budget", () => {
+    // Otherwise a session whose final turn is a large tool result degrades to a
+    // prelude that says only what the work was going to be.
+    const bundle = new InjectionFallbackWriter().write(longSession(3, (index) => (index === 2 ? 90_000 : 100)), "unknown-agent");
+    const markdown = Buffer.from(bundle.files[0]!.bytes).toString("utf8");
+
+    expect(markdown, "the tail is truncated, and says so").toContain("[Memoar truncated");
+    expect(bundle.report.degraded[0]!.reason).toContain("truncated to fit");
   });
 });
