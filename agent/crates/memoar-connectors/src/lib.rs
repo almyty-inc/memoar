@@ -1,5 +1,7 @@
 //! Parse-free discovery of native coding-agent session stores.
 
+pub mod memory;
+
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;

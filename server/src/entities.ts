@@ -6,10 +6,10 @@ export * from "./entities/machines.js";
 export * from "./entities/curation.js";
 export * from "./entities/sharing.js";
 export * from "./entities/operations.js";
-export { ContentBlockEntity, SessionEntity, TurnEntity } from "../libs/canonical/src/orm.generated.js";
-export type { ContentBlockRow, SessionRow, TurnRow } from "../libs/canonical/src/orm.generated.js";
+export { ContentBlockEntity, MemoryDocumentEntity, MemoryRevisionEntity, SessionEntity, TurnEntity } from "../libs/canonical/src/orm.generated.js";
+export type { ContentBlockRow, MemoryDocumentRow, MemoryRevisionRow, SessionRow, TurnRow } from "../libs/canonical/src/orm.generated.js";
 
-import { ContentBlockEntity, SessionEntity, TurnEntity } from "../libs/canonical/src/orm.generated.js";
+import { ContentBlockEntity, MemoryDocumentEntity, MemoryRevisionEntity, SessionEntity, TurnEntity } from "../libs/canonical/src/orm.generated.js";
 import { AnnotationEntity, CollectionEntity, CollectionSessionEntity } from "./entities/curation.js";
 import { ApiKeyEntity, AuthIdentityEntity, AuthSessionEntity, BillingAccountEntity, BillingSubscriptionEntity, OrganizationEntity, TeamEntity, TeamMemberEntity, UserEntity } from "./entities/identity.js";
 import { MachineCommandEntity, MachineEntity, MachineTokenEntity } from "./entities/machines.js";
@@ -28,6 +28,8 @@ export const ENTITIES = [
   SessionEntity,
   TurnEntity,
   ContentBlockEntity,
+  MemoryDocumentEntity,
+  MemoryRevisionEntity,
   AnnotationEntity,
   CollectionEntity,
   CollectionSessionEntity,

@@ -1,7 +1,7 @@
 import type { DataSource } from "typeorm";
-import type { Annotation, AnnotationKind, Visibility } from "../../../libs/canonical/src/generated.js";
+import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
-import type { AnnotationStore, ArchiveStore } from "../interfaces.js";
+import type { AnnotationStore, ArchiveStore, MemoryCapture } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
@@ -11,6 +11,7 @@ import { PostgresAnnotationStore } from "./annotations.js";
 import { PostgresArtifactStore } from "./artifacts.js";
 import { PostgresCollectionStore } from "./collections.js";
 import { PostgresJobStore } from "./jobs.js";
+import { PostgresMemoryStore } from "./memory.js";
 import { PostgresMachineStore } from "./machines.js";
 import { TenantRunner } from "./runner.js";
 import { PostgresSessionStore } from "./sessions.js";
@@ -35,6 +36,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   private readonly jobs: PostgresJobStore;
   private readonly settings: PostgresSettingsStore;
   private readonly machines: PostgresMachineStore;
+  private readonly memoryDocuments: PostgresMemoryStore;
 
   constructor(dataSource: DataSource) {
     const runner = new TenantRunner(dataSource);
@@ -47,6 +49,7 @@ export class PostgresArchiveStore implements ArchiveStore {
     this.jobs = new PostgresJobStore(runner);
     this.settings = new PostgresSettingsStore(runner);
     this.machines = new PostgresMachineStore(runner);
+    this.memoryDocuments = new PostgresMemoryStore(runner);
   }
 
   saveSession(context: TenantContext, session: ArchivedSession): Promise<void> { return this.sessions.saveSession(context, session); }
@@ -64,6 +67,12 @@ export class PostgresArchiveStore implements ArchiveStore {
   replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[]): Promise<Annotation[]> { return this.annotations.replaceAnnotations(context, sessionId, kind, values); }
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> { return this.annotations.updateAnnotation(context, annotationId, value); }
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean> { return this.annotations.deleteAnnotation(context, annotationId); }
+
+  listMemoryDocuments(context: TenantContext, filter?: { machineId?: string; scope?: string }): Promise<MemoryDocument[]> { return this.memoryDocuments.listMemoryDocuments(context, filter); }
+  getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null> { return this.memoryDocuments.getMemoryDocument(context, documentId); }
+  listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]> { return this.memoryDocuments.listMemoryRevisions(context, documentId); }
+  captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> { return this.memoryDocuments.captureMemoryDocument(context, capture); }
+  deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean> { return this.memoryDocuments.deleteMemoryDocument(context, documentId); }
 
   listCollections(context: TenantContext): Promise<CollectionRecord[]> { return this.collections.listCollections(context); }
   saveCollection(context: TenantContext, collection: CollectionRecord): Promise<void> { return this.collections.saveCollection(context, collection); }

@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const CONTRACT_VERSION: &str = "0.2.0";
+pub const CONTRACT_VERSION: &str = "0.3.0";
 
 pub type Uuid = String;
 
@@ -149,5 +149,39 @@ pub struct Session {
     pub visibility: Visibility,
     pub turns: Vec<Turn>,
     pub ext: Option<BTreeMap<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryScope {
+    Global,
+    Project,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryDocument {
+    pub id: Uuid,
+    pub scope: MemoryScope,
+    pub machine_id: Uuid,
+    pub workspace_path: Option<String>,
+    pub path: String,
+    pub title: String,
+    pub readers: Vec<String>,
+    pub content_hash: String,
+    pub captured_at: String,
+    pub visibility: Visibility,
+    pub provenance: Option<Vec<ProvenanceEntry>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryRevision {
+    pub id: Uuid,
+    pub document_id: Uuid,
+    pub content_hash: String,
+    pub text: String,
+    pub size: u64,
+    pub captured_at: String,
 }
 

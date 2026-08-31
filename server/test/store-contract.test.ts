@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ArchiveStore, RawArtifactRecord, TenantContext } from "../src/archive-store.js";
@@ -49,6 +50,77 @@ for (const implementation of implementations) {
   const suite = implementation.skip ? describe.skip : describe;
 
   suite(`ArchiveStore contract: ${implementation.name}`, () => {
+    /** One reading of CLAUDE.md on one machine. */
+    function capture(text: string, overrides: Record<string, unknown> = {}) {
+      return {
+        scope: "project" as const,
+        machineId: "0191cafe-0000-7000-8000-0000000000c9",
+        workspacePath: "/workspace/memoar",
+        path: "/workspace/memoar/CLAUDE.md",
+        title: "CLAUDE.md",
+        readers: ["claude-code", "zed", "copilot"],
+        contentHash: createHash("sha256").update(text).digest("hex"),
+        text,
+        capturedAt: "2026-08-20T00:00:00.000Z",
+        visibility: { scope: "private" as const, ownerId: alice.userId },
+        ...overrides,
+      };
+    }
+
+    it("keeps one memory document per file and a revision per change", async () => {
+      // The agent re-reads these files on a timer, so most captures find them
+      // exactly as they were: an unchanged read must add nothing. What did
+      // change is the whole point — how a project's instructions evolved is
+      // what overwriting destroys.
+      const store = implementation.create();
+      const first = await store.captureMemoryDocument(alice, capture("Be terse."));
+      const again = await store.captureMemoryDocument(alice, capture("Be terse."));
+      const edited = await store.captureMemoryDocument(alice, capture("Be terse. Never guess."));
+
+      expect(again.document.id, "the same file is the same document").toBe(first.document.id);
+      expect(again.revision, "an unchanged file adds no history").toBeNull();
+      expect(edited.revision, "an edited one does").not.toBeNull();
+      expect(edited.document.contentHash).toBe(edited.revision!.contentHash);
+
+      const revisions = await store.listMemoryRevisions(alice, first.document.id);
+      expect(revisions.map((revision) => revision.text), "newest first").toEqual(["Be terse. Never guess.", "Be terse."]);
+      expect(revisions[0]!.size).toBe(Buffer.byteLength("Be terse. Never guess.", "utf8"));
+
+      // Reverting an edit returns to text already recorded, which is the same
+      // revision rather than a third one.
+      const reverted = await store.captureMemoryDocument(alice, capture("Be terse."));
+      expect(reverted.revision!.id).toBe(revisions[1]!.id);
+      expect(await store.listMemoryRevisions(alice, first.document.id)).toHaveLength(2);
+    });
+
+    it("keeps one tenant's memory out of another's, and out of another machine's", async () => {
+      const store = implementation.create();
+      const mine = await store.captureMemoryDocument(alice, capture("Alice project rules."));
+      await store.captureMemoryDocument(bob, capture("Bob project rules."));
+
+      expect(await store.getMemoryDocument(bob, mine.document.id)).toBeNull();
+      expect(await store.listMemoryRevisions(bob, mine.document.id)).toEqual([]);
+      const bobsDocuments = await store.listMemoryDocuments(bob);
+      expect(bobsDocuments.map((document) => document.id)).not.toContain(mine.document.id);
+
+      // The same path on a second machine is a different file, because it is.
+      const elsewhere = await store.captureMemoryDocument(alice, capture("Other laptop.", { machineId: "0191cafe-0000-7000-8000-0000000000ca" }));
+      expect(elsewhere.document.id).not.toBe(mine.document.id);
+      expect(await store.listMemoryDocuments(alice, { machineId: "0191cafe-0000-7000-8000-0000000000ca" }))
+        .toHaveLength(1);
+    });
+
+    it("removes a document with everything it ever said", async () => {
+      const store = implementation.create();
+      const document = (await store.captureMemoryDocument(alice, capture("Draft."))).document;
+      await store.captureMemoryDocument(alice, capture("Revised."));
+
+      expect(await store.deleteMemoryDocument(alice, document.id)).toBe(true);
+      expect(await store.getMemoryDocument(alice, document.id)).toBeNull();
+      expect(await store.listMemoryRevisions(alice, document.id), "revisions must not outlive the file").toEqual([]);
+      expect(await store.deleteMemoryDocument(alice, document.id)).toBe(false);
+    });
+
     it("round-trips a canonical session and isolates tenants", async () => {
       const store = implementation.create();
       const session = structuredClone(DEMO_SESSION);

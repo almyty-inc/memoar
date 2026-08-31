@@ -60,7 +60,11 @@ export class AuthGuard implements CanActivate {
     if (tenantContext.authType === "machine") {
       const path = (request.url ?? "").split("?")[0] ?? "";
       const ownCommandPath = tenantContext.machineId && path.includes(`/machines/${tenantContext.machineId}/commands`);
-      if (!path.includes("/ingest") && !ownCommandPath) throw new ForbiddenException("Machine credentials are restricted to their ingest and command channels");
+      // What a machine may write: transcripts, and the memory files the agents
+      // on it read. Reading the archive is not on the list — and does not need
+      // to be excluded here, because it asks for a scope a machine has not got.
+      const capturePath = path.includes("/ingest") || path.includes("/memory");
+      if (!capturePath && !ownCommandPath) throw new ForbiddenException("Machine credentials are restricted to their capture and command channels");
       const bodyMachineId = request.body?.machineId;
       if (typeof bodyMachineId === "string" && bodyMachineId !== tenantContext.machineId) {
         throw new ForbiddenException("Machine credential does not match request machineId");

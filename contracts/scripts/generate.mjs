@@ -127,6 +127,38 @@ function ormTables() {
     post: [],
     indices: [["tenantId"], ["sessionId"], ["turnId"]],
     uniques: [["tenantId", "turnId", "ordinal"]]
+  },
+  {
+    definition: "MemoryDocument",
+    table: "memory_documents",
+    skip: [],
+    renames: {},
+    pre: [
+      ["id", { type: "uuid", primary: true }, "string"],
+      ["tenantId", { type: "uuid" }, "string"]
+    ],
+    post: [
+      ["createdAt", { type: "timestamptz", createDate: true }, "Date"],
+      ["updatedAt", { type: "timestamptz", updateDate: true }, "Date"]
+    ],
+    indices: [["tenantId"], ["tenantId", "machineId"]],
+    // A memory file is identified by where it lives, not by what it says: the
+    // same path captured again is the same document with a new revision.
+    uniques: [["tenantId", "machineId", "path"]]
+  },
+  {
+    definition: "MemoryRevision",
+    table: "memory_revisions",
+    skip: [],
+    renames: {},
+    pre: [
+      ["id", { type: "uuid", primary: true }, "string"],
+      ["tenantId", { type: "uuid" }, "string"]
+    ],
+    post: [],
+    indices: [["tenantId"], ["documentId"]],
+    // Re-reading an unchanged file must not add a revision to its history.
+    uniques: [["tenantId", "documentId", "contentHash"]]
   }
   ];
 }

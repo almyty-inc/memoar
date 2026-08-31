@@ -1,12 +1,13 @@
-import type { Annotation, AnnotationKind, Visibility } from "../../../libs/canonical/src/generated.js";
+import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
-import type { ArchiveStore } from "../interfaces.js";
+import type { ArchiveStore, MemoryCapture } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
   TeamMember, TeamRecord, TenantSettingsRecord, TransferRecord,
 } from "../records.js";
 import { MemoryAnnotationStore, MemoryCollectionStore } from "./curation.js";
+import { MemoryMemoryDocumentStore } from "./memory-documents.js";
 import { MemoryArtifactStore, MemoryJobStore, MemoryMachineStore, MemorySettingsStore } from "./operations.js";
 import { MemorySessionStore } from "./sessions.js";
 import { MemorySharingStore, MemoryTeamStore } from "./sharing.js";
@@ -25,6 +26,7 @@ export class DevArchiveStore implements ArchiveStore {
   private readonly sharingStore = new MemorySharingStore(this.tables);
   private readonly teamStore = new MemoryTeamStore(this.tables);
   private readonly artifactStore = new MemoryArtifactStore(this.tables);
+  private readonly memoryStore = new MemoryMemoryDocumentStore(this.tables);
   private readonly jobStore = new MemoryJobStore(this.tables);
   private readonly settingsStore = new MemorySettingsStore(this.tables);
   private readonly machineStore = new MemoryMachineStore(this.tables);
@@ -49,6 +51,12 @@ export class DevArchiveStore implements ArchiveStore {
   replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[]): Promise<Annotation[]> { return this.annotationStore.replaceAnnotations(context, sessionId, kind, values); }
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> { return this.annotationStore.updateAnnotation(context, annotationId, value); }
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean> { return this.annotationStore.deleteAnnotation(context, annotationId); }
+
+  listMemoryDocuments(context: TenantContext, filter?: { machineId?: string; scope?: string }): Promise<MemoryDocument[]> { return this.memoryStore.listMemoryDocuments(context, filter); }
+  getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null> { return this.memoryStore.getMemoryDocument(context, documentId); }
+  listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]> { return this.memoryStore.listMemoryRevisions(context, documentId); }
+  captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> { return this.memoryStore.captureMemoryDocument(context, capture); }
+  deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean> { return this.memoryStore.deleteMemoryDocument(context, documentId); }
 
   listCollections(context: TenantContext): Promise<CollectionRecord[]> { return this.collectionStore.listCollections(context); }
   saveCollection(context: TenantContext, collection: CollectionRecord): Promise<void> { return this.collectionStore.saveCollection(context, collection); }

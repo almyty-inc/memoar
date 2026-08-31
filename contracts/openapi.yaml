@@ -912,6 +912,77 @@ paths:
           content:
             application/json:
               schema: { type: object, required: [endpoint, tools], properties: { endpoint: { type: string, format: uri }, tools: { type: array, items: { type: string } } } }
+  /memory:
+    get:
+      tags: [Memory]
+      operationId: listMemoryDocuments
+      summary: The instruction files the agents on this account read
+      parameters:
+        - { name: machineId, in: query, required: false, schema: { $ref: '#/components/schemas/Uuid' } }
+        - { name: scope, in: query, required: false, schema: { type: string, enum: [global, project] } }
+      responses:
+        '200':
+          description: Memory documents, by path
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/MemoryDocument' } }
+    post:
+      tags: [Memory]
+      operationId: captureMemoryDocument
+      summary: Record one reading of one memory file
+      description: >
+        Sent by the capture agent with a machine token. A file that has not
+        changed since the last reading records nothing new, so this is safe to
+        call on a timer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryCapture' }
+      responses:
+        '200':
+          description: The document, and the revision this reading added if the file had changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document, revision]
+                properties:
+                  document: { $ref: '#/components/schemas/MemoryDocument' }
+                  revision:
+                    oneOf:
+                      - { $ref: '#/components/schemas/MemoryRevision' }
+                      - { type: 'null' }
+  /memory/{documentId}:
+    get:
+      tags: [Memory]
+      operationId: getMemoryDocument
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: A memory document with its current text
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document, revisions]
+                properties:
+                  document: { $ref: '#/components/schemas/MemoryDocument' }
+                  revisions: { type: array, items: { $ref: '#/components/schemas/MemoryRevision' } }
+        '404': { description: No such memory document }
+    delete:
+      tags: [Memory]
+      operationId: deleteMemoryDocument
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Removed, with every revision it ever had }
+        '404': { description: No such memory document }
 security:
   - bearerAuth: []
 components:
@@ -1274,6 +1345,47 @@ components:
         downloadUrl: { type: string, format: uri }
         resumeCommand: { type: string }
         report: { type: object, additionalProperties: true }
+    MemoryDocument:
+      type: object
+      required: [id, scope, machineId, path, title, readers, contentHash, capturedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        scope: { type: string, enum: [global, project] }
+        machineId: { $ref: '#/components/schemas/Uuid' }
+        workspacePath: { type: string }
+        path: { type: string }
+        title: { type: string }
+        readers:
+          type: array
+          items: { type: string }
+          description: The supported tools that read this path - a fact about the file, not its owner.
+        contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        capturedAt: { type: string, format: date-time }
+    MemoryRevision:
+      type: object
+      required: [id, documentId, contentHash, text, size, capturedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        documentId: { $ref: '#/components/schemas/Uuid' }
+        contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        text: { type: string }
+        size: { type: integer, minimum: 0 }
+        capturedAt: { type: string, format: date-time }
+    MemoryCapture:
+      type: object
+      description: >
+        The title is not sent: it is the name of the file, which the path
+        already says. Sending it separately only creates a way for the two to
+        disagree.
+      required: [scope, machineId, path, readers, text, capturedAt]
+      properties:
+        scope: { type: string, enum: [global, project] }
+        machineId: { $ref: '#/components/schemas/Uuid' }
+        workspacePath: { type: string }
+        path: { type: string, minLength: 1 }
+        readers: { type: array, items: { type: string } }
+        text: { type: string }
+        capturedAt: { type: string, format: date-time }
     Machine:
       type: object
       required: [id, name, platform, status, lastSeenAt, sources]

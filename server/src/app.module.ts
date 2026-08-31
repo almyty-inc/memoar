@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AnnotationsModule } from "./annotations/annotations.module.js";
+import { MemoryModule } from "./memory/memory.module.js";
 import { AuthModule } from "./auth.module.js";
 import { CollectionsModule } from "./collections/collections.module.js";
 import { ConvertModule } from "./convert.module.js";
@@ -28,6 +29,7 @@ import { TeamsModule } from "./teams.module.js";
     SessionsModule,
     SearchModule,
     AnnotationsModule,
+    MemoryModule,
     CollectionsModule,
     SharingModule,
     SettingsModule,

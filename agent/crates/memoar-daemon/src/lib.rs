@@ -1,5 +1,7 @@
 //! Local capture, immutable offline queueing, optional redaction, and delta sync.
 
+pub mod memory;
+
 use chrono::{DateTime, Utc};
 use memoar_connectors::{OperatingSystem, SOURCES, files_for_source};
 use regex::Regex;
@@ -687,6 +689,20 @@ impl HttpTransport {
         request: reqwest::blocking::RequestBuilder,
     ) -> reqwest::blocking::RequestBuilder {
         request.bearer_auth(&self.machine_token)
+    }
+
+    /// Posts JSON to a path under the endpoint and refuses anything but success.
+    pub(crate) fn post_json<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<reqwest::blocking::Response, DaemonError> {
+        let response = self
+            .authorize(self.client.post(format!("{}{path}", self.endpoint)))
+            .json(body)
+            .send()
+            .map_err(|error| DaemonError::Transport(error.to_string()))?;
+        require_success(response)
     }
 }
 

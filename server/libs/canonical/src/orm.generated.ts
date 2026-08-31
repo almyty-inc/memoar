@@ -1,6 +1,6 @@
 // Generated from contracts/source/canonical.model.json. Do not edit.
 import { EntitySchema } from "typeorm";
-import type { ContentBlockKind, ProvenanceEntry, SourceDescriptor, TokenTotals, Visibility, WorkspaceDescriptor } from "./generated.js";
+import type { ContentBlockKind, MemoryScope, ProvenanceEntry, SourceDescriptor, TokenTotals, Visibility, WorkspaceDescriptor } from "./generated.js";
 
 export interface SessionRow {
   id: string;
@@ -121,5 +121,71 @@ export const ContentBlockEntity = new EntitySchema<ContentBlockRow>({
   },
   indices: [{ columns: ["tenantId"] }, { columns: ["sessionId"] }, { columns: ["turnId"] }],
   uniques: [{ columns: ["tenantId","turnId","ordinal"] }],
+});
+
+export interface MemoryDocumentRow {
+  id: string;
+  tenantId: string;
+  scope: MemoryScope;
+  machineId: string;
+  workspacePath: string | null;
+  path: string;
+  title: string;
+  readers: Array<string>;
+  contentHash: string;
+  capturedAt: Date;
+  visibility: Visibility;
+  provenance: Array<ProvenanceEntry> | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const MemoryDocumentEntity = new EntitySchema<MemoryDocumentRow>({
+  name: "memory_documents",
+  tableName: "memory_documents",
+  columns: {
+    id: { type: "uuid", primary: true },
+    tenantId: { type: "uuid" },
+    scope: { type: "text" },
+    machineId: { type: "uuid" },
+    workspacePath: { type: "text", nullable: true },
+    path: { type: "text" },
+    title: { type: "text" },
+    readers: { type: "text", array: true },
+    contentHash: { type: "text" },
+    capturedAt: { type: "timestamptz" },
+    visibility: { type: "jsonb" },
+    provenance: { type: "jsonb", nullable: true },
+    createdAt: { type: "timestamptz", createDate: true },
+    updatedAt: { type: "timestamptz", updateDate: true },
+  },
+  indices: [{ columns: ["tenantId"] }, { columns: ["tenantId","machineId"] }],
+  uniques: [{ columns: ["tenantId","machineId","path"] }],
+});
+
+export interface MemoryRevisionRow {
+  id: string;
+  tenantId: string;
+  documentId: string;
+  contentHash: string;
+  text: string;
+  size: number;
+  capturedAt: Date;
+}
+
+export const MemoryRevisionEntity = new EntitySchema<MemoryRevisionRow>({
+  name: "memory_revisions",
+  tableName: "memory_revisions",
+  columns: {
+    id: { type: "uuid", primary: true },
+    tenantId: { type: "uuid" },
+    documentId: { type: "uuid" },
+    contentHash: { type: "text" },
+    text: { type: "text" },
+    size: { type: "integer" },
+    capturedAt: { type: "timestamptz" },
+  },
+  indices: [{ columns: ["tenantId"] }, { columns: ["documentId"] }],
+  uniques: [{ columns: ["tenantId","documentId","contentHash"] }],
 });
 

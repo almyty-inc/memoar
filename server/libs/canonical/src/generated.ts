@@ -1,5 +1,5 @@
 // Generated from contracts/source/canonical.model.json. Do not edit.
-export const CONTRACT_VERSION = "0.2.0" as const;
+export const CONTRACT_VERSION = "0.3.0" as const;
 
 export interface SourceDescriptor {
   vendor: string;
@@ -106,4 +106,29 @@ export interface Session {
 }
 
 export type Uuid = string;
+
+export type MemoryScope = "global" | "project";
+
+export interface MemoryDocument {
+  id: Uuid;
+  scope: MemoryScope;
+  machineId: Uuid;
+  workspacePath?: string;
+  path: string;
+  title: string;
+  readers: Array<string>;
+  contentHash: string;
+  capturedAt: string;
+  visibility: Visibility;
+  provenance?: Array<ProvenanceEntry>;
+}
+
+export interface MemoryRevision {
+  id: Uuid;
+  documentId: Uuid;
+  contentHash: string;
+  text: string;
+  size: number;
+  capturedAt: string;
+}
 

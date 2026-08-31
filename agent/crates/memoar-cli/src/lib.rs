@@ -1,8 +1,9 @@
+use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
 use memoar_connectors::{OperatingSystem, SOURCES, discover};
 use memoar_daemon::{
     DaemonError, HttpTransport, OfflineQueue, PollingCapture, RedactionConfig, SyncEngine,
-    capture_sources_with_redaction,
+    capture_sources_with_redaction, memory::MemorySync,
 };
 use memoar_materializer::{ConversionBundle, MaterializeError, Target, materialize_bundle};
 use reqwest::blocking::{Client, RequestBuilder, Response};
@@ -630,11 +631,45 @@ fn sync_pending(
     let api = ApiClient::new(&config.endpoint, Some(access_token));
     patch_machine_state(&api, config, paths)?;
     let token = issue_machine_token(&api, &config.machine_id)?;
-    let transport = HttpTransport::new(&config.endpoint, token);
+    let transport = HttpTransport::new(&config.endpoint, token.clone());
     let report = SyncEngine::new(transport)
         .sync(queue, &config.machine_id)
         .map_err(map_sync_error)?;
-    Ok(json!({ "captured": captured, "sync": report }))
+    // The instruction files the agents on this machine read, for the projects
+    // this account already has sessions in. They are not transcripts and do not
+    // go through the queue: what matters is whether the text changed.
+    let memory = MemorySync::new().run(
+        &HttpTransport::new(&config.endpoint, token),
+        &paths.home,
+        &archived_workspaces(&api),
+        &config.machine_id,
+        &Utc::now().to_rfc3339(),
+    );
+    Ok(json!({ "captured": captured, "sync": report, "memory": memory }))
+}
+
+/// The project roots this account has archived sessions in.
+///
+/// Which directories are projects is not something the agent can know by
+/// looking: a home directory is full of checkouts nobody works in. The archive
+/// already knows, because a transcript names the directory it was recorded in,
+/// so memory files are captured for the projects actually being worked on and
+/// nowhere else. A failure here means no project files this sweep, not a failed
+/// sync — the transcripts are the point.
+fn archived_workspaces(api: &ApiClient) -> Vec<PathBuf> {
+    let Ok(response) = api.get_query("/sessions", &[("limit", "100".to_owned())]) else {
+        return Vec::new();
+    };
+    let mut roots: BTreeSet<PathBuf> = BTreeSet::new();
+    for session in response["items"].as_array().unwrap_or(&Vec::new()) {
+        if let Some(workspace) = session["workspace"].as_str() {
+            let path = PathBuf::from(workspace);
+            if path.is_absolute() && path.is_dir() {
+                roots.insert(path);
+            }
+        }
+    }
+    roots.into_iter().collect()
 }
 
 fn search(args: &SearchArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
@@ -1546,6 +1581,20 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<RecordedRequest>>>,
         std::thread::JoinHandle<()>,
     ) {
+        spawn_mock_api_with_workspace(request_count, conversion_bundle, String::new())
+    }
+
+    /// `workspace` is the project root the mock claims to have sessions in, so a
+    /// test can put memory files there and watch them being captured.
+    fn spawn_mock_api_with_workspace(
+        request_count: usize,
+        conversion_bundle: Option<Value>,
+        workspace: String,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<RecordedRequest>>>,
+        std::thread::JoinHandle<()>,
+    ) {
         use std::io::{Read, Write};
         use std::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1624,6 +1673,16 @@ mod tests {
                     ("GET", path) if path.starts_with("/v1/sessions/") => {
                         (200, json!({"session": {"id": "session"}, "turns": []}))
                     }
+                    // The workspaces this account has archived sessions in, which
+                    // is how the agent knows which directories are projects.
+                    ("GET", path) if path.starts_with("/v1/sessions") => (
+                        200,
+                        json!({"items": [{"id": "session", "workspace": workspace.clone()}]}),
+                    ),
+                    ("POST", "/v1/memory") => (
+                        200,
+                        json!({"document": {"id": MACHINE_ID}, "revision": {"id": MACHINE_ID}}),
+                    ),
                     ("POST", "/v1/pack") => (202, json!({"id": "pack-job"})),
                     ("POST", "/v1/convert") => (
                         202,
@@ -1737,6 +1796,73 @@ mod tests {
         assert!(requests[3].path.starts_with("/v1/ingest/artifacts/"));
         assert_eq!(requests[3].body, b"{\"type\":\"user\"}\n");
         assert_eq!(requests[4].path, "/v1/ingest/manifests");
+    }
+
+    #[test]
+    fn sync_captures_the_memory_files_of_projects_the_archive_knows() {
+        // What the agents on this machine are told is part of the archive: a
+        // transcript cannot be read for what it was without the instructions it
+        // was produced under. Which directories are projects is not something
+        // the agent can know by looking, so it asks the archive, which knows
+        // because every transcript names the directory it was recorded in.
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(project.join("AGENTS.md"), "project rules").unwrap();
+
+        let (endpoint, requests, server) =
+            spawn_mock_api_with_workspace(8, None, project.to_string_lossy().into_owned());
+        let paths = configured_paths(&temp, &endpoint);
+        fs::create_dir_all(paths.home.join(".claude")).unwrap();
+        fs::write(paths.home.join(".claude/CLAUDE.md"), "be terse").unwrap();
+        let session = paths.home.join(".claude/projects/-fixture/session.jsonl");
+        fs::create_dir_all(session.parent().unwrap()).unwrap();
+        fs::write(&session, b"{\"type\":\"user\"}\n").unwrap();
+
+        let result = sync(
+            &SyncArgs {
+                watch: false,
+                interval_seconds: 1,
+                debounce_seconds: 1,
+            },
+            false,
+            &paths,
+        )
+        .unwrap();
+
+        assert_eq!(result.data["memory"]["found"], 2, "one global, one project");
+        assert_eq!(result.data["memory"]["uploaded"], 2);
+        assert_eq!(result.data["memory"]["recorded"], 2);
+        server.join().unwrap();
+
+        let requests = requests.lock().unwrap();
+        let captured: Vec<Value> = requests
+            .iter()
+            .filter(|request| request.path == "/v1/memory")
+            .map(|request| serde_json::from_slice(&request.body).unwrap())
+            .collect();
+        assert_eq!(captured.len(), 2);
+        let project_file = captured
+            .iter()
+            .find(|body| body["scope"] == "project")
+            .expect("the project's own AGENTS.md");
+        assert_eq!(project_file["text"], "project rules");
+        assert!(
+            project_file["readers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("codex")),
+            "the tools that read this path, not the one that wrote it"
+        );
+        // A machine token, not the user session: this is capture.
+        assert!(
+            requests
+                .iter()
+                .find(|request| request.path == "/v1/memory")
+                .unwrap()
+                .headers
+                .contains("authorization: Bearer machine-token")
+        );
     }
 
     #[test]

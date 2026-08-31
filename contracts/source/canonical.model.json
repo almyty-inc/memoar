@@ -1,5 +1,5 @@
 {
-  "contractVersion": "0.2.0",
+  "contractVersion": "0.3.0",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://memoar.dev/contracts/canonical/0.1.1/session.schema.json",
@@ -436,6 +436,109 @@
       "Uuid": {
         "type": "string",
         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      },
+      "MemoryScope": {
+        "enum": [
+          "global",
+          "project"
+        ]
+      },
+      "MemoryDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "scope",
+          "machineId",
+          "path",
+          "title",
+          "readers",
+          "contentHash",
+          "capturedAt",
+          "visibility"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "scope": {
+            "$ref": "#/$defs/MemoryScope"
+          },
+          "machineId": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "workspacePath": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "readers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "visibility": {
+            "$ref": "#/$defs/Visibility"
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ProvenanceEntry"
+            },
+            "default": []
+          }
+        }
+      },
+      "MemoryRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "documentId",
+          "contentHash",
+          "text",
+          "size",
+          "capturedAt"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "documentId": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "text": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     }
   }

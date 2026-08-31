@@ -1,4 +1,4 @@
-import type { Annotation } from "../../../libs/canonical/src/generated.js";
+import type { Annotation, MemoryDocument, MemoryRevision } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession } from "../context.js";
 import type {
   CollectionRecord,
@@ -55,5 +55,7 @@ export class MemoryTables {
   readonly tenantSettings = new Map<string, TenantSettingsRecord>();
   readonly teams = new Map<string, { id: string; orgId: string; name: string }>();
   readonly teamMembers = new Map<string, TeamMember[]>();
+  readonly memoryDocuments = new Map<string, MemoryDocument & { tenantId: string }>();
+  readonly memoryRevisions = new Map<string, MemoryRevision & { tenantId: string }>();
   readonly accountsByEmail = new Map<string, TeamMember>();
 }

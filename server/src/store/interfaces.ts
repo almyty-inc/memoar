@@ -1,4 +1,4 @@
-import type { Annotation, AnnotationKind, Visibility } from "../../libs/canonical/src/generated.js";
+import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, ProvenanceEntry, Visibility } from "../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "./context.js";
 import type {
   CollectionRecord,
@@ -66,6 +66,39 @@ export interface AnnotationStore {
   ): Promise<Annotation[]>;
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null>;
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean>;
+}
+
+/** One reading of one memory file on one machine. */
+export interface MemoryCapture {
+  scope: MemoryDocument["scope"];
+  machineId: string;
+  workspacePath?: string;
+  path: string;
+  title: string;
+  /** The supported tools that read this path — a fact about the file, not its owner. */
+  readers: string[];
+  contentHash: string;
+  text: string;
+  capturedAt: string;
+  visibility: Visibility;
+  provenance?: ProvenanceEntry[];
+}
+
+/**
+ * The instruction files an agent reads before it does anything.
+ *
+ * They are not transcripts, but they are the standing context every transcript
+ * was produced under: an archived session cannot be read for what it was
+ * without knowing what the agent had been told. A document is identified by
+ * where it lives, and its history is kept, because how a project's instructions
+ * changed is the part worth having.
+ */
+export interface MemoryStore {
+  listMemoryDocuments(context: TenantContext, filter?: { machineId?: string; scope?: string }): Promise<MemoryDocument[]>;
+  getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null>;
+  listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]>;
+  captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }>;
+  deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean>;
 }
 
 export interface CollectionStore {
@@ -157,4 +190,5 @@ export interface ArchiveStore extends
   JobStore,
   SettingsStore,
   RetentionStore,
-  MachineStore {}
+  MachineStore,
+  MemoryStore {}
