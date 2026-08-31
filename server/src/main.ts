@@ -1,11 +1,32 @@
 import "reflect-metadata";
 import { RequestMethod, ValidationPipe, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { raw } from "express";
+import { raw, type Express } from "express";
 import type { ServerResponse } from "node:http";
 import { AppModule } from "./app.module.js";
 
+/**
+ * How many proxies sit in front of this process.
+ *
+ * Express works out the client address from X-Forwarded-For only when it is
+ * told to trust a proxy, and it trusts exactly as many hops as it is told. That
+ * matters because the header is written by whoever sends the request: trusting
+ * it blindly hands every caller a free choice of identity, and anything keyed
+ * to the caller — the rate limit above all — is then no limit at all, since a
+ * new address for each attempt buys a new budget for each attempt.
+ *
+ * The default is to trust nothing, which is right for a process reached
+ * directly. A deployment behind one load balancer sets this to 1.
+ */
+function trustedProxyHops(): number {
+  const raw = Number(process.env.MEMOAR_TRUSTED_PROXY_HOPS ?? 0);
+  return Number.isInteger(raw) && raw >= 0 ? raw : 0;
+}
+
 export function configureApp(app: INestApplication): void {
+  // Express falls back to the socket address when the hop count is 0, so an
+  // untrusted deployment ignores the header entirely.
+  (app.getHttpAdapter().getInstance() as Express).set("trust proxy", trustedProxyHops());
   app.use("/v1/ingest/artifacts", raw({
     type: "application/octet-stream",
     limit: Number(process.env.MEMOAR_MAX_ARTIFACT_BYTES ?? 64 * 1024 * 1024),

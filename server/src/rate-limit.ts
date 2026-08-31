@@ -126,11 +126,11 @@ function credentialSubject(request: Request): string {
 function callerKey(request: Request): string {
   const tenant = (request as { tenantContext?: { tenantId?: string } }).tenantContext?.tenantId;
   if (tenant) return `tenant:${tenant}`;
-  const forwarded = request.headers["x-forwarded-for"];
-  const address = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim()
-    ?? request.ip
-    ?? "unknown";
-  return `ip:${address}`;
+  // request.ip, never the forwarded header directly: Express only reads that
+  // header when the deployment says a proxy is in front of it. Reading it
+  // regardless let anyone claim a new address per attempt, and a limit a caller
+  // can opt out of by setting a header is not a limit.
+  return `ip:${request.ip ?? "unknown"}`;
 }
 
 /** Key under which failed credential attempts against one account are counted. */

@@ -76,6 +76,24 @@ describe("credential endpoints are rate limited", () => {
     expect((await guess("bystander@memoar.dev")).status, "a different account is unaffected").toBe(401);
   });
 
+  it("cannot be escaped by claiming a different address", async () => {
+    // X-Forwarded-For is written by whoever sends the request. Reading it
+    // without being told a proxy is in front of the process handed every caller
+    // a free choice of identity: a new address per attempt bought a new budget
+    // per attempt, and ten thousand guesses cost nothing.
+    const email = "target-four@memoar.dev";
+    const statuses: number[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const response = await api.request("POST", "/auth/login", {
+        token: null,
+        headers: { "x-forwarded-for": `10.0.0.${index}` },
+        body: { email, password: "wrong-but-long-enough" },
+      });
+      statuses.push(response.status);
+    }
+    expect(statuses.slice(3), "the claimed address bought no extra budget").toEqual([429, 429]);
+  });
+
   it("leaves an authenticated read alone: it draws on the ordinary budget", async () => {
     expect((await api.request("GET", "/sessions?limit=1")).status).toBe(200);
   });
