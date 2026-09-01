@@ -211,6 +211,8 @@ export interface ConversionJob {
 
 export interface DashboardData {
   timeline: TimelineGroup[];
+  /** Sessions in the archive, as counted by the server. */
+  archivedSessions: number;
   collections: Collection[];
   grants: ShareGrant[];
   transfers: Transfer[];

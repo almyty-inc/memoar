@@ -219,7 +219,7 @@ paths:
           description: Timeline grouped by day
           content:
             application/json:
-              schema: { type: object, required: [groups], properties: { groups: { type: array, items: { $ref: '#/components/schemas/TimelineGroup' } }, nextCursor: { type: [string, 'null'] } } }
+              schema: { type: object, required: [groups, total], properties: { groups: { type: array, items: { $ref: '#/components/schemas/TimelineGroup' } }, total: { type: integer, minimum: 0, description: 'Sessions in the archive, not in this page.' }, nextCursor: { type: [string, 'null'] } } }
   /sessions/{sessionId}/export:
     get:
       tags: [Sessions]
@@ -1133,9 +1133,16 @@ components:
         highlight: { type: string }
     SessionPage:
       type: object
-      required: [items, nextCursor]
+      required: [items, total, nextCursor]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
+        total:
+          type: integer
+          minimum: 0
+          description: >
+            How many sessions match the filter, not how many this page holds.
+            Without it a client can say how many sessions it is holding but not
+            how many there are, which is the number a reader wants.
         nextCursor: { type: [string, 'null'] }
     TimelineGroup:
       type: object

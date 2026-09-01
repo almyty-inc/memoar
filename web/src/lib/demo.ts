@@ -332,6 +332,7 @@ export const demoApiKeys: ApiKey[] = [
 
 export const demoDashboard: DashboardData = {
   timeline: demoTimeline,
+  archivedSessions: demoTimeline.reduce((count, group) => count + group.sessions.length, 0),
   collections: demoCollections,
   grants: demoGrants,
   transfers: demoTransfers,

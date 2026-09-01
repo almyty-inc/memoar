@@ -9,7 +9,8 @@ import { CollectionsView } from './views/Collections';
 import { MemoryView } from './views/Memory';
 import { ImportView } from './views/Import';
 import { MachinesView } from './views/Machines';
-import { OnboardingView, SignInView } from './views/Onboarding';
+import { SignInView } from './views/Onboarding';
+import { OnboardingView } from './views/OnboardingSteps';
 import { SearchView } from './views/Search';
 import { SessionDetailView } from './views/SessionDetail';
 import { SettingsView } from './views/Settings';
@@ -21,6 +22,7 @@ const supportedViews: ViewId[] = ['workspace', 'timeline', 'search', 'collection
 
 const emptyConnectedDashboard: DashboardState = {
   timeline: [],
+  archivedSessions: 0,
   collections: [],
   grants: [],
   transfers: [],
@@ -204,7 +206,7 @@ export function App() {
       return created.secret;
     }} />;
   } else if (view === 'onboarding') {
-    content = <OnboardingView onComplete={() => navigate('timeline')} />;
+    content = <OnboardingView machines={dashboard.machines} onComplete={() => navigate('timeline')} onRefresh={loadDashboard} />;
   } else if (view === 'session' && selected) {
     content = detail ? (
       <SessionDetailView
@@ -225,7 +227,7 @@ export function App() {
       />
     ) : <div className="session-loading"><LoaderCircle size={24} /><p>Loading canonical session…</p></div>;
   } else {
-    content = <TimelineView groups={dashboard.timeline} onOpen={openSession} onSearch={() => navigate('search')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />;
+    content = <TimelineView groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} onOpen={openSession} onSearch={() => navigate('search')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />;
   }
 
   return (

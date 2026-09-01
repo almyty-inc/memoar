@@ -75,8 +75,17 @@ export function Shell({ view, mode, user, machines, children, onNavigate }: {
   children: ReactNode;
   onNavigate: (view: ViewId) => void;
 }) {
-  const sources = machines.flatMap((machine) => machine.sources);
-  const connectedSources = sources.filter((source) => source.enabled).length;
+  /*
+    Setup progress, measured rather than drawn.
+
+    This counted every source entry on every machine and reported "80 of 80
+    sources connected", which is true and tells a reader nothing; underneath it
+    a progress bar was fixed at 66% in the stylesheet, so it showed the same
+    two-thirds whether nothing or everything had been captured. What matters
+    during setup is whether a connected machine is actually archiving.
+  */
+  const capturing = machines.filter((machine) => machine.sources.some((source) => source.sessionCount > 0)).length;
+  const setupProgress = machines.length === 0 ? 0 : Math.round((capturing / machines.length) * 100);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -110,7 +119,7 @@ export function Shell({ view, mode, user, machines, children, onNavigate }: {
         </div>
 
         <Button className="new-session-button" variant="primary" onClick={() => navigate('onboarding')}>
-          <Plus size={16} /> Connect source
+          <Plus size={16} /> Connect a machine
         </Button>
 
         <nav className="sidebar-nav">
@@ -140,8 +149,12 @@ export function Shell({ view, mode, user, machines, children, onNavigate }: {
         <div className="sidebar-foot">
           <button className="help-card" type="button" onClick={() => navigate('onboarding')}>
             <span><CircleHelp size={16} /> Setup guide</span>
-            <small>{sources.length === 0 ? 'No sources connected yet' : `${connectedSources} of ${sources.length} sources connected`}</small>
-            <span className="mini-progress"><span /></span>
+            <small>
+              {machines.length === 0
+                ? 'No machine connected yet'
+                : `${capturing} of ${machines.length} ${machines.length === 1 ? 'machine is' : 'machines are'} archiving`}
+            </small>
+            <span className="mini-progress"><span style={{ width: `${setupProgress}%` }} /></span>
           </button>
           <button className="user-switcher" type="button" onClick={() => navigate('signin')}>
             <span className="avatar">{user ? accountInitials(user.displayName) : '·'}</span>

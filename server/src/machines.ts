@@ -1,12 +1,15 @@
 import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, Patch, Post, Sse, type MessageEvent } from "@nestjs/common";
 import { Observable } from "rxjs";
-import type { MachineRecord, MachineStore, TenantContext } from "./archive-store.js";
+import type { MachineRecord, MachineStore, SessionStore, TenantContext } from "./archive-store.js";
 import { RequireScopes, Tenant } from "./auth.js";
 import { AckCommandDto, RegisterMachineDto, UpdateMachineDto } from "./machines.dto.js";
 import { uuidV7 } from "./ids.js";
 import { ARCHIVE_STORE } from "./tokens.js";
 
-function machineResponse(machine: MachineRecord): Record<string, unknown> {
+/**
+ * @param captured sessions archived per machine and source, keyed "machine:tool".
+ */
+function machineResponse(machine: MachineRecord, captured: Map<string, number>): Record<string, unknown> {
   const lastSeen = machine.lastSeenAt ? new Date(machine.lastSeenAt).valueOf() : null;
   const status = lastSeen === null ? "never_connected" : Date.now() - lastSeen <= 120_000 ? "online" : "offline";
   return {
@@ -16,16 +19,25 @@ function machineResponse(machine: MachineRecord): Record<string, unknown> {
     status,
     lastSeenAt: machine.lastSeenAt,
     agentVersion: machine.agentVersion,
-    sources: Object.entries(machine.sourceSettings).map(([source, settings]) => ({ source, settings })),
+    sources: Object.entries(machine.sourceSettings).map(([source, settings]) => ({
+      source,
+      settings,
+      // This view exists to say what each source has produced, and the field
+      // was never filled in: every source on every machine read zero sessions
+      // however much had been archived from it.
+      sessionCount: captured.get(`${machine.id}:${source}`) ?? 0,
+    })),
   };
 }
 
 @Injectable()
 export class MachinesService {
-  constructor(@Inject(ARCHIVE_STORE) private readonly store: MachineStore) {}
+  constructor(@Inject(ARCHIVE_STORE) private readonly store: MachineStore & SessionStore) {}
 
   async list(context: TenantContext): Promise<{ items: Record<string, unknown>[] }> {
-    return { items: (await this.store.listMachines(context)).map(machineResponse) };
+    // One grouped count for the account, rather than one query per source.
+    const [machines, captured] = await Promise.all([this.store.listMachines(context), this.capturedCounts(context)]);
+    return { items: machines.map((machine) => machineResponse(machine, captured)) };
   }
 
   async register(context: TenantContext, body: RegisterMachineDto): Promise<Record<string, unknown>> {
@@ -39,7 +51,7 @@ export class MachinesService {
       lastSeenAt: null,
     };
     await this.store.saveMachine(context, machine);
-    return machineResponse(machine);
+    return machineResponse(machine, new Map());
   }
 
   async update(context: TenantContext, machineId: string, body: UpdateMachineDto): Promise<Record<string, unknown>> {
@@ -49,7 +61,13 @@ export class MachinesService {
     if (body.agentVersion !== undefined) machine.agentVersion = body.agentVersion;
     if (body.sourceSettings !== undefined) machine.sourceSettings = body.sourceSettings;
     await this.store.saveMachine(context, machine);
-    return machineResponse(machine);
+    return machineResponse(machine, await this.capturedCounts(context));
+  }
+
+  /** Sessions archived per machine and source, keyed "machine:tool". */
+  private async capturedCounts(context: TenantContext): Promise<Map<string, number>> {
+    const counts = await this.store.countSessionsByMachineSource(context);
+    return new Map(counts.map((row) => [`${row.machineId}:${row.tool}`, row.sessions]));
   }
 
   private assertMachineBinding(context: TenantContext, machineId: string): void {

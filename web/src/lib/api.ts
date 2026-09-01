@@ -49,6 +49,7 @@ interface WireSessionSummary {
 
 interface WireTimelineResponse {
   groups: Array<{ date: string; sessions: WireSessionSummary[] }>;
+  total: number;
   nextCursor: string | null;
 }
 
@@ -395,6 +396,11 @@ export class MemoarApiClient {
     return this.baseUrl.length > 0;
   }
 
+  /** The endpoint an agent on a machine has to be pointed at. */
+  get endpoint(): string {
+    return this.baseUrl;
+  }
+
   get authenticated(): boolean {
     return this.accessToken() !== null;
   }
@@ -512,13 +518,20 @@ export class MemoarApiClient {
     return true;
   }
 
-  async loadTimelinePage(cursor: string | null = null, limit = 30): Promise<{ groups: TimelineGroup[]; nextCursor: string | null }> {
-    if (!this.configured) return { groups: demoDashboard.timeline, nextCursor: null };
+  async loadTimelinePage(cursor: string | null = null, limit = 30): Promise<{ groups: TimelineGroup[]; total: number; nextCursor: string | null }> {
+    if (!this.configured) {
+      return {
+        groups: demoDashboard.timeline,
+        total: demoDashboard.timeline.reduce((count, group) => count + group.sessions.length, 0),
+        nextCursor: null,
+      };
+    }
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set('cursor', cursor);
     const response = await this.request<WireTimelineResponse>(`/sessions/timeline?${query.toString()}`);
     return {
       groups: response.groups.map((group) => ({ date: group.date, sessions: group.sessions.map(mapSession) })),
+      total: response.total,
       nextCursor: response.nextCursor,
     };
   }
@@ -536,6 +549,7 @@ export class MemoarApiClient {
     ]);
     return {
       timeline: timeline.groups,
+      archivedSessions: timeline.total,
       nextTimelineCursor: timeline.nextCursor,
       collections: collections.items.map(mapCollection),
       grants: grants.items.map((grant) => ({

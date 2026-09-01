@@ -34,7 +34,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { memoarApi } from '../lib/api';
-import type { Collection as CollectionRecord, ContentBlock, ConversionJob, Machine, PackResponse, SessionDetailData, ShareGrant } from '../lib/types';
+import type { Annotation, Collection as CollectionRecord, ContentBlock, ConversionJob, Machine, PackResponse, SessionDetailData, ShareGrant } from '../lib/types';
 import {
   Badge,
   Button,
@@ -218,7 +218,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
             <Download size={14} /> {busyAction === 'export' ? 'Exporting…' : 'Export'}
           </Button>
           <Button size="sm" onClick={() => setConvertOpen(true)}><RefreshCw size={14} /> Convert</Button>
-          <Button size="sm" variant="primary" onClick={() => void openPack()}><Braces size={14} /> Pack preview</Button>
+          <Button size="sm" onClick={() => void openPack()}><Braces size={14} /> Pack preview</Button>
         </div>
       </header>
 
@@ -318,6 +318,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
 
       <ShareReviewModal
         open={shareOpen}
+        sessionId={session.id}
         approved={reviewId !== null}
         link={shareLink}
         busy={sharing}
@@ -516,17 +517,59 @@ function expiresAt(option: string): string | null {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function ShareReviewModal({ open, approved, link, busy, onApprove, onCreate, onClose }: {
+/** A finding the secret scanner recorded against this session. */
+interface RedactionFinding {
+  id: string;
+  kind: string;
+  preview: string;
+}
+
+function readFindings(annotations: Annotation[]): RedactionFinding[] {
+  return annotations
+    .filter((annotation) => annotation.kind === 'redaction_mask')
+    .map((annotation) => ({
+      id: annotation.id,
+      kind: typeof annotation.value.kind === 'string' ? annotation.value.kind : 'secret',
+      preview: typeof annotation.value.preview === 'string' ? annotation.value.preview : '',
+    }));
+}
+
+/** "aws_access_key" is what the scanner calls it; this is what a person calls it. */
+function findingLabel(kind: string): string {
+  return kind.replaceAll('_', ' ').replace(/^./u, (first) => first.toUpperCase());
+}
+
+function ShareReviewModal({ open, approved, link, busy, sessionId, onApprove, onCreate, onClose }: {
   open: boolean;
   approved: boolean;
   link: string | null;
   busy: boolean;
+  sessionId: string;
   onApprove: () => void;
   onCreate: (permission: ShareGrant['permission'], expiresAt: string | null) => void;
   onClose: () => void;
 }) {
-  const [maskPath, setMaskPath] = useState(true);
-  const [maskEmail, setMaskEmail] = useState(true);
+  /*
+    What the scanner actually found, read from the session's redaction masks.
+
+    This panel used to announce "2 findings in 1 session" and list a workspace
+    path and a commit author email — the same two every time, for every session,
+    invented. It is the gate that decides whether a session may leave the
+    archive, so showing anything other than the real findings makes the review
+    worthless: you would be approving a mask over somebody's imagination.
+  */
+  const [findings, setFindings] = useState<RedactionFinding[] | null>(null);
+  const [findingsError, setFindingsError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || approved) return;
+    let cancelled = false;
+    void memoarApi.listAnnotations(sessionId)
+      .then((response) => { if (!cancelled) setFindings(readFindings(response.items)); })
+      .catch((cause: unknown) => {
+        if (!cancelled) setFindingsError(cause instanceof Error ? cause.message : 'Findings could not be read');
+      });
+    return () => { cancelled = true; };
+  }, [open, approved, sessionId]);
   // These drive the request. They were uncontrolled inputs whose values were
   // read by nothing, so every choice offered here was discarded.
   const [permission, setPermission] = useState<ShareGrant['permission']>('viewer');
@@ -541,12 +584,36 @@ function ShareReviewModal({ open, approved, link, busy, onApprove, onCreate, onC
       {!approved ? (
         <>
           <div className="modal-body">
-            <div className="review-summary"><ScanSearch size={20} /><div><strong>2 findings in 1 session</strong><p>Memoar found a local path and an email address.</p></div><Badge className="redaction-findings">Review required</Badge></div>
-            <div className="finding-list">
-              <label><input type="checkbox" checked={maskPath} onChange={(event) => setMaskPath(event.target.checked)} /><span><strong>Local workspace path</strong><code>{maskPath ? '/Users/[redacted]/workspace/memoar' : '/Users/demo/workspace/memoar'}</code></span><Badge>{maskPath ? 'Mask' : 'Keep'}</Badge></label>
-              <label><input type="checkbox" checked={maskEmail} onChange={(event) => setMaskEmail(event.target.checked)} /><span><strong>Commit author email</strong><code>{maskEmail ? '[email redacted]' : 'developer@example.test'}</code></span><Badge>{maskEmail ? 'Mask' : 'Keep'}</Badge></label>
+            <div className="review-summary">
+              <ScanSearch size={20} />
+              <div>
+                <strong>
+                  {findings === null ? 'Reading findings…' : `${findings.length} ${findings.length === 1 ? 'finding' : 'findings'} in this session`}
+                </strong>
+                <p>
+                  {findings === null
+                    ? 'From the secret scan performed when this session was archived.'
+                    : findings.length
+                      ? 'Every one of these is masked for anyone you share with. The mask is snapshotted against the session as it stands now.'
+                      : 'The scan flagged nothing. Approving records that decision against the session as it stands now.'}
+                </p>
+              </div>
+              <Badge className="redaction-findings">{findings?.length ? 'Review required' : 'Review'}</Badge>
             </div>
-            <div className="redaction-preview"><div><Eye size={14} /> Recipient preview</div><p>Workspace <mark>/Users/[redacted]/workspace/memoar</mark> · author <mark>[email redacted]</mark></p></div>
+            {findingsError ? <p role="alert" className="form-error">{findingsError}</p> : null}
+            {/*
+              Read-only on purpose: the server masks every finding and the
+              review carries no per-finding decision, so a checkbox here would
+              be a choice that goes nowhere.
+            */}
+            <div className="finding-list">
+              {(findings ?? []).map((finding) => (
+                <div key={finding.id}>
+                  <span><strong>{findingLabel(finding.kind)}</strong><code>{finding.preview}</code></span>
+                  <Badge>Mask</Badge>
+                </div>
+              ))}
+            </div>
           </div>
           <footer className="modal-actions"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onApprove}><ShieldCheck size={15} /> Approve redactions</Button></footer>
         </>

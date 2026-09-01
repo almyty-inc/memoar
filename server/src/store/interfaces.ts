@@ -36,6 +36,14 @@ export interface SessionStore {
    */
   sessionExists(context: TenantContext, sessionId: string): Promise<boolean>;
   /**
+   * How many sessions each machine has captured, per source.
+   *
+   * The machines view is about what each source has produced, and it reported
+   * nothing at all: the count was never computed, so every source on every
+   * machine read "0 sessions" however much had been archived from it.
+   */
+  countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]>;
+  /**
    * Hydrates many sessions in one round trip set. Search results are hydrated
    * in bulk; doing it one session at a time is an N+1 inside every query.
    */

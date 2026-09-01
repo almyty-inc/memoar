@@ -29,5 +29,7 @@ export interface SessionFilter {
 
 export interface SessionPage {
   items: ArchivedSession[];
+  /** How many sessions match the filter, not how many this page holds. */
+  total: number;
   nextCursor: string | null;
 }

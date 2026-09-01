@@ -5,12 +5,15 @@ import type { CurrentUser, Machine } from '../lib/types';
 
 const USER: CurrentUser = { id: 'u-1', email: 'ada@example.test', displayName: 'Ada Lovelace' };
 
-function machine(sources: Array<{ enabled: boolean }>): Machine {
+let machineCount = 0;
+
+function machine(sources: Array<{ enabled: boolean; sessionCount?: number }>): Machine {
+  machineCount += 1;
   return {
-    id: 'm-1', name: 'workstation', platform: 'darwin', status: 'online', lastSeenAt: null, agentVersion: '0.2.0',
+    id: `m-${machineCount}`, name: 'workstation', platform: 'darwin', status: 'online', lastSeenAt: null, agentVersion: '0.2.0',
     sources: sources.map((source, index) => ({
       id: `s-${index}`, label: `source-${index}`, enabled: source.enabled,
-      state: source.enabled ? 'synced' : 'disabled', sessionCount: 0, lastSyncAt: null,
+      state: source.enabled ? 'synced' : 'disabled', sessionCount: source.sessionCount ?? 0, lastSyncAt: null,
     })),
   };
 }
@@ -52,15 +55,25 @@ describe('Shell navigation', () => {
     expect(screen.getByText('Not signed in')).toBeDefined();
   });
 
-  it('counts connected sources instead of asserting a fixed number', () => {
-    // This read "2 of 3 sources connected" no matter how many existed.
-    renderShell(vi.fn(), USER, [machine([{ enabled: true }, { enabled: false }])]);
-    expect(screen.getByText('1 of 2 sources connected')).toBeDefined();
+  it('measures setup progress instead of drawing it', () => {
+    // This read "2 of 3 sources connected" no matter how many existed, then
+    // "80 of 80 sources connected" once it counted source entries — true, and
+    // useless. Underneath it a progress bar was fixed at 66% in the stylesheet,
+    // so it showed the same two-thirds whether nothing or everything had been
+    // captured. What matters during setup is whether a machine is archiving.
+    renderShell(vi.fn(), USER, [
+      machine([{ enabled: true, sessionCount: 4 }]),
+      machine([{ enabled: true, sessionCount: 0 }]),
+    ]);
+
+    expect(screen.getByText('1 of 2 machines are archiving')).toBeDefined();
+    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '50%' });
   });
 
   it('says so plainly when nothing is connected yet', () => {
     renderShell(vi.fn(), USER, []);
-    expect(screen.getByText('No sources connected yet')).toBeDefined();
+    expect(screen.getByText('No machine connected yet')).toBeDefined();
+    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '0%' });
   });
 
   it('navigates to the view behind each destination', () => {

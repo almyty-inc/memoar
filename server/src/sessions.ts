@@ -40,7 +40,9 @@ export class SessionsService {
       ...(query.to ? { to: new Date(query.to) } : {}),
     };
     const page = await this.store.listSessions(context, filter);
-    return { items: page.items.map(sessionSummary), nextCursor: page.nextCursor };
+    // The total, so a reader can be told how many sessions there are rather
+    // than only how many arrived in this page.
+    return { items: page.items.map(sessionSummary), total: page.total, nextCursor: page.nextCursor };
   }
 
   async timeline(context: TenantContext, query: Record<string, string | undefined>): Promise<Record<string, unknown>> {
@@ -55,6 +57,8 @@ export class SessionsService {
     }
     return {
       groups: [...groups].map(([date, sessions]) => ({ date, sessions })),
+      // How many sessions the archive holds, not how many this page carries.
+      total: page.total,
       nextCursor: page.nextCursor,
     };
   }

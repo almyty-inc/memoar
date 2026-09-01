@@ -124,14 +124,18 @@ export class PostgresSessionStore implements SessionStore {
     return this.runner.inTenant(context, async (manager) => {
       const query = TenantScope.apply(manager.getRepository(SessionEntity).createQueryBuilder("session"), "session", context)
         .orderBy("session.capturedUpdatedAt", "DESC")
-        .addOrderBy("session.id", "DESC")
-        .take(filter.limit + 1);
+        .addOrderBy("session.id", "DESC");
       if (filter.agent) query.andWhere("session.source ->> 'tool' = :agent", { agent: filter.agent });
       if (filter.workspace) query.andWhere("session.workspace ->> 'path' ILIKE :workspace", { workspace: `%${filter.workspace}%` });
       if (filter.machineId) query.andWhere("session.source ->> 'machineId' = :machineId", { machineId: filter.machineId });
       if (filter.model) query.andWhere(":model = ANY(session.models)", { model: filter.model });
       if (filter.from) query.andWhere("session.capturedUpdatedAt >= :from", { from: filter.from });
       if (filter.to) query.andWhere("session.capturedUpdatedAt <= :to", { to: filter.to });
+      // How many match the filter, before the cursor narrows it to one page.
+      // Without this the client can say how many sessions it is holding but not
+      // how many there are, which is the number a reader actually wants.
+      const total = await query.getCount();
+
       if (filter.cursor) {
         const cursor = decodeCursor(filter.cursor);
         if (cursor) query.andWhere("(session.capturedUpdatedAt, session.id) < (:cursorDate, :cursorId)", {
@@ -139,21 +143,32 @@ export class PostgresSessionStore implements SessionStore {
           cursorId: cursor.id,
         });
       }
-      const rows = await query.getMany();
+      const rows = await query.take(filter.limit + 1).getMany();
       const hasNext = rows.length > filter.limit;
       const pageRows = rows.slice(0, filter.limit);
-      const items: ArchivedSession[] = [];
-      for (const row of pageRows) {
-        const session = await this.getSessionWithManager(manager, context, row.id);
-        if (session) items.push(session);
-      }
+      // Hydrated together. One page used to cost three queries per session, so
+      // a fifty-session page was a hundred and fifty round trips for a list.
+      const items = await this.hydrateWithManager(manager, context, pageRows.map((row) => row.id));
       const last = pageRows.at(-1);
-      return { items, nextCursor: hasNext && last ? encodeCursor(last.capturedUpdatedAt, last.id) : null };
+      return { items, total, nextCursor: hasNext && last ? encodeCursor(last.capturedUpdatedAt, last.id) : null };
     });
   }
 
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {
     return this.runner.inTenant(context, (manager) => this.getSessionWithManager(manager, context, sessionId));
+  }
+
+  /** One grouped count for the whole account, not one query per source. */
+  async countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]> {
+    return this.runner.inTenant(context, async (manager) => {
+      return manager.query(
+        `SELECT source->>'machineId' AS "machineId", source->>'tool' AS tool, count(*)::int AS sessions
+           FROM sessions
+          WHERE "tenantId" = $1 AND source->>'machineId' IS NOT NULL
+          GROUP BY 1, 2`,
+        [context.tenantId],
+      );
+    });
   }
 
   /** One indexed count, rather than hydrating every turn to answer yes or no. */
@@ -169,7 +184,17 @@ export class PostgresSessionStore implements SessionStore {
    */
   async getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> {
     if (sessionIds.length === 0) return [];
-    return this.runner.inTenant(context, async (manager) => {
+    return this.runner.inTenant(context, (manager) => this.hydrateWithManager(manager, context, sessionIds));
+  }
+
+  /** The same batched hydration, for callers already inside a transaction. */
+  async hydrateWithManager(
+    manager: EntityManager,
+    context: TenantContext,
+    sessionIds: readonly string[],
+  ): Promise<ArchivedSession[]> {
+    if (sessionIds.length === 0) return [];
+    {
       const ids = [...new Set(sessionIds)];
       const [sessions, turns, blocks] = await Promise.all([
         manager.getRepository(SessionEntity).find({ where: { tenantId: context.tenantId, id: In(ids) } }),
@@ -194,7 +219,7 @@ export class PostgresSessionStore implements SessionStore {
       ]));
       // Preserve the caller's ranking order and drop ids that no longer exist.
       return sessionIds.map((id) => bySessionId.get(id)).filter((session): session is ArchivedSession => session !== undefined);
-    });
+    }
   }
 
   async getSessionWithManager(

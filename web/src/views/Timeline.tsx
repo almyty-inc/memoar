@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionSummary, TimelineGroup } from '../lib/types';
+import type { Machine, SessionSummary, TimelineGroup } from '../lib/types';
 import {
   Badge,
   Button,
@@ -28,9 +28,18 @@ type TimelineItem =
   | { type: 'date'; key: string; date: string; count: number }
   | { type: 'session'; key: string; session: SessionSummary };
 
-function friendlyDate(date: string): string {
-  if (date === '2026-08-17') return 'Today';
-  if (date === '2026-08-16') return 'Yesterday';
+/**
+ * "Today" was the literal date 2026-08-17, so one day in August was labelled
+ * today forever and the actual today was labelled by its weekday. The reference
+ * point is the moment the archive was loaded, passed in rather than read during
+ * render.
+ */
+function friendlyDate(date: string, asOf: number): string {
+  const day = 24 * 60 * 60 * 1000;
+  const startOfDay = (value: number) => Math.floor(value / day);
+  const difference = startOfDay(asOf) - startOfDay(new Date(`${date}T12:00:00Z`).valueOf());
+  if (difference === 0) return 'Today';
+  if (difference === 1) return 'Yesterday';
   return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
 }
 
@@ -78,14 +87,23 @@ function withinRange(updatedAt: string, cutoff: number | null): boolean {
   return Number.isFinite(at) && at >= cutoff;
 }
 
-export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, onLoadMore }: {
+export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearch, hasMore, loadingMore, onLoadMore }: {
   groups: TimelineGroup[];
+  machines: Machine[];
+  /** Sessions in the archive, counted by the server rather than by this page. */
+  archived: number;
+  /** When the archive was loaded, so "today" is not read during render. */
+  asOf: number;
   onOpen: (session: SessionSummary) => void;
   onSearch: () => void;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => Promise<void>;
 }) {
+  const activeSources = new Set(
+    machines.flatMap((machine) => machine.sources.filter((source) => source.sessionCount > 0).map((source) => source.id)),
+  ).size;
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [source, setSource] = useState('all');
   const [workspace, setWorkspace] = useState('all');
@@ -148,10 +166,18 @@ export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, o
           <h1>Pick up where you left off.</h1>
           <p>Sessions from every connected agent and machine, preserved in one branch-aware archive.</p>
         </div>
+        {/*
+          These read 635 sessions, 1.8m tokens and 5 sources whatever the
+          archive held — three numbers nobody counted, sitting where a summary
+          belongs. Sessions are now the server's own count of what matches;
+          sources and machines are counted from what each machine reports. There
+          is no token figure: the client holds one page of sessions, and a total
+          it cannot see is not a total it may claim.
+        */}
         <div className="archive-stats" aria-label="Archive summary">
-          <div><strong>635</strong><span>sessions</span></div>
-          <div><strong>1.8m</strong><span>tokens</span></div>
-          <div><strong>5</strong><span>sources</span></div>
+          <div><strong>{formatNumber(archived)}</strong><span>{archived === 1 ? 'session' : 'sessions'}</span></div>
+          <div><strong>{activeSources}</strong><span>{activeSources === 1 ? 'source' : 'sources'}</span></div>
+          <div><strong>{machines.length}</strong><span>{machines.length === 1 ? 'machine' : 'machines'}</span></div>
         </div>
       </section>
 
@@ -212,7 +238,7 @@ export function TimelineView({ groups, onOpen, onSearch, hasMore, loadingMore, o
                 >
                   {item.type === 'date' ? (
                     <div className="date-divider">
-                      <h2>{friendlyDate(item.date)}</h2>
+                      <h2>{friendlyDate(item.date, asOf)}</h2>
                       <span>{item.count} session{item.count === 1 ? '' : 's'}</span>
                       <div />
                     </div>

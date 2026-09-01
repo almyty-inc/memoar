@@ -49,13 +49,16 @@ export class MemorySessionStore implements SessionStore {
       .filter((session) => !filter.model || session.models.includes(filter.model))
       .filter((session) => !filter.from || new Date(session.updatedAt) >= filter.from)
       .filter((session) => !filter.to || new Date(session.updatedAt) <= filter.to)
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id))
-      .filter((session) => !cursor || `${session.updatedAt}|${session.id}` < cursor);
-    const page = items.slice(0, filter.limit);
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id));
+    // How many match the filter, counted before the cursor narrows it to a page.
+    const total = items.length;
+    const afterCursor = items.filter((session) => !cursor || `${session.updatedAt}|${session.id}` < cursor);
+    const page = afterCursor.slice(0, filter.limit);
     const last = page.at(-1);
     return {
       items: copy(page),
-      nextCursor: items.length > page.length && last
+      total,
+      nextCursor: afterCursor.length > page.length && last
         ? Buffer.from(`${last.updatedAt}|${last.id}`).toString("base64url")
         : null,
     };
@@ -64,6 +67,22 @@ export class MemorySessionStore implements SessionStore {
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {
     const session = this.tables.sessions.get(key(context.tenantId, sessionId));
     return session ? copy(session) : null;
+  }
+
+  countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]> {
+    const counts = new Map<string, { machineId: string; tool: string; sessions: number }>();
+    // The table is keyed by tenant, so the prefix is what scopes this.
+    const prefix = key(context.tenantId, "");
+    for (const [entry, session] of this.tables.sessions) {
+      if (!entry.startsWith(prefix)) continue;
+      const machineId = session.source.machineId;
+      if (!machineId) continue;
+      const key = `${machineId}:${session.source.tool}`;
+      const existing = counts.get(key);
+      if (existing) existing.sessions += 1;
+      else counts.set(key, { machineId, tool: session.source.tool, sessions: 1 });
+    }
+    return Promise.resolve([...counts.values()]);
   }
 
   sessionExists(context: TenantContext, sessionId: string): Promise<boolean> {
