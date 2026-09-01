@@ -41,14 +41,16 @@ export interface SessionSummary {
   source: SourceId;
   sourceLabel: string;
   workspace: string;
-  branch: string;
-  machine: string;
-  model: string;
+  /* Optional because a session may genuinely have no branch, no model and no
+     measurable duration. A stand-in for any of them reads as a fact. */
+  branch?: string;
+  machineId?: string;
+  model?: string;
   createdAt: string;
   updatedAt: string;
   turnCount: number;
   tokenCount: number;
-  durationMinutes: number;
+  durationMinutes?: number;
   redactionStatus: RedactionStatus;
   tags: string[];
   pinned?: boolean;

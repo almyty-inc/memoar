@@ -1,3 +1,4 @@
+import { sourceLabel } from './source-labels';
 import type {
   MemoryDocument,
   MemoryRevision,
@@ -28,10 +29,15 @@ interface WireSessionSummary {
   title: string;
   summary?: string;
   source: string;
+  sourceLabel: string;
+  machineId?: string;
   workspace: string;
+  branch?: string;
   model?: string;
   updatedAt: string;
   turnCount: number;
+  tokenCount: number;
+  durationMinutes?: number;
   redactionStatus: SessionSummary['redactionStatus'];
   score?: number;
   highlight?: string;
@@ -167,33 +173,30 @@ export interface ImportProgress {
   detail: string;
 }
 
-function sourceLabel(source: string): string {
-  const known: Record<string, string> = {
-    'claude-code': 'Claude Code',
-    codex: 'Codex',
-    'antigravity-cli': 'Antigravity',
-    cursor: 'Cursor',
-    goose: 'Goose',
-  };
-  return known[source] ?? source.split('-').map((part) => `${part.slice(0, 1).toLocaleUpperCase()}${part.slice(1)}`).join(' ');
-}
-
+/**
+ * A summary as the app uses it.
+ *
+ * Branch, machine, model, tokens and duration used to be filled in here with
+ * "unknown", "Archived machine", "Unknown model", 0 and 0, because the server
+ * did not send them. It does now, and what is genuinely absent stays absent
+ * rather than being given a stand-in that reads like a fact.
+ */
 function mapSession(session: WireSessionSummary): SessionSummary {
   return {
     id: session.id,
     title: session.title,
-    summary: session.summary ?? 'Archived coding session',
+    summary: session.summary ?? '',
     source: session.source,
-    sourceLabel: sourceLabel(session.source),
+    sourceLabel: session.sourceLabel,
     workspace: session.workspace,
-    branch: 'unknown',
-    machine: 'Archived machine',
-    model: session.model ?? 'Unknown model',
+    ...(session.branch ? { branch: session.branch } : {}),
+    ...(session.machineId ? { machineId: session.machineId } : {}),
+    ...(session.model ? { model: session.model } : {}),
     createdAt: session.updatedAt,
     updatedAt: session.updatedAt,
     turnCount: session.turnCount,
-    tokenCount: 0,
-    durationMinutes: 0,
+    tokenCount: session.tokenCount,
+    ...(session.durationMinutes === undefined ? {} : { durationMinutes: session.durationMinutes }),
     redactionStatus: session.redactionStatus,
     tags: [],
     ...(session.score === undefined ? {} : { score: session.score }),

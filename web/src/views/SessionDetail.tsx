@@ -63,6 +63,10 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
 }) {
   const [showThinking, setShowThinking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // The archive knows machines by id; the name comes from the machine list the
+  // app already holds, and is simply absent when this session came from one
+  // that is no longer registered.
+  const machineName = machines.find((machine) => machine.id === session.machineId)?.name ?? null;
   const [convertOpen, setConvertOpen] = useState(false);
   const [packOpen, setPackOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -206,8 +210,11 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
             <h1>{session.title}</h1>
             <div className="session-provenance-line">
               <span><GitBranch size={13} /> {session.workspace}</span>
-              <span>{session.branch}</span>
-              <span><Laptop size={13} /> {session.machine}</span>
+              {/* Shown when known. These read "unknown" and "Archived machine"
+                  on every session, which is a placeholder wearing the clothes
+                  of a fact. */}
+              {session.branch ? <span>{session.branch}</span> : null}
+              {machineName ? <span><Laptop size={13} /> {machineName}</span> : null}
               <span>Updated {formatRelative(session.updatedAt)}</span>
             </div>
           </div>
@@ -227,7 +234,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
           <div className="conversation-toolbar">
             <div>
               <strong>{detail.turns.length} turns</strong>
-              <span>{formatDate(session.createdAt)} · {session.durationMinutes} minutes</span>
+              <span>{formatDate(session.createdAt)}{session.durationMinutes ? ` · ${session.durationMinutes} minutes` : ''}</span>
             </div>
             <label className="thinking-control">
               <input type="checkbox" checked={showThinking} onChange={(event) => setShowThinking(event.target.checked)} />
@@ -267,7 +274,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
             <div className="metric-grid">
               <div><MessageSquare size={15} /><strong>{session.turnCount}</strong><span>turns</span></div>
               <TerminalSquare size={15} /><div><strong>{toolCalls}</strong><span>tool calls</span></div>
-              <Clock3 size={15} /><div><strong>{session.durationMinutes}m</strong><span>duration</span></div>
+              <Clock3 size={15} /><div><strong>{session.durationMinutes === undefined ? '—' : `${session.durationMinutes}m`}</strong><span>duration</span></div>
               <WandSparkles size={15} /><div><strong>{formatNumber(session.tokenCount)}</strong><span>tokens</span></div>
             </div>
             <div className="token-bars">

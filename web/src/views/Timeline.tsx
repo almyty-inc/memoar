@@ -54,12 +54,18 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
         </div>
         <h3>{session.title}</h3>
         <p>{session.summary}</p>
+        {/*
+          Only what the session actually has. Every row used to carry a branch
+          reading "unknown", a duration of 0m and "0 tokens" whether or not any
+          of it was known, which is a placeholder pretending to be a
+          measurement.
+        */}
         <div className="session-meta">
           <span><GitBranch size={13} /> {session.workspace}</span>
-          <span className="branch-name">{session.branch}</span>
+          {session.branch ? <span className="branch-name">{session.branch}</span> : null}
           <span><MessageSquare size={13} /> {session.turnCount}</span>
-          <span><Clock3 size={13} /> {session.durationMinutes}m</span>
-          <span>{formatNumber(session.tokenCount)} tokens</span>
+          {session.durationMinutes ? <span><Clock3 size={13} /> {session.durationMinutes}m</span> : null}
+          {session.tokenCount ? <span>{formatNumber(session.tokenCount)} tokens</span> : null}
         </div>
       </button>
       <div className="session-card-side">

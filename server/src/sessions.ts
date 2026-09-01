@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { CONTRACT_VERSION, type ContentBlock, type Session, type Turn } from "../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionStore, TenantContext } from "./archive-store.js";
 import { Tenant } from "./auth.js";
+import { sourceLabel } from "./source-labels.js";
 import { ARCHIVE_STORE } from "./tokens.js";
 
 function positiveInt(value: string | undefined, fallback: number, maximum: number): number {
@@ -10,16 +11,40 @@ function positiveInt(value: string | undefined, fallback: number, maximum: numbe
   return Number.isFinite(parsed) ? Math.max(1, Math.min(maximum, parsed)) : fallback;
 }
 
+/** Wall-clock minutes between the first and last turn, when both are dated. */
+function durationMinutes(session: ArchivedSession): number | null {
+  const stamps = session.turns
+    .map((turn) => new Date(turn.createdAt).valueOf())
+    .filter((value) => Number.isFinite(value));
+  if (stamps.length < 2) return null;
+  return Math.round((Math.max(...stamps) - Math.min(...stamps)) / 60_000);
+}
+
+/**
+ * The summary a list shows.
+ *
+ * Branch, machine, token count and duration were absent, so the client filled
+ * them with "unknown", "Archived machine", "0 tokens" and "0m" — placeholders
+ * that read as data on every row of the archive. Every one of them is a
+ * property of the session, so every one of them is sent, and absent when the
+ * session genuinely does not have it.
+ */
 export function sessionSummary(session: ArchivedSession): Record<string, unknown> {
+  const minutes = durationMinutes(session);
   return {
     id: session.id,
     title: session.title,
     ...(session.summary ? { summary: session.summary } : {}),
     source: session.source.tool,
+    sourceLabel: sourceLabel(session.source.tool),
+    ...(session.source.machineId ? { machineId: session.source.machineId } : {}),
     workspace: session.workspace.path,
+    ...(session.workspace.branch ? { branch: session.workspace.branch } : {}),
     ...(session.models[0] ? { model: session.models[0] } : {}),
     updatedAt: session.updatedAt,
     turnCount: session.turns.length,
+    tokenCount: session.tokenTotals.input + session.tokenTotals.output,
+    ...(minutes === null ? {} : { durationMinutes: minutes }),
     redactionStatus: session.redactionStatus,
   };
 }

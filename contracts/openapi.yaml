@@ -1118,16 +1118,26 @@ components:
         queuedAt: { type: string, format: date-time }
     SessionSummary:
       type: object
-      required: [id, title, source, workspace, updatedAt, turnCount, redactionStatus]
+      description: >
+        Branch, machine, tokens and duration are here because a client that is
+        not given them fills the gap: they were rendered as "unknown",
+        "Archived machine", "0 tokens" and "0m" on every row. Each is optional
+        and absent when the session genuinely does not have it.
+      required: [id, title, source, sourceLabel, workspace, updatedAt, turnCount, tokenCount, redactionStatus]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         title: { type: string }
         summary: { type: string }
         source: { type: string }
+        sourceLabel: { type: string, description: "The tool's own name, not a title-cased id." }
+        machineId: { $ref: '#/components/schemas/Uuid' }
         workspace: { type: string }
+        branch: { type: string }
         model: { type: string }
         updatedAt: { type: string, format: date-time }
         turnCount: { type: integer }
+        tokenCount: { type: integer, minimum: 0 }
+        durationMinutes: { type: integer, minimum: 0 }
         redactionStatus: { type: string, enum: [clear, findings, reviewed] }
         score: { type: number }
         highlight: { type: string }

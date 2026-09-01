@@ -37,7 +37,7 @@ describe('Memoar archive app', () => {
         sessions: [{
           id: 's-1', title: 'Fix the ingest pipeline', summary: 'Archived coding session',
           source: 'claude-code', sourceLabel: 'Claude Code', workspace: '/workspace/memoar', branch: 'main',
-          machine: 'workstation', model: 'Unknown model', createdAt: '2026-08-20T00:00:00.000Z',
+          createdAt: '2026-08-20T00:00:00.000Z',
           updatedAt: '2026-08-20T00:00:00.000Z', turnCount: 2, tokenCount: 0, durationMinutes: 0,
           redactionStatus: 'clear', tags: [],
         }],
