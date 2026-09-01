@@ -46,12 +46,29 @@ function mask(id: string, kind: string, preview: string): Annotation {
   };
 }
 
+/**
+ * A machine the session could have come from.
+ *
+ * Not an empty list: the machine lookup was written above the binding it reads,
+ * and an empty list never runs the comparison, so the page rendered in tests
+ * and went blank in the browser the moment an account had a machine.
+ */
+const MACHINES = [{
+  id: '0191cafe-0000-7000-8000-00000000ma01',
+  name: 'workstation',
+  platform: 'darwin',
+  status: 'online' as const,
+  lastSeenAt: null,
+  agentVersion: '0.3.0',
+  sources: [],
+}];
+
 function renderDetail() {
   return render(
     <SessionDetailView
       detail={detail()}
       collections={[]}
-      machines={[]}
+      machines={MACHINES}
       onBack={vi.fn()}
       onBuildPack={vi.fn()}
       onConvert={vi.fn()}

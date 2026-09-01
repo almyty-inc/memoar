@@ -63,10 +63,6 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
 }) {
   const [showThinking, setShowThinking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  // The archive knows machines by id; the name comes from the machine list the
-  // app already holds, and is simply absent when this session came from one
-  // that is no longer registered.
-  const machineName = machines.find((machine) => machine.id === session.machineId)?.name ?? null;
   const [convertOpen, setConvertOpen] = useState(false);
   const [packOpen, setPackOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -90,6 +86,13 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   const [pinId, setPinId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const session = detail.session;
+  // The archive knows machines by id; the name comes from the machine list the
+  // app already holds, and is simply absent when this session came from one
+  // that is no longer registered. Declared after the session it reads: above
+  // it, the lookup only ran when there was a machine to compare against, so it
+  // worked with none and threw with any — passing every test and blanking the
+  // page for anyone with a machine connected.
+  const machineName = machines.find((machine) => machine.id === session.machineId)?.name ?? null;
 
   // Pins live as annotations, so the current state has to be read rather than
   // assumed: the button previously guessed from a field the server never set.
