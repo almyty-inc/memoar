@@ -186,13 +186,18 @@ test.describe('Memoar live Compose browser acceptance', () => {
 
   test('covers onboarding, fixture visibility, filters, and a second timeline page', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('button', { name: 'Connect source' }).click();
-    await expect(page.getByRole('heading', { name: 'Connect your first machine.' })).toBeVisible();
-    await page.getByRole('tab', { name: 'Linux' }).click();
-    await expect(page.locator('.install-command')).toContainText('npx memoar connect');
-    await page.getByRole('button', { name: 'I ran the command' }).click();
-    await expect(page.getByText('Source discovery')).toBeVisible();
-    await page.getByRole('button', { name: /Browse available sessions/ }).click();
+    // This step used to assert the mock-up: a "Connect source" button, an
+    // `npx memoar connect` command the CLI does not have, and an "I ran the
+    // command" button that only set a flag. It now checks that the page hands
+    // over commands the agent accepts and lists the machines that exist.
+    await page.getByRole('button', { name: 'Connect a machine' }).click();
+    await expect(page.getByRole('heading', { name: 'Connect a machine.' })).toBeVisible();
+    await expect(page.locator('.install-command').first()).toContainText('memoar login --endpoint');
+    await expect(page.locator('.install-command').nth(1)).toContainText('memoar sync --watch');
+    await expect(page.getByText('Machines on this account')).toBeVisible();
+    // The fixture importer registered a machine, so the archive is reachable
+    // from here rather than the button staying disabled forever.
+    await page.getByRole('button', { name: /Browse the archive|Open the timeline/ }).click();
     await expect(page.getByText(fixtureTitle, { exact: true }).first()).toBeVisible();
 
     const source = page.getByLabel('Filter by source');

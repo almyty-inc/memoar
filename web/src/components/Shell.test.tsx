@@ -19,7 +19,7 @@ function machine(sources: Array<{ enabled: boolean; sessionCount?: number }>): M
 }
 
 function renderShell(onNavigate = vi.fn(), user: CurrentUser | null = USER, machines: Machine[] = []) {
-  return render(<Shell view="timeline" mode="connected" user={user} machines={machines} onNavigate={onNavigate}>content</Shell>);
+  return render(<Shell view="timeline" user={user} machines={machines} onNavigate={onNavigate}>content</Shell>);
 }
 
 describe('Shell navigation', () => {

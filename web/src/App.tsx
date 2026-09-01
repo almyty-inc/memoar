@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Shell } from './components/Shell';
 import { Button } from './components/ui';
 import { memoarApi } from './lib/api';
-import { demoDashboard } from './lib/demo';
 import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
 import { CollectionsView } from './views/Collections';
 import { MemoryView } from './views/Memory';
@@ -28,7 +27,6 @@ const emptyConnectedDashboard: DashboardState = {
   transfers: [],
   machines: [],
   apiKeys: [],
-  mode: 'connected',
 };
 
 function viewFromHash(): ViewId {
@@ -38,7 +36,7 @@ function viewFromHash(): ViewId {
 
 export function App() {
   const [view, setView] = useState<ViewId>(() => memoarApi.configured && !memoarApi.authenticated ? 'signin' : viewFromHash());
-  const [dashboard, setDashboard] = useState<DashboardState>(memoarApi.configured ? emptyConnectedDashboard : { ...demoDashboard, mode: 'demo' });
+  const [dashboard, setDashboard] = useState<DashboardState>(emptyConnectedDashboard);
   const [loading, setLoading] = useState(() => !memoarApi.configured || memoarApi.authenticated);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -231,7 +229,7 @@ export function App() {
   }
 
   return (
-    <Shell view={view} mode={dashboard.mode} user={user} machines={dashboard.machines} onNavigate={navigate}>
+    <Shell view={view} user={user} machines={dashboard.machines} onNavigate={navigate}>
       {loading ? <div className="connection-toast" role="status" aria-label="Connection status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
       {content}
     </Shell>

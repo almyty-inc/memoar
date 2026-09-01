@@ -1,13 +1,3 @@
-import {
-  demoApiKeys,
-  demoCollections,
-  demoDashboard,
-  demoGrants,
-  demoMachines,
-  demoSessions,
-  demoTransfers,
-  makeDemoDetail,
-} from './demo';
 import type {
   MemoryDocument,
   MemoryRevision,
@@ -161,11 +151,6 @@ export interface TenantSettings {
   updatedAt: string | null;
 }
 
-const DEFAULT_TENANT_SETTINGS: TenantSettings = {
-  redaction: { secretScan: true, pathScan: false, emailScan: false, customPatterns: [] },
-  retention: { policy: 'indefinite', exemptCollected: true },
-  updatedAt: null,
-};
 
 export interface RawArtifactStatus {
   sha256: string;
@@ -216,16 +201,6 @@ function mapSession(session: WireSessionSummary): SessionSummary {
   };
 }
 
-function countBy(items: SessionSummary[], key: (item: SessionSummary) => string): SearchAggregation[] {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const value = key(item);
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([value, count]) => ({ label: value, value, count }))
-    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
-}
 
 function mapAggregation(value: unknown, label: (key: string) => string = (key) => key): SearchAggregation[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
@@ -235,38 +210,6 @@ function mapAggregation(value: unknown, label: (key: string) => string = (key) =
     .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
 
-function localSearch(query: string): SearchResponse {
-  const normalized = query.trim().toLocaleLowerCase();
-  const items = demoSessions
-    .filter((session) => {
-      if (!normalized) return true;
-      return [session.title, session.summary, session.workspace, session.tags.join(' ')]
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(normalized);
-    })
-    .map((session, index) => ({
-      ...session,
-      score: Number((0.96 - index * 0.047).toFixed(3)),
-      highlight: session.summary,
-    }));
-
-  return {
-    items,
-    nextCursor: null,
-    aggregations: {
-      agents: countBy(items, (session) => session.sourceLabel),
-      workspaces: countBy(items, (session) => session.workspace),
-      dates: countBy(items, (session) => session.updatedAt.slice(0, 10)),
-    },
-    meta: {
-      requestedMode: 'hybrid',
-      realizedMode: 'hybrid',
-      tookMs: normalized ? 38 : 0,
-      semanticFailure: null,
-    },
-  };
-}
 
 function stringField(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -396,6 +339,18 @@ export class MemoarApiClient {
     return this.baseUrl.length > 0;
   }
 
+  /**
+   * Refuses to answer without an archive to ask.
+   *
+   * Every read here used to fall back to a sample archive when no endpoint was
+   * configured, so a deployment that had lost its VITE_API_URL looked like a
+   * working product full of sessions that belonged to nobody. There is no
+   * substitute for the archive: if it is not configured, that is the answer.
+   */
+  private requireArchive(): void {
+    if (!this.configured) throw new MemoarApiError(0, 'No archive endpoint is configured for this build (VITE_API_URL).');
+  }
+
   /** The endpoint an agent on a machine has to be pointed at. */
   get endpoint(): string {
     return this.baseUrl;
@@ -444,7 +399,7 @@ export class MemoarApiClient {
    * be, while still sharing the token, timeout and 401 handling.
    */
   private async fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
-    if (!this.configured) throw new Error('No Memoar API URL is configured');
+    this.requireArchive();
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 10_000);
     try {
@@ -519,13 +474,7 @@ export class MemoarApiClient {
   }
 
   async loadTimelinePage(cursor: string | null = null, limit = 30): Promise<{ groups: TimelineGroup[]; total: number; nextCursor: string | null }> {
-    if (!this.configured) {
-      return {
-        groups: demoDashboard.timeline,
-        total: demoDashboard.timeline.reduce((count, group) => count + group.sessions.length, 0),
-        nextCursor: null,
-      };
-    }
+    this.requireArchive();
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set('cursor', cursor);
     const response = await this.request<WireTimelineResponse>(`/sessions/timeline?${query.toString()}`);
@@ -536,7 +485,7 @@ export class MemoarApiClient {
     };
   }
   async loadDashboard(): Promise<DashboardState> {
-    if (!this.configured) return { ...demoDashboard, mode: 'demo' };
+    this.requireArchive();
     const timeline = await this.loadTimelinePage();
     const sessions = timeline.groups.flatMap((group) => group.sessions);
     const sessionTitles = new Map(sessions.map((session) => [session.id, session.title]));
@@ -565,12 +514,11 @@ export class MemoarApiClient {
       })),
       machines: machines.items.map(mapMachine),
       apiKeys: apiKeys.items,
-      mode: 'connected',
     };
   }
 
   async search(query: string): Promise<SearchResponse> {
-    if (!this.configured) return localSearch(query);
+    this.requireArchive();
     const response = await this.request<WireSearchResponse>(
       `/search?q=${encodeURIComponent(query || 'session')}&mode=hybrid&limit=50`,
     );
@@ -588,7 +536,7 @@ export class MemoarApiClient {
   }
 
   async getSession(session: SessionSummary): Promise<SessionDetailData> {
-    if (!this.configured) return makeDemoDetail(session);
+    this.requireArchive();
     const chunks: WireSessionChunk[] = [];
     let cursor: string | null = null;
     do {
@@ -601,7 +549,7 @@ export class MemoarApiClient {
   }
 
   async completeRedactionReview(sessionId: string): Promise<{ id: string; maskCount: number }> {
-    if (!this.configured) return { id: `review-${Date.now()}`, maskCount: 0 };
+    this.requireArchive();
     return this.request<{ id: string; maskCount: number }>(`/sessions/${sessionId}/redaction-reviews`, { method: 'POST' });
   }
 
@@ -692,7 +640,7 @@ export class MemoarApiClient {
     visibility: { scope: 'private' | 'team' | 'org' | 'link'; teamId?: string; orgId?: string },
     redactionReviewId?: string,
   ): Promise<{ id: string; visibility: { scope: string } }> {
-    if (!this.configured) return { id: sessionId, visibility: { scope: visibility.scope } };
+    this.requireArchive();
     return this.request(`/sessions/${sessionId}`, {
       method: 'PATCH',
       body: JSON.stringify(redactionReviewId ? { visibility, redactionReviewId } : { visibility }),
@@ -700,7 +648,7 @@ export class MemoarApiClient {
   }
 
   async getSettings(): Promise<TenantSettings> {
-    if (!this.configured) return DEFAULT_TENANT_SETTINGS;
+    this.requireArchive();
     return this.request<TenantSettings>('/settings');
   }
 
@@ -708,7 +656,7 @@ export class MemoarApiClient {
     redaction?: Partial<TenantSettings['redaction']>;
     retention?: Partial<TenantSettings['retention']>;
   }): Promise<TenantSettings> {
-    if (!this.configured) return DEFAULT_TENANT_SETTINGS;
+    this.requireArchive();
     return this.request<TenantSettings>('/settings', { method: 'PUT', body: JSON.stringify(update) });
   }
 
@@ -850,17 +798,13 @@ export class MemoarApiClient {
   }
 }
 
-const configuredApiUrl: unknown = (import.meta.env as Record<string, unknown>).VITE_API_URL;
+const environment = import.meta.env as Record<string, unknown>;
+const configuredApiUrl: unknown = environment.VITE_API_URL;
 const apiUrl = typeof configuredApiUrl === 'string' ? configuredApiUrl : '';
+
+
 export const memoarApi = new MemoarApiClient(apiUrl);
 memoarApi.consumeOAuthCallback();
 
-export const demoFallbacks = {
-  collections: demoCollections,
-  grants: demoGrants,
-  transfers: demoTransfers,
-  machines: demoMachines,
-  apiKeys: demoApiKeys,
-};
 
 export type { TimelineGroup };

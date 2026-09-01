@@ -221,7 +221,6 @@ export interface DashboardData {
 }
 
 export interface DashboardState extends DashboardData {
-  mode: 'connected' | 'demo';
   nextTimelineCursor?: string | null;
 }
 

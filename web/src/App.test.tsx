@@ -1,8 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { MemoarApiClient } from './lib/api';
+import { MemoarApiClient, memoarApi } from './lib/api';
 
 describe('Memoar archive app', () => {
   beforeEach(() => {
@@ -10,54 +9,62 @@ describe('Memoar archive app', () => {
     window.sessionStorage.clear();
   });
 
-  it('renders a dark-default timeline with a usable demo archive', async () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  /*
+    These rendered the whole app against a sample archive and then asserted the
+    sample's own content — a search that found "Fix session parser branch
+    recovery" because the fixture contained it. They exercised the invented data
+    as much as the app. With the sample archive gone, the app is driven by a
+    stubbed client instead, which is the only honest way to test a screen that
+    has nothing of its own to show.
+  */
+  it('reports a failure to reach the archive rather than showing something', async () => {
+    vi.spyOn(memoarApi, 'loadDashboard').mockRejectedValue(new Error('Archive unreachable'));
+    vi.spyOn(memoarApi, 'currentUser').mockRejectedValue(new Error('no identity'));
+
     render(<App />);
 
+    expect(await screen.findByRole('heading', { name: 'Archive connection failed' })).toBeInTheDocument();
+    expect(screen.getByText('Archive unreachable')).toBeInTheDocument();
+  });
+
+  it('shows the archive it was given', async () => {
+    vi.spyOn(memoarApi, 'currentUser').mockResolvedValue({ id: 'u-1', email: 'ada@example.test', displayName: 'Ada Lovelace' });
+    vi.spyOn(memoarApi, 'loadDashboard').mockResolvedValue({
+      timeline: [{
+        date: '2026-08-20',
+        sessions: [{
+          id: 's-1', title: 'Fix the ingest pipeline', summary: 'Archived coding session',
+          source: 'claude-code', sourceLabel: 'Claude Code', workspace: '/workspace/memoar', branch: 'main',
+          machine: 'workstation', model: 'Unknown model', createdAt: '2026-08-20T00:00:00.000Z',
+          updatedAt: '2026-08-20T00:00:00.000Z', turnCount: 2, tokenCount: 0, durationMinutes: 0,
+          redactionStatus: 'clear', tags: [],
+        }],
+      }],
+      archivedSessions: 41,
+      collections: [], grants: [], transfers: [], machines: [], apiKeys: [],
+    });
+
+    render(<App />);
+
+    // The rows themselves are virtualized and need a measured scroll box that
+    // jsdom does not give them; the summary is what this asserts, and it is the
+    // part that used to be invented.
+    expect(await screen.findByText('41')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Pick up where you left off.' })).toBeInTheDocument();
-    expect(screen.getByText('Demo archive')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('Checking archive connection')).not.toBeInTheDocument());
+    expect(screen.queryByText('Demo archive'), 'there is no demo archive any more').not.toBeInTheDocument();
   });
 
-  it('searches as you type and opens the canonical session detail', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getAllByRole('button', { name: 'Search' })[0]!);
-    const search = screen.getByRole('searchbox', { name: 'Search sessions' });
-    await user.clear(search);
-    await user.type(search, 'parent reference');
-
-    const resultTitle = await screen.findByRole('heading', { name: 'Fix session parser branch recovery' });
-    const resultButton = resultTitle.closest('button');
-    expect(resultButton).not.toBeNull();
-    await user.click(resultButton!);
-
-    expect(await screen.findByText(/The normalizer now resolves/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
-    expect(screen.getByText('Raw artifact preserved and content-addressed.')).toBeInTheDocument();
-  });
-
-  it('exposes API key and MCP controls', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(screen.getByRole('heading', { name: 'API keys' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Remote MCP' })).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Create key' }));
-    expect(screen.getByRole('dialog', { name: 'Create API key' })).toBeInTheDocument();
-  });
-
-  it('falls back to typed local data when no API URL is configured', async () => {
+  it('refuses to invent an archive when no API URL is configured', async () => {
+    // It used to answer from a sample archive, so a deployment that had lost
+    // its VITE_API_URL looked like a working product full of sessions that
+    // belonged to nobody. There is no substitute for the archive.
     const client = new MemoarApiClient('');
-    const dashboard = await client.loadDashboard();
-    const results = await client.search('redaction');
 
-    expect(dashboard.mode).toBe('demo');
-    expect(dashboard.timeline.flatMap((group) => group.sessions).length).toBeGreaterThan(5);
-    expect(results.items.some((session) => session.title.includes('redaction'))).toBe(true);
-    expect(results.meta.realizedMode).toBe('hybrid');
+    await expect(client.loadDashboard()).rejects.toThrow(/No archive endpoint is configured/);
+    await expect(client.search('redaction')).rejects.toThrow(/No archive endpoint is configured/);
+    await expect(client.listMemory()).rejects.toThrow();
   });
   it('persists an OAuth callback session and scrubs it from the URL', () => {
     const client = new MemoarApiClient('http://memoar.test/v1');

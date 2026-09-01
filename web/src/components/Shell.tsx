@@ -14,7 +14,7 @@ import {
   Search,
   Settings,
   Share2,
-  Sparkles, Upload,
+  Upload,
   X,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -67,9 +67,8 @@ const titles: Partial<Record<ViewId, string>> = {
   session: 'Session',
 };
 
-export function Shell({ view, mode, user, machines, children, onNavigate }: {
+export function Shell({ view, user, machines, children, onNavigate }: {
   view: ViewId;
-  mode: 'connected' | 'demo';
   user: CurrentUser | null;
   machines: Machine[];
   children: ReactNode;
@@ -182,7 +181,7 @@ export function Shell({ view, mode, user, machines, children, onNavigate }: {
               <span>Search your archive</span>
               <kbd><Command size={11} /> K</kbd>
             </button>
-            {mode === 'demo' ? <Badge className="demo-badge"><Sparkles size={12} /> Demo archive</Badge> : <Badge className="live-badge">Connected</Badge>}
+            <Badge className="live-badge">Connected</Badge>
             <IconButton label="API keys" onClick={() => navigate('settings')}><KeyRound size={17} /></IconButton>
           </div>
         </header>
