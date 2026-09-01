@@ -9,6 +9,8 @@ import {
   makeDemoDetail,
 } from './demo';
 import type {
+  MemoryDocument,
+  MemoryRevision,
   Annotation,
   ApiKey,
   ApiKeyCreateResult,
@@ -603,6 +605,18 @@ export class MemoarApiClient {
 
   requestTransfer(input: { sessionId: string; recipientEmail: string; redactionReviewId: string }): Promise<Transfer> {
     return this.request<Transfer>('/sharing/transfers', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  listMemory(): Promise<{ items: MemoryDocument[] }> {
+    return this.request<{ items: MemoryDocument[] }>('/memory');
+  }
+
+  getMemory(documentId: string): Promise<{ document: MemoryDocument; revisions: MemoryRevision[] }> {
+    return this.request<{ document: MemoryDocument; revisions: MemoryRevision[] }>(`/memory/${documentId}`);
+  }
+
+  deleteMemory(documentId: string): Promise<void> {
+    return this.request<void>(`/memory/${documentId}`, { method: 'DELETE' });
   }
 
   deleteSession(sessionId: string): Promise<void> {

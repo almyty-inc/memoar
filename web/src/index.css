@@ -984,3 +984,30 @@ mark { padding: 0 2px; color: #19200c; background: #d6ff78d9; border-radius: 2px
 .tile-bar-track { height: 6px; background: var(--line-soft); border-radius: 999px; overflow: hidden; }
 .tile-bar-track > span { display: block; height: 100%; background: var(--acid); border-radius: 999px; }
 .tile-bar-count { color: var(--quiet); font-variant-numeric: tabular-nums; }
+
+/* Agent memory: the standing instructions, and their history. */
+.memory-filter { height: 35px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: #111518; border: 1px solid var(--line); border-radius: 8px; }
+.memory-filter svg { color: var(--quiet); }
+.memory-filter input { width: 190px; color: var(--text); background: transparent; border: 0; outline: 0; font-size: 11px; }
+@media (max-width: 900px) { .memory-filter { width: 100%; } .memory-filter input { width: 100%; } }
+.memory-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
+.memory-layout:has(.memory-list:only-child) { grid-template-columns: minmax(0, 1fr); }
+.memory-list section { margin-bottom: 18px; }
+.memory-list h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); overflow-wrap: anywhere; }
+.memory-entry { padding: 12px 14px; margin-bottom: 8px; background: #101417; border: 1px solid var(--line-soft); border-radius: 12px; }
+.memory-entry.selected { border-color: var(--accent); }
+.memory-entry > button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; }
+.memory-entry-title { font-size: 14px; font-weight: 600; }
+.memory-entry-path { flex: 1; min-width: 0; font-size: 11px; color: var(--text-dim); overflow-wrap: anywhere; }
+.memory-entry-readers { display: flex; flex-wrap: wrap; gap: 4px; margin: 9px 0 6px; }
+.memory-entry footer { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+.memory-detail { position: sticky; top: 16px; padding: 16px; background: #101417; border: 1px solid var(--line-soft); border-radius: 12px; }
+.memory-detail header h2 { margin: 0; font-size: 15px; }
+.memory-detail header p { margin: 4px 0 12px; font-size: 11px; color: var(--text-dim); overflow-wrap: anywhere; }
+.memory-revisions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+.memory-revisions h3 { display: flex; align-items: center; gap: 5px; margin: 0 6px 0 0; font-size: 12px; color: var(--text-dim); }
+.memory-revisions button { display: flex; flex-direction: column; gap: 2px; padding: 5px 9px; background: #0b0e10; border: 1px solid var(--line-soft); border-radius: 8px; color: inherit; font-size: 11px; cursor: pointer; }
+.memory-revisions button.selected { border-color: var(--accent); }
+.memory-revisions button span { color: var(--text-dim); font-size: 10px; }
+.memory-text { max-height: 60vh; margin: 0; padding: 12px; overflow: auto; background: #0b0e10; border: 1px solid var(--line-soft); border-radius: 10px; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .memory-layout { grid-template-columns: minmax(0, 1fr); } .memory-detail { position: static; } }

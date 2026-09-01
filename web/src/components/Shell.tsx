@@ -1,5 +1,6 @@
 import {
   Archive,
+  BookMarked,
   Boxes,
   ChevronsUpDown,
   CircleHelp,
@@ -33,6 +34,7 @@ const navGroups: Array<{
       { view: 'search', label: 'Search', icon: Search },
       { view: 'import', label: 'Import', icon: Upload },
       { view: 'collections', label: 'Collections', icon: Collection },
+      { view: 'memory', label: 'Agent memory', icon: BookMarked },
     ],
   },
   {
@@ -56,6 +58,7 @@ const titles: Partial<Record<ViewId, string>> = {
   search: 'Search',
   import: 'Import',
   collections: 'Collections',
+  memory: 'Agent memory',
   sharing: 'Sharing',
   machines: 'Machines & sources',
   settings: 'Settings',

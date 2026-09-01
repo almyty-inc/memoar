@@ -68,7 +68,6 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
       <section className="collection-overview">
         <div><strong>{collections.length}</strong><span>collections</span></div>
         <div><strong>{collections.reduce((count, collection) => count + collection.sessionCount, 0)}</strong><span>session memberships</span></div>
-        <div><strong>12</strong><span>distilled notes</span></div>
         <div className="collection-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter collections" aria-label="Filter collections" /></div>
       </section>
 

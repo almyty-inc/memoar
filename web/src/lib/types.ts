@@ -6,6 +6,7 @@ export type ViewId =
   | 'import'
   | 'sharing'
   | 'machines'
+  | 'memory'
   | 'settings'
   | 'onboarding'
   | 'signin'
@@ -220,4 +221,27 @@ export interface DashboardData {
 export interface DashboardState extends DashboardData {
   mode: 'connected' | 'demo';
   nextTimelineCursor?: string | null;
+}
+
+/** An instruction file an agent reads: CLAUDE.md, AGENTS.md, .goosehints. */
+export interface MemoryDocument {
+  id: string;
+  scope: 'global' | 'project';
+  machineId: string;
+  workspacePath?: string;
+  path: string;
+  title: string;
+  /** The supported tools that read this path. */
+  readers: string[];
+  contentHash: string;
+  capturedAt: string;
+}
+
+export interface MemoryRevision {
+  id: string;
+  documentId: string;
+  contentHash: string;
+  text: string;
+  size: number;
+  capturedAt: string;
 }

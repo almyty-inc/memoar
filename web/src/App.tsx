@@ -6,6 +6,7 @@ import { memoarApi } from './lib/api';
 import { demoDashboard } from './lib/demo';
 import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
 import { CollectionsView } from './views/Collections';
+import { MemoryView } from './views/Memory';
 import { ImportView } from './views/Import';
 import { MachinesView } from './views/Machines';
 import { OnboardingView, SignInView } from './views/Onboarding';
@@ -169,6 +170,8 @@ export function App() {
     content = <SearchView onOpen={openSession} />;
   } else if (view === 'collections') {
     content = <CollectionsView collections={dashboard.collections} sessions={allSessions} onOpen={openSession} onCreate={createCollection} />;
+  } else if (view === 'memory') {
+    content = <MemoryView />;
   } else if (view === 'import') {
     content = <ImportView machines={dashboard.machines} onOpen={openSession} onImport={async (file, source, machineId, onProgress) => {
       const imported = await memoarApi.importArtifact(file, source, machineId, onProgress);
