@@ -120,6 +120,24 @@ pub struct ConversionReport {
     pub dropped_blocks: usize,
 }
 
+/// The report the archive produced, as it wrote it.
+///
+/// A bundle carries the server's own report — how many blocks it mapped, what
+/// it degraded, what it dropped, whether it fell back to an injection prelude.
+/// That was parsed into the struct above, whose fields have different names, so
+/// the parse failed every time and `unwrap_or_default` printed zeros: a
+/// conversion that dropped half a session reported nothing dropped. It is
+/// carried through untouched now, because nothing here needs to interpret it
+/// and inventing a shape for it is what hid the real one.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum MaterializedReport {
+    /// Built here, when this machine converted a session itself.
+    Local(ConversionReport),
+    /// Written by the archive and passed on as-is.
+    FromArchive(Value),
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterializationResult {
@@ -128,7 +146,7 @@ pub struct MaterializationResult {
     pub written: Vec<PathBuf>,
     pub unchanged: Vec<PathBuf>,
     pub resume_command: String,
-    pub report: ConversionReport,
+    pub report: MaterializedReport,
 }
 
 #[derive(Debug)]
@@ -285,14 +303,13 @@ pub fn materialize_bundle(
         });
     }
     let (written, unchanged) = commit_plan(home, &planned)?;
-    let report = serde_json::from_value(bundle.report.clone()).unwrap_or_default();
     Ok(MaterializationResult {
         target: bundle.target,
         session_id: bundle.session_id.clone(),
         written,
         unchanged,
         resume_command: bundle.resume_command.clone(),
-        report,
+        report: MaterializedReport::FromArchive(bundle.report.clone()),
     })
 }
 
@@ -358,7 +375,7 @@ fn materialize_claude(
         written,
         unchanged,
         resume_command: format!("claude -r {}", session.id),
-        report: report(session, degraded),
+        report: MaterializedReport::Local(report(session, degraded)),
     })
 }
 
@@ -443,7 +460,7 @@ fn materialize_codex(
         written,
         unchanged,
         resume_command: format!("codex resume {}", session.id),
-        report: report(session, degraded),
+        report: MaterializedReport::Local(report(session, degraded)),
     })
 }
 
@@ -524,7 +541,7 @@ fn materialize_antigravity(
         written,
         unchanged,
         resume_command: format!("agy --conversation {}", session.id),
-        report,
+        report: MaterializedReport::Local(report),
     })
 }
 
@@ -1070,6 +1087,50 @@ mod tests {
         });
         let result = materialize_bundle(&bundle, temp.path()).unwrap();
         assert_eq!(fs::read(&result.written[0]).unwrap(), content);
+    }
+
+    #[test]
+    fn a_bundle_reports_what_the_archive_said_it_did() {
+        // The archive writes {"mapped":N,"degraded":[...],"dropped":[...],
+        // "fallback":bool}. That was parsed into this crate's own report
+        // struct, whose fields are named differently, so the parse failed every
+        // time and unwrap_or_default printed zeros: a conversion that dropped
+        // half a session reported nothing dropped, and the fixture beside it
+        // used this crate's names, so nothing caught it.
+        let temp = tempfile::tempdir().unwrap();
+        let session_id = fixture_session().id;
+        let archive_report = json!({
+            "mapped": 4,
+            "degraded": [{"turnId": "t1", "blockId": "b1", "kind": "image", "reason": "no native representation"}],
+            "dropped": [{"reference": "turns:5-900", "reason": "injection_token_budget_exceeded"}],
+            "fallback": true,
+        });
+        let bundle = finalized_bundle(ConversionBundle {
+            contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
+            bundle_version: "1".to_owned(),
+            bundle_sha256: String::new(),
+            target: Target::ClaudeCode,
+            session_id: session_id.clone(),
+            files: vec![BundleFile {
+                path: format!("~/.claude/projects/-tmp-project/{session_id}.jsonl"),
+                media_type: "application/x-ndjson".to_owned(),
+                base64: BASE64.encode(b"{\"type\":\"message\"}\n"),
+                sha256: String::new(),
+                size: 0,
+            }],
+            resume_command: format!("claude -r {session_id}"),
+            report: archive_report.clone(),
+        });
+
+        let result = materialize_bundle(&bundle, temp.path()).unwrap();
+
+        let reported = serde_json::to_value(&result.report).unwrap();
+        assert_eq!(
+            reported, archive_report,
+            "the archive's report must survive the trip"
+        );
+        assert_eq!(reported["dropped"].as_array().unwrap().len(), 1);
+        assert_eq!(reported["fallback"], json!(true));
     }
 
     #[test]
