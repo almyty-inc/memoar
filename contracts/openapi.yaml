@@ -908,10 +908,23 @@ paths:
             schema: { type: object, required: [clientName, protocolVersion], properties: { clientName: { type: string }, protocolVersion: { type: string } } }
       responses:
         '200':
-          description: MCP endpoint and negotiated capabilities
+          description: >
+            MCP endpoint, capabilities, and a short-lived bearer token scoped to
+            mcp:use. The endpoint itself takes an API key in x-memoar-key; this
+            exists for clients that can only send a bearer token.
           content:
             application/json:
-              schema: { type: object, required: [endpoint, tools], properties: { endpoint: { type: string, format: uri }, tools: { type: array, items: { type: string } } } }
+              schema:
+                type: object
+                required: [endpoint, tools, accessToken, expiresAt]
+                properties:
+                  endpoint: { type: string }
+                  tools: { type: array, items: { type: string } }
+                  clientName: { type: string }
+                  protocolVersion: { type: string }
+                  accessToken: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
   /memory:
     get:
       tags: [Memory]

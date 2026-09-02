@@ -34,14 +34,26 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
 /**
  * How to point a client at this archive.
  *
- * Verified against the installed CLIs rather than remembered: `claude mcp add`
- * takes --transport and a URL, `codex mcp add` takes --url. Only clients whose
- * command is known appear here; the rest of the world uses the endpoint above.
+ * Verified against the installed CLIs and against the endpoint itself: it
+ * authenticates an API key through x-memoar-key, and a bearer token only when
+ * the token came from the handshake. The first version of this omitted the
+ * credential entirely, so following it produced a server that could not
+ * authenticate — a command that runs and then does not work.
+ *
+ * Codex takes no custom header, only a bearer token from an environment
+ * variable, which is what the handshake exists to mint.
  */
 function mcpCommands(endpoint: string): { name: string; command: string }[] {
+  const handshake = `${endpoint.replace(/\/mcp$/, '')}/v1/mcp/auth/handshake`;
   return [
-    { name: 'Claude Code', command: `claude mcp add --transport http memoar ${endpoint}` },
-    { name: 'Codex', command: `codex mcp add memoar --url ${endpoint}` },
+    {
+      name: 'Claude Code',
+      command: `claude mcp add --transport http memoar ${endpoint} --header "X-Memoar-Key: $MEMOAR_API_KEY"`,
+    },
+    {
+      name: 'Codex',
+      command: `export MEMOAR_MCP_TOKEN=$(curl -s -X POST ${handshake} -H "x-memoar-key: $MEMOAR_API_KEY" -H 'content-type: application/json' -d '{"clientName":"codex","protocolVersion":"2025-06-18"}' | jq -r .accessToken) && codex mcp add memoar --url ${endpoint} --bearer-token-env-var MEMOAR_MCP_TOKEN`,
+    },
   ];
 }
 
