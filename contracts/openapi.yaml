@@ -1044,7 +1044,17 @@ components:
         title: { type: string }
         status: { type: integer }
         code: { type: string }
-        detail: { type: string }
+        detail:
+          type: string
+          description: >
+            Present on a 4xx, where the caller's own request was at fault and
+            naming the problem helps them. Absent on a 5xx, whose cause belongs
+            in the log rather than the response.
+        requestId:
+          type: string
+          description: >
+            Also returned as the x-request-id header and written on the server's
+            log line for this request, so a report can be traced to it.
         retryable: { type: boolean }
     EmailLoginRequest:
       type: object

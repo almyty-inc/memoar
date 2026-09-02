@@ -19,7 +19,12 @@ describe("authentication", () => {
     const unknownAccount = await api.request("POST", "/auth/login", { token: null, body: { email: "nobody@memoar.dev", password: "memoar-demo-password" } });
     expect(wrongPassword.status).toBe(401);
     expect(unknownAccount.status).toBe(401);
-    expect(wrongPassword.body).toEqual(unknownAccount.body);
+    // Each response carries its own request id, so what is compared is what the
+    // two answers say: a wrong password and an account that does not exist must
+    // be indistinguishable, or the endpoint enumerates accounts.
+    const said = (body: Record<string, unknown>): Record<string, unknown> =>
+      Object.fromEntries(Object.entries(body).filter(([key]) => key !== "requestId"));
+    expect(said(wrongPassword.body)).toEqual(said(unknownAccount.body));
   });
 
   it("answers malformed login bodies with 400 rather than a 500", async () => {

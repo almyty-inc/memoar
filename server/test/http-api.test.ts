@@ -103,7 +103,10 @@ describe("HTTP surface: request validation", () => {
   it("rejects annotations with a bad kind, missing fields, or unknown properties", async () => {
     const badKind = await api.request("POST", "/annotations", { body: { sessionId: DEMO_SESSION_ID, kind: "nonsense", value: {} } });
     expect(badKind.status).toBe(400);
-    expect(JSON.stringify(badKind.body.message)).toContain("kind");
+    // A 4xx is the caller's own mistake, so the problem document says which
+    // field was wrong; a 5xx would not.
+    expect(str(badKind.body, "code")).toBe("bad_request");
+    expect(str(badKind.body, "detail")).toContain("kind");
 
     expect((await api.request("POST", "/annotations", { body: { kind: "note", value: {} } })).status).toBe(400);
     expect((await api.request("POST", "/annotations", { body: { sessionId: DEMO_SESSION_ID, kind: "note", value: {}, injected: true } })).status).toBe(400);

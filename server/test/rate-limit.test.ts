@@ -51,7 +51,12 @@ describe("credential endpoints are rate limited", () => {
     const unknown = await guess("nobody-here@memoar.dev");
     const known = await guess("demo@memoar.dev");
     expect(unknown.status).toBe(known.status);
-    expect(unknown.body).toEqual(known.body);
+    // Every response carries its own request id, so the comparison is of what
+    // the two answers say — which must be nothing that distinguishes them.
+    const said = (body: Record<string, unknown>): Record<string, unknown> =>
+      Object.fromEntries(Object.entries(body).filter(([key]) => key !== "requestId"));
+    expect(said(unknown.body)).toEqual(said(known.body));
+    expect(unknown.body.requestId, "and each is traceable on its own").not.toBe(known.body.requestId);
   });
 
   it("does not spend the budget on sign-ins that succeed", async () => {

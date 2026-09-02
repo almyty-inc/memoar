@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
 import { AnnotationsModule } from "./annotations/annotations.module.js";
 import { MemoryModule } from "./memory/memory.module.js";
 import { AuthModule } from "./auth.module.js";
@@ -11,6 +12,7 @@ import { InfrastructureModule } from "./infrastructure.module.js";
 import { IngestModule } from "./ingest.module.js";
 import { MachinesModule } from "./machines.module.js";
 import { McpModule } from "./mcp.module.js";
+import { ProblemFilter, RequestLogInterceptor } from "./observability.js";
 import { OpenApiController } from "./openapi.js";
 import { SearchModule } from "./search.module.js";
 import { SessionsModule } from "./sessions.module.js";
@@ -41,6 +43,12 @@ import { TeamsModule } from "./teams.module.js";
     DistillationModule,
   ],
   controllers: [HealthController, OpenApiController],
+  providers: [
+    // Every request gets an id and one structured line; every failure gets the
+    // problem document the contract describes, carrying that id.
+    { provide: APP_INTERCEPTOR, useClass: RequestLogInterceptor },
+    { provide: APP_FILTER, useClass: ProblemFilter },
+  ],
 })
 export class AppModule {}
 
