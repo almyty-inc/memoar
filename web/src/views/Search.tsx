@@ -35,6 +35,18 @@ const emptyResponse: SearchResponse = {
   meta: { requestedMode: 'hybrid', realizedMode: 'hybrid', tookMs: 0, semanticFailure: null },
 };
 
+const MODE_TITLES: Record<SearchResponse['meta']['realizedMode'], string> = {
+  hybrid: 'Hybrid mode',
+  lexical: 'Lexical mode',
+  semantic: 'Semantic mode',
+};
+
+const MODE_EXPLANATIONS: Record<SearchResponse['meta']['realizedMode'], string> = {
+  hybrid: 'Lexical and semantic results, fused by reciprocal rank.',
+  lexical: 'Ranked by matching words alone.',
+  semantic: 'Ranked by meaning alone.',
+};
+
 export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => void }) {
   const [query, setQuery] = useState('parser');
   const [response, setResponse] = useState<SearchResponse>(emptyResponse);
@@ -128,9 +140,24 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
           />
           <AggregationGroup icon={<FolderGit2 size={14} />} title="Workspace" items={response.aggregations.workspaces} />
           <AggregationGroup icon={<Calendar size={14} />} title="Date" items={response.aggregations.dates} />
+          {/*
+            What the search actually did, which the server reports. This card
+            said "Hybrid mode — lexical and semantic results are fused with RRF"
+            whatever ran: a deployment with no embedding provider falls back to
+            lexical, and the panel went on describing a fusion that had not
+            happened.
+          */}
           <div className="search-mode-card">
             <CircleGauge size={17} />
-            <div><strong>Hybrid mode</strong><p>Lexical and semantic results are fused with RRF.</p></div>
+            <div>
+              <strong>{MODE_TITLES[response.meta.realizedMode]}</strong>
+              <p>
+                {MODE_EXPLANATIONS[response.meta.realizedMode]}
+                {response.meta.semanticFailure
+                  ? ` Semantic search was unavailable: ${response.meta.semanticFailure}`
+                  : ''}
+              </p>
+            </div>
           </div>
         </aside>
 

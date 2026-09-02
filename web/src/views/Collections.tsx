@@ -141,7 +141,12 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
           <div className="modal-body form-stack">
             <label className="field-label">Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Example: Retrieval quality" autoFocus required /></label>
             <label className="field-label">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What belongs here?" rows={3} /></label>
-            <div className="color-choices" aria-label="Collection color">{['#d6ff78', '#7dd3fc', '#f0a6ca', '#c4b5fd'].map((color) => <button type="button" key={color} style={{ background: color }} aria-label={`Use ${color}`} />)}</div>
+            {/*
+              A row of four colour swatches used to sit here with no click
+              handler and no field to write to: choosing one did nothing, and
+              the collection was created with whatever colour the server picked.
+              A control that cannot change anything is worse than no control.
+            */}
           </div>
           <footer className="modal-actions"><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" variant="primary" disabled={saving}>{saving ? 'Creating…' : 'Create collection'}</Button></footer>
         </form>

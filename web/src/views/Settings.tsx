@@ -1,7 +1,5 @@
 import {
-  ArrowRight,
   Bot,
-  Check,
   ChevronRight,
   Clock3,
   Eye,
@@ -32,6 +30,20 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
   { id: 'privacy', label: 'Redaction', icon: Shield },
   { id: 'retention', label: 'Retention', icon: Clock3 },
 ];
+
+/**
+ * How to point a client at this archive.
+ *
+ * Verified against the installed CLIs rather than remembered: `claude mcp add`
+ * takes --transport and a URL, `codex mcp add` takes --url. Only clients whose
+ * command is known appear here; the rest of the world uses the endpoint above.
+ */
+function mcpCommands(endpoint: string): { name: string; command: string }[] {
+  return [
+    { name: 'Claude Code', command: `claude mcp add --transport http memoar ${endpoint}` },
+    { name: 'Codex', command: `codex mcp add memoar --url ${endpoint}` },
+  ];
+}
 
 export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRevoked }: { apiKeys: ApiKey[]; mcpEndpoint: string; user: CurrentUser | null; onCreateKey: (name: string, scopes: string[]) => Promise<string>; onKeyRevoked: () => void }) {
   const [tab, setTab] = useState<SettingsTab>('keys');
@@ -142,9 +154,21 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
               <section className="settings-section mcp-section">
                 <header><div><h2>Remote MCP</h2><p>Let Claude Code, Codex, and other MCP clients retrieve cited archive evidence.</p></div><Badge className="status-active"><span /> Available</Badge></header>
                 <div className="endpoint-row"><span><ServerCog size={16} /></span><div><small>Streamable HTTP endpoint</small><code>{mcpEndpoint}</code></div><CopyButton value={mcpEndpoint} /></div>
+                {/*
+                  Setup commands, not connection status. This listed three
+                  clients and marked whichever came first as "Connected 8m ago"
+                  with a green badge — a status decided by list position, for a
+                  connection nobody had checked. Memoar has no way to know which
+                  clients have added it, so it says what it does know: how to
+                  add it. Both commands are the ones those CLIs accept.
+                */}
                 <div className="mcp-clients">
-                  {['Claude Code', 'Codex', 'Cursor'].map((client, index) => (
-                    <button type="button" key={client}><span><Bot size={16} /></span><div><strong>{client}</strong><small>{index === 0 ? 'Connected 8m ago' : 'View setup command'}</small></div>{index === 0 ? <Badge className="status-active"><Check size={11} /> Connected</Badge> : <ArrowRight size={15} />}</button>
+                  {mcpCommands(mcpEndpoint).map((client) => (
+                    <div className="mcp-client" key={client.name}>
+                      <span><Bot size={16} /></span>
+                      <div><strong>{client.name}</strong><code>{client.command}</code></div>
+                      <CopyButton value={client.command} label={`Copy ${client.name} command`} />
+                    </div>
                   ))}
                 </div>
                 <div className="mcp-discipline"><Sparkles size={16} /><p><strong>Retrieval discipline is built in.</strong> Tools guide agents from search to excerpt to pack before full-session access.</p></div>

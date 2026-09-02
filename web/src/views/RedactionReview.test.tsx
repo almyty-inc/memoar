@@ -118,6 +118,29 @@ describe('redaction review before sharing', () => {
     expect(screen.getByText(/flagged nothing/)).toBeInTheDocument();
   });
 
+  it('draws the token bars from the token counts', () => {
+    // They were fixed at 62% and 39% whatever the session used — two rectangles
+    // that looked like a measurement — and cache read had no bar at all.
+    vi.spyOn(memoarApi, 'listAnnotations').mockResolvedValue({ items: [] });
+
+    const { container } = render(
+      <SessionDetailView
+        detail={{ ...detail(), tokenTotals: { input: 800, output: 400, cacheRead: 200 } }}
+        collections={[]}
+        machines={MACHINES}
+        onBack={vi.fn()}
+        onBuildPack={vi.fn()}
+        onConvert={vi.fn()}
+        onConversionStatus={vi.fn()}
+        onDeleted={vi.fn()}
+        onArchiveChanged={vi.fn()}
+      />,
+    );
+
+    const widths = [...container.querySelectorAll('.token-bar > span')].map((bar) => (bar as HTMLElement).style.width);
+    expect(widths, 'each bar is its share of the largest').toEqual(['100%', '50%', '25%']);
+  });
+
   it('reports a failure to read the findings rather than showing none', async () => {
     // Silently showing an empty list would read as "nothing to redact" and
     // walk somebody straight into sharing an unscanned session.

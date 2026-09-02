@@ -664,17 +664,9 @@ export class MemoarApiClient {
   }
 
   async createCollection(name: string, description: string): Promise<Collection> {
-    if (!this.configured) {
-      return {
-        id: `collection-${Date.now()}`,
-        name,
-        description,
-        sessionCount: 0,
-        updatedAt: new Date().toISOString(),
-        color: '#d6ff78',
-        members: [],
-      };
-    }
+    // This returned a collection it had invented, so the screen showed one that
+    // no archive had ever heard of and that vanished on reload.
+    this.requireArchive();
     return mapCollection(await this.request<WireCollection>('/collections', {
       method: 'POST',
       body: JSON.stringify({ name, description }),

@@ -196,6 +196,10 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
     return () => { cancelled = true; clearTimeout(timer); };
   }, [conversion, onConversionStatus]);
 
+  // The largest of the three, so the bars are comparable with each other rather
+  // than each being full.
+  const tokenScale = Math.max(detail.tokenTotals.input, detail.tokenTotals.output, detail.tokenTotals.cacheRead);
+
   const toolCalls = useMemo(() => detail.turns.flatMap((turn) => turn.blocks)
     .filter((block): block is Extract<ContentBlock, { kind: 'tool_call' }> => block.kind === 'tool_call').length, [detail.turns]);
 
@@ -280,12 +284,25 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
               <Clock3 size={15} /><div><strong>{session.durationMinutes === undefined ? '—' : `${session.durationMinutes}m`}</strong><span>duration</span></div>
               <WandSparkles size={15} /><div><strong>{formatNumber(session.tokenCount)}</strong><span>tokens</span></div>
             </div>
+            {/*
+              Bars drawn from the numbers beside them. They were fixed at 62%
+              and 39% whatever the session used — two rectangles that looked
+              like a measurement — and cache read had no bar at all, so the one
+              row you could not compare was the one with no picture.
+            */}
             <div className="token-bars">
-              <div><span>Input</span><strong>{formatNumber(detail.tokenTotals.input)}</strong></div>
-              <span className="token-bar"><span style={{ width: '62%' }} /></span>
-              <div><span>Output</span><strong>{formatNumber(detail.tokenTotals.output)}</strong></div>
-              <span className="token-bar output"><span style={{ width: '39%' }} /></span>
-              <div><span>Cache read</span><strong>{formatNumber(detail.tokenTotals.cacheRead)}</strong></div>
+              {([
+                ['Input', detail.tokenTotals.input, ''],
+                ['Output', detail.tokenTotals.output, 'output'],
+                ['Cache read', detail.tokenTotals.cacheRead, 'cache'],
+              ] as const).map(([label, value, modifier]) => (
+                <div key={label} className="token-bar-row">
+                  <div><span>{label}</span><strong>{formatNumber(value)}</strong></div>
+                  <span className={cn('token-bar', modifier)}>
+                    <span style={{ width: `${tokenScale === 0 ? 0 : Math.round((value / tokenScale) * 100)}%` }} />
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
 
