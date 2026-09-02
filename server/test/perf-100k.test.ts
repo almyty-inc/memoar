@@ -3,7 +3,7 @@ import { loadavg, cpus } from "node:os";
 import { performance } from "node:perf_hooks";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dockerAvailable } from "./helpers/postgres.js";
+import { dockerAvailable, waitForStablePostgres } from "./helpers/postgres.js";
 import { startTestApi, type TestApi } from "./helpers/http-app.js";
 
 const CONTAINER = "memoar-perf-test";
@@ -131,6 +131,11 @@ beforeAll(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
+  // The probe above answers while the entrypoint's temporary server is still
+  // up, and that server is shut down straight afterwards; booting the app in
+  // that gap is how this failed in CI with "Connection terminated unexpectedly"
+  // while passing locally.
+  await waitForStablePostgres(OWNER_URL);
   // Boot the real app against the throwaway database; migrations run on start.
   api = await startTestApi({
     DATABASE_URL,
@@ -215,7 +220,11 @@ suite("hybrid search at 100k sessions", () => {
   // instrument that would have caught the dead vector index, where the index
   // WAS used and a Sort over every candidate row was stacked on top of it —
   // invisible to "did it use the index?" and to a p95 that merely looked slow.
-  it("serves vector retrieval from the HNSW index with no sort stacked on top", async () => {
+  // Only meaningful at scale: below roughly ten thousand rows the planner
+  // rightly prefers the tenant index and a sort, so a reduced-size run would
+  // fail for a reason that has nothing to do with the defect this guards. CI
+  // runs the full hundred thousand; a smaller local run says it skipped this.
+  it.skipIf(SESSION_COUNT < 25_000)("serves vector retrieval from the HNSW index with no sort stacked on top", async () => {
     const database = new Client({ connectionString: APP_URL });
     await database.connect();
     try {

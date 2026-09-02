@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { Client } from "pg";
 import { DataSource } from "typeorm";
 import { ENTITIES } from "../../src/entities.js";
 import { MIGRATIONS } from "../../src/data-source.js";
@@ -68,6 +69,37 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
   await connectWithRetry(dataSource, fixture);
   await dataSource.runMigrations({ transaction: "all" });
   return dataSource;
+}
+
+/**
+ * Waits for a Postgres that will still be there a moment later.
+ *
+ * pg_isready answers while the image's entrypoint still has a temporary server
+ * up for initialisation, and that server is shut down immediately afterwards.
+ * Anything that connects in the gap gets "Connection terminated unexpectedly" —
+ * which is how a benchmark that boots the app straight after the probe failed
+ * in CI while passing locally. Two consecutive round trips, a beat apart, means
+ * the real server is answering.
+ */
+export async function waitForStablePostgres(url: string, attempts = 60): Promise<void> {
+  let consecutive = 0;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const client = new Client({ connectionString: url });
+    try {
+      await client.connect();
+      await client.query("SELECT 1");
+      consecutive += 1;
+      if (consecutive >= 2) return;
+    } catch (error) {
+      lastError = error;
+      consecutive = 0;
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`postgres at ${url} never settled: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 
 export async function connectWithRetry(dataSource: DataSource, fixture: PostgresFixture): Promise<void> {
