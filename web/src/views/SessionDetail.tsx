@@ -84,6 +84,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   const [machineId, setMachineId] = useState('');
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [pinId, setPinId] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const session = detail.session;
   // The archive knows machines by id; the name comes from the machine list the
@@ -100,7 +101,15 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
     let active = true;
     void memoarApi.listAnnotations(session.id)
       .then((page) => {
-        if (active) setPinId(page.items.find((annotation) => annotation.kind === 'pin')?.id ?? null);
+        if (!active) return;
+        setPinId(page.items.find((annotation) => annotation.kind === 'pin')?.id ?? null);
+        // Tags are annotations too. The session summary carries an empty array
+        // the server never fills, so the tag row rendered nothing whatever had
+        // been tagged.
+        setTags(page.items
+          .filter((annotation) => annotation.kind === 'tag')
+          .map((annotation) => (typeof annotation.value.label === 'string' ? annotation.value.label : ''))
+          .filter((label) => label.length > 0));
       })
       .catch(() => {
         // Absence of a pin is the safe default: showing "Pin session" for an
@@ -328,7 +337,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
 
           <section className="inspector-card">
             <h2>Organization</h2>
-            <div className="inspector-tags">{session.tags.map((tag) => <Badge key={tag}>#{tag}</Badge>)}</div>
+            {tags.length ? <div className="inspector-tags">{tags.map((tag) => <Badge key={tag}>#{tag}</Badge>)}</div> : null}
             <Button size="sm" variant="ghost" disabled={collections.length === 0} onClick={() => setCollectionOpen(true)}>
               <Collection size={14} /> {collections.length === 0 ? 'No collections yet' : 'Add to collection'}
             </Button>

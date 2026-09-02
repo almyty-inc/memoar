@@ -205,7 +205,7 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
                     <p><HighlightText text={session.highlight ?? session.summary} query={query} /></p>
                     <div className="result-foot">
                       <RedactionBadge status={session.redactionStatus} />
-                      {session.tags.map((tag) => <Badge key={tag}>#{tag}</Badge>)}
+
                       <span>{session.turnCount} turns</span>
                       <span className="result-open">Open session <ArrowRight size={13} /></span>
                     </div>

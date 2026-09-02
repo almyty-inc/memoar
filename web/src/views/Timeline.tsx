@@ -15,7 +15,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Machine, SessionSummary, TimelineGroup } from '../lib/types';
 import {
-  Badge,
   Button,
   RedactionBadge,
   SourceBadge,
@@ -70,9 +69,6 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
       </button>
       <div className="session-card-side">
         <RedactionBadge status={session.redactionStatus} />
-        <div className="tag-row">
-          {session.tags.map((tag) => <Badge key={tag}>#{tag}</Badge>)}
-        </div>
         <Button size="sm" variant="ghost" onClick={() => onOpen(session)}>Open <ArrowRight size={14} /></Button>
       </div>
     </article>

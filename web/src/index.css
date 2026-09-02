@@ -1040,3 +1040,5 @@ code, pre, samp { font-family: var(--mono); }
    unbroken word, and it used to carry the whole panel off the screen. */
 .session-layout > aside, .session-layout > aside * { min-width: 0; }
 .session-layout > aside pre, .session-layout > aside code { overflow-wrap: anywhere; }
+
+.tile-scope { margin: 2px 0 8px; color: var(--quiet); font-family: var(--mono); font-size: 10px; }

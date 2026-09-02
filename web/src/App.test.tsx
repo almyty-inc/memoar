@@ -39,7 +39,7 @@ describe('Memoar archive app', () => {
           source: 'claude-code', sourceLabel: 'Claude Code', workspace: '/workspace/memoar', branch: 'main',
           createdAt: '2026-08-20T00:00:00.000Z',
           updatedAt: '2026-08-20T00:00:00.000Z', turnCount: 2, tokenCount: 0, durationMinutes: 0,
-          redactionStatus: 'clear', tags: [],
+          redactionStatus: 'clear',
         }],
       }],
       archivedSessions: 41,

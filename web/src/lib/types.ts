@@ -52,7 +52,6 @@ export interface SessionSummary {
   tokenCount: number;
   durationMinutes?: number;
   redactionStatus: RedactionStatus;
-  tags: string[];
   pinned?: boolean;
   score?: number;
   highlight?: string;
@@ -125,7 +124,6 @@ export interface Collection {
   sessionCount: number;
   updatedAt: string;
   color: string;
-  members: string[];
 }
 
 export interface ShareGrant {
@@ -137,7 +135,6 @@ export interface ShareGrant {
   token?: string;
   createdAt: string;
   expiresAt: string | null;
-  views: number;
 }
 
 export interface Transfer {

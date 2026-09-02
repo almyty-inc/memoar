@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   BookOpen,
-  ChevronRight,
   LibraryBig as Collection,
   FolderPlus,
   Plus,
@@ -11,11 +10,10 @@ import {
 import { useMemo, useState, type FormEvent } from 'react';
 import { memoarApi } from '../lib/api';
 import type { Collection as CollectionType, SessionSummary } from '../lib/types';
-import { Badge, Button, Modal, SourceBadge, formatRelative } from '../components/ui';
+import { Badge, Button, Modal, formatRelative } from '../components/ui';
 
-export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
+export function CollectionsView({ collections, onOpen, onCreate }: {
   collections: CollectionType[];
-  sessions: SessionSummary[];
   onOpen: (session: SessionSummary) => void;
   onCreate: (name: string, description: string) => Promise<void>;
 }) {
@@ -73,7 +71,10 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
 
       <div className="collection-grid">
         {filtered.map((collection) => {
-          const members = sessions.filter((session) => collection.members.includes(session.id));
+          // Membership is not in the list response, so the preview here was
+          // built from a members array the client filled with nothing: a card
+          // could read "3 sessions" and then say the collection was empty.
+          // Opening one fetches the real membership.
           return (
             <article className="collection-card" key={collection.id}>
               <div className="collection-color" style={{ background: collection.color }} />
@@ -83,15 +84,7 @@ export function CollectionsView({ collections, sessions, onOpen, onCreate }: {
               <h2>{collection.name}</h2>
               <p>{collection.description}</p>
               <div className="collection-count"><strong>{collection.sessionCount}</strong> sessions <span>·</span> Updated {formatRelative(collection.updatedAt)}</div>
-              <div className="collection-members">
-                {members.slice(0, 3).map((session) => (
-                  <button key={session.id} type="button" onClick={() => onOpen(session)}>
-                    <SourceBadge source={session.source} label={session.sourceLabel} />
-                    <span>{session.title}</span><ChevronRight size={14} />
-                  </button>
-                ))}
-                {!members.length ? <p>No sessions in this collection yet.</p> : null}
-              </div>
+              {collection.sessionCount === 0 ? <p className="collection-empty">No sessions in this collection yet.</p> : null}
               <footer>
                 {/*
                   The badge here was decided by list position — the first two

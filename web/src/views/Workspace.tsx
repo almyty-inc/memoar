@@ -40,8 +40,10 @@ export function loadLayout(storage: Pick<Storage, 'getItem'>, known: readonly st
   }
 }
 
-export function WorkspaceView({ sessions, machines, collections, grants, transfers, onOpen }: {
+export function WorkspaceView({ sessions, archived, machines, collections, grants, transfers, onOpen }: {
   sessions: SessionSummary[];
+  /** Sessions in the archive, which is more than the pages loaded so far. */
+  archived: number;
   machines: Machine[];
   collections: Collection[];
   grants: ShareGrant[];
@@ -127,6 +129,14 @@ export function WorkspaceView({ sessions, machines, collections, grants, transfe
         return (
           <div className="tile-bars">
             {ranked.length === 0 ? <p className="empty-note">Nothing captured yet.</p> : null}
+            {/*
+              The timeline arrives a page at a time, so this counts what has
+              been loaded. Saying so is the difference between a breakdown and
+              a breakdown that claims to cover an archive it has not seen.
+            */}
+            {ranked.length > 0 && sessions.length < archived
+              ? <p className="tile-scope">over the {sessions.length} of {archived} sessions loaded</p>
+              : null}
             {ranked.map(([label, count]) => (
               <div key={label} className="tile-bar">
                 <span>{label}</span>
@@ -138,7 +148,7 @@ export function WorkspaceView({ sessions, machines, collections, grants, transfe
         );
       },
     },
-  ], [sessions, machines, collections, grants, transfers, onOpen]);
+  ], [sessions, archived, machines, collections, grants, transfers, onOpen]);
 
   const [layout, setLayout] = useState<TileLayout[]>(() => loadLayout(window.localStorage, tiles.map((tile) => tile.id)));
 

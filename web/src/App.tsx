@@ -159,6 +159,7 @@ export function App() {
     content = (
       <WorkspaceView
         sessions={allSessions}
+        archived={dashboard.archivedSessions}
         machines={dashboard.machines}
         collections={dashboard.collections}
         grants={dashboard.grants}
@@ -169,7 +170,7 @@ export function App() {
   } else if (view === 'search') {
     content = <SearchView onOpen={openSession} />;
   } else if (view === 'collections') {
-    content = <CollectionsView collections={dashboard.collections} sessions={allSessions} onOpen={openSession} onCreate={createCollection} />;
+    content = <CollectionsView collections={dashboard.collections} onOpen={openSession} onCreate={createCollection} />;
   } else if (view === 'memory') {
     content = <MemoryView />;
   } else if (view === 'import') {

@@ -198,7 +198,6 @@ function mapSession(session: WireSessionSummary): SessionSummary {
     tokenCount: session.tokenCount,
     ...(session.durationMinutes === undefined ? {} : { durationMinutes: session.durationMinutes }),
     redactionStatus: session.redactionStatus,
-    tags: [],
     ...(session.score === undefined ? {} : { score: session.score }),
     ...(session.highlight === undefined ? {} : { highlight: session.highlight }),
   };
@@ -295,8 +294,7 @@ function mapCollection(collection: WireCollection): Collection {
   return {
     ...collection,
     description: collection.description ?? '',
-    color: '#d6ff78',
-    members: [],
+    color: '#3d7a1f',
   };
 }
 
@@ -508,7 +506,6 @@ export class MemoarApiClient {
         ...grant,
         sessionTitle: sessionTitles.get(grant.sessionId) ?? grant.sessionId,
         expiresAt: grant.expiresAt ?? null,
-        views: 0,
       })),
       transfers: transfers.items.map((transfer) => ({
         ...transfer,
