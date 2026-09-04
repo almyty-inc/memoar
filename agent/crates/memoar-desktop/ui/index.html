@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memoar</title>
+    <style>
+      /*
+        The same paper-and-ink language as the archive, kept small on purpose:
+        this window reports what capture is doing. Reading the archive happens
+        in the archive.
+      */
+      :root {
+        color-scheme: light;
+        --bg: #f7f6f3;
+        --panel: #fffefc;
+        --line: #dedcd5;
+        --line-soft: #e8e6e0;
+        --text: #17191b;
+        --muted: #5f6265;
+        --quiet: #86898c;
+        --accent: #3d7a1f;
+        --danger: #b3261e;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 22px; background: var(--bg); color: var(--text); font-size: 13px; }
+      h1 { margin: 0 0 2px; font-size: 20px; font-weight: 620; letter-spacing: -.02em; }
+      .eyebrow { color: var(--accent); font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+      p { margin: 0; color: var(--muted); line-height: 1.5; }
+      section { margin-top: 16px; padding: 14px; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; }
+      h2 { margin: 0 0 10px; font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--quiet); }
+      .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+      .row:last-child { border-bottom: 0; }
+      .row span:first-child { color: var(--muted); }
+      .row span:last-child { font-family: var(--mono); overflow-wrap: anywhere; text-align: right; }
+      label { display: block; margin-bottom: 9px; }
+      label span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+      input { width: 100%; height: 34px; padding: 0 9px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: inherit; font: inherit; }
+      input:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
+      button { min-height: 34px; padding: 0 13px; background: var(--text); border: 1px solid var(--text); border-radius: 4px; color: #fbfbf8; font: inherit; font-weight: 560; cursor: pointer; }
+      button.secondary { background: var(--panel); border-color: var(--line); color: var(--text); }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .actions { display: flex; gap: 8px; margin-top: 12px; }
+      .error { margin-top: 10px; color: var(--danger); }
+      .dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--quiet); }
+      .dot.on { background: var(--accent); }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="eyebrow">Capture</div>
+    <h1>Memoar</h1>
+    <p id="lede">Checking this machine…</p>
+
+    <section id="sign-in" hidden>
+      <h2>Connect this machine</h2>
+      <form id="form">
+        <label><span>Archive endpoint</span><input id="endpoint" value="http://localhost:4000/v1" required /></label>
+        <label><span>Email</span><input id="email" type="email" autocomplete="username" required /></label>
+        <label><span>Password</span><input id="password" type="password" autocomplete="current-password" required /></label>
+        <div class="actions"><button id="connect" type="submit">Connect</button></div>
+      </form>
+      <p class="error" id="sign-in-error" hidden></p>
+    </section>
+
+    <section id="connected" hidden>
+      <h2>This machine</h2>
+      <div class="row"><span>Status</span><span id="capture-state"><span class="dot on"></span>capturing</span></div>
+      <div class="row"><span>Endpoint</span><span id="endpoint-value">—</span></div>
+      <div class="row"><span>Machine</span><span id="machine-value">—</span></div>
+      <div class="row"><span>Waiting in queue</span><span id="queued-value">—</span></div>
+      <div class="row"><span>Last capture</span><span id="last-sync-value">never</span></div>
+      <div class="row"><span>Uploaded last time</span><span id="uploaded-value">—</span></div>
+      <div class="row"><span>Memory files recorded</span><span id="memory-value">—</span></div>
+      <div class="actions">
+        <button id="sync" type="button">Capture now</button>
+        <button id="open" class="secondary" type="button">Open the archive</button>
+      </div>
+      <p class="error" id="sync-error" hidden></p>
+    </section>
+
+    <script type="module">
+      const invoke = window.__TAURI__.core.invoke;
+      const openUrl = window.__TAURI__.opener?.openUrl;
+
+      const el = (id) => document.getElementById(id);
+      const show = (node, visible) => { node.hidden = !visible; };
+
+      function render(status) {
+        show(el('sign-in'), !status.signedIn);
+        show(el('connected'), status.signedIn);
+        el('lede').textContent = status.signedIn
+          ? 'Sessions on this machine are captured and uploaded to your archive.'
+          : 'Sign in to start archiving the coding sessions on this machine.';
+        if (!status.signedIn) return;
+
+        el('endpoint-value').textContent = status.endpoint ?? '—';
+        el('machine-value').textContent = status.machineId ?? '—';
+        el('queued-value').textContent = status.queued === null || status.queued === undefined ? '—' : String(status.queued);
+        el('last-sync-value').textContent = status.lastSyncAt
+          ? new Date(status.lastSyncAt).toLocaleString()
+          : 'not since this app started';
+        // Absent, not zero: nothing has been measured until a capture has run.
+        el('uploaded-value').textContent = status.lastUploaded === null || status.lastUploaded === undefined ? '—' : String(status.lastUploaded);
+        el('memory-value').textContent = status.lastMemoryRecorded === null || status.lastMemoryRecorded === undefined ? '—' : String(status.lastMemoryRecorded);
+
+        const failed = Boolean(status.lastError);
+        el('capture-state').innerHTML = failed
+          ? '<span class="dot"></span>last capture failed'
+          : '<span class="dot on"></span>capturing';
+        el('sync-error').textContent = status.lastError ?? '';
+        show(el('sync-error'), failed);
+      }
+
+      async function refresh() {
+        render(await invoke('status'));
+      }
+
+      el('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = el('connect');
+        button.disabled = true;
+        show(el('sign-in-error'), false);
+        try {
+          render(await invoke('sign_in', {
+            endpoint: el('endpoint').value,
+            email: el('email').value,
+            password: el('password').value,
+          }));
+        } catch (error) {
+          el('sign-in-error').textContent = String(error);
+          show(el('sign-in-error'), true);
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      el('sync').addEventListener('click', async () => {
+        const button = el('sync');
+        button.disabled = true;
+        button.textContent = 'Capturing…';
+        try {
+          render(await invoke('sync_now'));
+        } catch {
+          // The failure is on the status the command recorded; read it back
+          // rather than showing two different versions of the same error.
+          await refresh();
+        } finally {
+          button.disabled = false;
+          button.textContent = 'Capture now';
+        }
+      });
+
+      el('open').addEventListener('click', async () => {
+        const url = await invoke('archive_url');
+        if (url && openUrl) await openUrl(url);
+      });
+
+      await refresh();
+      // The background loop captures on its own; this keeps the window honest
+      // about what it has done without the reader pressing anything.
+      setInterval(refresh, 5000);
+    </script>
+  </body>
+</html>

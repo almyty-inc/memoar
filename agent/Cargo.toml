@@ -5,6 +5,7 @@ members = [
   "crates/memoar-daemon",
   "crates/memoar-materializer",
   "crates/memoar-cli",
+  "crates/memoar-desktop",
 ]
 resolver = "2"
 

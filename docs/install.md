@@ -29,6 +29,24 @@ memoar doctor
 Every command accepts `--config-dir`, `--data-dir`, and `--capture-home` so a machine can be
 exercised against a scratch location without touching your real agent stores.
 
+## The desktop application
+
+For a machine where nobody wants a command-line tool, `memoar-desktop` does the
+same capture in a window: sign in, and it registers the machine and captures
+every two minutes, showing what it has uploaded and any failure. It reads and
+writes the same configuration and offline queue as the CLI, so a machine set up
+with one is already set up for the other.
+
+```sh
+cargo run --release -p memoar-desktop --manifest-path agent/Cargo.toml
+```
+
+The window shows capture state only. Reading the archive stays in the web
+application, which the window can open.
+
+Packaging it — the installer, signing, and where it is downloaded from — waits
+on the same release-channel decision as the CLI.
+
 ## Materialize a conversion on this machine
 
 `memoar listen` subscribes to this machine's durable command channel and applies conversions the

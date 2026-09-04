@@ -8,6 +8,7 @@ This repository is a contracts-first monorepo:
 - `agent` contains the Rust capture daemon, CLI, connectors, and materializer.
 - `server` contains the NestJS API, ingest worker, search, conversion, sharing, and MCP modules.
 - `web` contains the React and Tailwind archive interface.
+- `agent/crates/memoar-desktop` contains the desktop application: a window that signs a machine in, captures on a timer, and reports what it captured. It drives the same code the CLI runs rather than reimplementing capture.
 - `packages/npx` contains the launcher for the capture agent. It refuses to download anything until a release channel is decided, so today it runs a locally built binary (`MEMOAR_PREFER_LOCAL=1`, or `MEMOAR_BINARY=<path>`).
 - `skill` contains the agent-facing retrieval instructions and robot-mode reference.
 - `deploy` contains the local Postgres, Redis, MinIO, API, worker, and web stack.

@@ -1,0 +1,21 @@
+[package]
+name = "memoar-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Desktop application: captures this machine's sessions and shows what the archive holds"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+memoar-cli = { path = "../memoar-cli" }
+memoar-connectors = { path = "../memoar-connectors" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+
+[dev-dependencies]
+tempfile.workspace = true
