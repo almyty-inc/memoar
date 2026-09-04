@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ArchivedSession, TenantContext } from "../src/archive-store.js";
 import { SharingService } from "../src/curation.js";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { DistillationService, type DistillationProvider } from "../src/distillation.js";
 import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackService, SearchService } from "../src/search.js";
@@ -10,9 +10,9 @@ function tenant(id: string): TenantContext {
   return { tenantId: id, userId: id, scopes: ["*"], authType: "dev" };
 }
 
-function sessionFor(context: TenantContext, id = DEMO_SESSION.id): ArchivedSession {
+function sessionFor(context: TenantContext, id = TEST_SESSION.id): ArchivedSession {
   return {
-    ...structuredClone(DEMO_SESSION),
+    ...structuredClone(TEST_SESSION),
     id,
     visibility: { scope: "private", ownerId: context.userId },
   };
@@ -44,7 +44,7 @@ describe("tenant isolation", () => {
 describe("pack budgets", () => {
   it("is deterministic and enforces every requested limit", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     const search = new SearchService(new DeterministicLexicalBackend(store), new DisabledSemanticSearchProvider());
     const packs = new PackService(search, () => new Date("2026-08-18T00:00:00.000Z"));
     const request = {
@@ -57,42 +57,42 @@ describe("pack budgets", () => {
       staleAfterDays: 30,
     };
 
-    const first = await packs.build(DEMO_CONTEXT, request);
-    const second = await packs.build(DEMO_CONTEXT, request);
+    const first = await packs.build(TEST_CONTEXT, request);
+    const second = await packs.build(TEST_CONTEXT, request);
     expect(first).toEqual(second);
     expect(first.tokenEstimate).toBeLessThanOrEqual(64);
     expect(first.evidence).toHaveLength(1);
     const evidence = first.evidence as { excerpt: string; sessionId: string }[];
     expect(evidence[0]!.excerpt.length).toBeLessThanOrEqual(80);
     expect(new Set(evidence.map((item) => item.sessionId)).size).toBeLessThanOrEqual(1);
-    expect(first.markdown).toContain(DEMO_SESSION.id);
+    expect(first.markdown).toContain(TEST_SESSION.id);
   });
 });
 
 describe("redaction review gate", () => {
   it("requires a completed review and invalidates it when captured content changes", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     const sharing = new SharingService(store);
 
-    await expect(sharing.createLink(DEMO_CONTEXT, {
-      sessionId: DEMO_SESSION.id,
+    await expect(sharing.createLink(TEST_CONTEXT, {
+      sessionId: TEST_SESSION.id,
       permission: "viewer",
       redactionReviewId: "0191cafe-0000-7000-8000-00000000ffff",
     })).rejects.toMatchObject({ status: 409 });
 
-    const review = await sharing.completeReview(DEMO_CONTEXT, DEMO_SESSION.id);
-    const grant = await sharing.createLink(DEMO_CONTEXT, {
-      sessionId: DEMO_SESSION.id,
+    const review = await sharing.completeReview(TEST_CONTEXT, TEST_SESSION.id);
+    const grant = await sharing.createLink(TEST_CONTEXT, {
+      sessionId: TEST_SESSION.id,
       permission: "importer",
       redactionReviewId: review.id,
     });
     expect(grant.status).toBe("active");
 
-    const changed = structuredClone(DEMO_SESSION);
+    const changed = structuredClone(TEST_SESSION);
     changed.turns[1]!.blocks[0]!.text = "Captured content changed after review.";
-    await store.saveSession(DEMO_CONTEXT, changed);
-    await expect(sharing.createLink(DEMO_CONTEXT, {
+    await store.saveSession(TEST_CONTEXT, changed);
+    await expect(sharing.createLink(TEST_CONTEXT, {
       sessionId: changed.id,
       permission: "viewer",
       redactionReviewId: review.id,
@@ -103,8 +103,8 @@ describe("redaction review gate", () => {
 describe("distillation cost cap", () => {
   it("does not call a provider when the estimate exceeds remaining opt-in budget", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
-    await store.saveDistillationSettings(DEMO_CONTEXT, {
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
+    await store.saveDistillationSettings(TEST_CONTEXT, {
       enabled: true,
       monthlyBudgetCents: 5,
       monthlySpentCents: 4,
@@ -122,7 +122,7 @@ describe("distillation cost cap", () => {
       },
     };
     const service = new DistillationService(store, provider);
-    await expect(service.run(DEMO_CONTEXT, DEMO_SESSION.id)).rejects.toMatchObject({ response: { code: "distillation_cost_cap_exceeded" } });
+    await expect(service.run(TEST_CONTEXT, TEST_SESSION.id)).rejects.toMatchObject({ response: { code: "distillation_cost_cap_exceeded" } });
     expect(called).toBe(false);
   });
 });

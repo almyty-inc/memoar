@@ -5,7 +5,7 @@ import { APP_GUARD, NestFactory } from "@nestjs/core";
 import { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AnnotationService, CollectionService } from "../src/curation.js";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { configureApp } from "../src/main.js";
 import { McpController, McpRateLimiter, McpService } from "../src/mcp.js";
@@ -16,7 +16,7 @@ import { ARCHIVE_STORE, SEARCH_BACKEND, SEMANTIC_SEARCH_PROVIDER } from "../src/
 @Injectable()
 class TestAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    context.switchToHttp().getRequest<{ tenantContext?: unknown }>().tenantContext = DEMO_CONTEXT;
+    context.switchToHttp().getRequest<{ tenantContext?: unknown }>().tenantContext = TEST_CONTEXT;
     return true;
   }
 }
@@ -46,7 +46,7 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     app = await NestFactory.create(TestMcpModule, { logger: ["error"], abortOnError: false });
     configureApp(app);
     await app.listen(0, "127.0.0.1");
@@ -75,12 +75,12 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
 
     const searched = await client.callTool({ name: "search_sessions", arguments: { query: "archive parser", limit: 5 } });
     const structured = searched.structuredContent as { items: { id: string }[]; meta: { realizedMode: string } };
-    expect(structured.items[0]!.id).toBe(DEMO_SESSION.id);
+    expect(structured.items[0]!.id).toBe(TEST_SESSION.id);
     expect(structured.meta.realizedMode).toBe("lexical");
 
-    const saved = await client.callTool({ name: "save_note", arguments: { sessionId: DEMO_SESSION.id, markdown: "Keep the raw artifact before parsing." } });
+    const saved = await client.callTool({ name: "save_note", arguments: { sessionId: TEST_SESSION.id, markdown: "Keep the raw artifact before parsing." } });
     expect(saved.isError).toBeFalsy();
-    expect(await store.listAnnotations(DEMO_CONTEXT, DEMO_SESSION.id)).toHaveLength(1);
+    expect(await store.listAnnotations(TEST_CONTEXT, TEST_SESSION.id)).toHaveLength(1);
 
     await client.close();
   });

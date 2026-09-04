@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConversionService } from "../src/convert.js";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { BullMqQueueAdapter, MemoryObjectStorage, type ObjectStorage } from "../src/ingest.js";
 import { handlePipelineJob, jobContext, type PipelineJob } from "../src/pipeline-jobs.js";
@@ -41,9 +41,9 @@ describe("queued pipeline jobs", () => {
     // 2000-turn session took twenty times as long as one and starved the
     // health endpoint that decides whether the container is alive.
     const { conversions, queue, store } = services();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
 
-    const accepted = await conversions.request(DEMO_CONTEXT, { sessionId: DEMO_SESSION.id, target: "codex", fallback: "injection" });
+    const accepted = await conversions.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "codex", fallback: "injection" });
 
     expect(accepted.status, "the contract has always said queued").toBe("queued");
     expect(accepted.resumeCommand, "nothing is converted yet, so nothing may claim to be").toBeUndefined();
@@ -54,13 +54,13 @@ describe("queued pipeline jobs", () => {
 
   it("completes that job through the same dispatcher the worker runs", async () => {
     const { conversions, queue, store } = services();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
-    const accepted = await conversions.request(DEMO_CONTEXT, { sessionId: DEMO_SESSION.id, target: "codex", fallback: "injection" });
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
+    const accepted = await conversions.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "codex", fallback: "injection" });
 
     const pipeline = { process: () => Promise.reject(new Error("not this job")) } as never;
     await handlePipelineJob(queue.queued[0]!, { pipeline, conversions });
 
-    const finished = await conversions.get(DEMO_CONTEXT, accepted.id as string);
+    const finished = await conversions.get(TEST_CONTEXT, accepted.id as string);
     expect(finished.status).toBe("ready");
     expect(finished.resumeCommand).toContain("codex");
   });

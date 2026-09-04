@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { arr, str, DEMO_SESSION_ID, startTestApi, type TestApi } from "./helpers/http-app.js";
+import { arr, str, TEST_ACCOUNT, FIXTURE_SESSION_ID, startTestApi, type TestApi } from "./helpers/http-app.js";
 
 let api: TestApi;
 
@@ -8,15 +8,15 @@ afterAll(async () => { if (api) await api.close(); });
 
 describe("authentication", () => {
   it("issues a browser session for valid credentials and refuses everything else", async () => {
-    const ok = await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "memoar-demo-password" } });
+    const ok = await api.request("POST", "/auth/login", { token: null, body: { email: TEST_ACCOUNT.email, password: TEST_ACCOUNT.password } });
     expect(ok.status).toBe(200);
     expect(str(ok.body, "accessToken").split(".")).toHaveLength(3);
     expect(ok.body.expiresAt).toBeTruthy();
 
     // A well-formed body with the wrong secret is an authentication failure,
     // and must not distinguish a wrong password from an unknown account.
-    const wrongPassword = await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "wrong-but-long-enough" } });
-    const unknownAccount = await api.request("POST", "/auth/login", { token: null, body: { email: "nobody@memoar.dev", password: "memoar-demo-password" } });
+    const wrongPassword = await api.request("POST", "/auth/login", { token: null, body: { email: TEST_ACCOUNT.email, password: "wrong-but-long-enough" } });
+    const unknownAccount = await api.request("POST", "/auth/login", { token: null, body: { email: "nobody@memoar.dev", password: TEST_ACCOUNT.password } });
     expect(wrongPassword.status).toBe(401);
     expect(unknownAccount.status).toBe(401);
     // Each response carries its own request id, so what is compared is what the
@@ -33,12 +33,12 @@ describe("authentication", () => {
     // every one of these reached the service and came back as a 500.
     for (const body of [
       {},
-      { email: "demo@memoar.dev" },
-      { password: "memoar-demo-password" },
+      { email: TEST_ACCOUNT.email },
+      { password: TEST_ACCOUNT.password },
       { email: 5, password: [] },
-      { email: "not-an-email", password: "memoar-demo-password" },
-      { email: "demo@memoar.dev", password: "short" },
-      { email: "demo@memoar.dev", password: "memoar-demo-password", role: "admin" },
+      { email: "not-an-email", password: TEST_ACCOUNT.password },
+      { email: TEST_ACCOUNT.email, password: "short" },
+      { email: TEST_ACCOUNT.email, password: TEST_ACCOUNT.password, role: "admin" },
     ]) {
       const response = await api.request("POST", "/auth/login", { token: null, body });
       expect(response.status, `body ${JSON.stringify(body)} should be rejected as malformed`).toBe(400);
@@ -57,7 +57,7 @@ describe("authentication", () => {
   it("reports the signed-in identity so the client never has to invent one", async () => {
     const me = await api.request("GET", "/auth/me");
     expect(me.status).toBe(200);
-    expect(str(me.body, "email")).toBe("demo@memoar.dev");
+    expect(str(me.body, "email")).toBe(TEST_ACCOUNT.email);
     expect(str(me.body, "displayName").length).toBeGreaterThan(0);
     expect(str(me.body, "id")).toBeTruthy();
     // The identity comes from the token, never from the request.
@@ -126,7 +126,7 @@ describe("api keys", () => {
     // Writing needs archive:write, which this key does not hold.
     const write = await api.request("POST", "/annotations", {
       token: null, headers,
-      body: { sessionId: DEMO_SESSION_ID, kind: "note", value: { text: "should not persist" } },
+      body: { sessionId: FIXTURE_SESSION_ID, kind: "note", value: { text: "should not persist" } },
     });
     expect(write.status).toBe(403);
   });

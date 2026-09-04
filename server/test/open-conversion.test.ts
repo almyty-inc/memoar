@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConversionService } from "../src/convert.js";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { InMemoryJobQueue, type ObjectStorage } from "../src/ingest.js";
 import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackService, SearchService } from "../src/search.js";
@@ -37,34 +37,34 @@ function storedPrelude(objects: MemoryObjects): string {
 describe("open conversion target", () => {
   it("converts to an arbitrary target via injection fallback with cited archive evidence and a truncation report", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     const { service, objects } = servicesFor(store);
 
-    const job = await service.request(DEMO_CONTEXT, { sessionId: DEMO_SESSION.id, target: "aider", fallback: "injection" });
+    const job = await service.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "aider", fallback: "injection" });
     expect(job.status).toBe("ready");
     expect(job.resumeCommand).toContain("aider");
     expect((job.report as { fallback: boolean }).fallback).toBe(true);
 
     const prelude = storedPrelude(objects);
     expect(prelude).toContain("## Related archive evidence (cited)");
-    expect(prelude).toContain(`## [1] ${DEMO_SESSION.id} turns`);
+    expect(prelude).toContain(`## [1] ${TEST_SESSION.id} turns`);
     expect(prelude).toContain("## Session transcript (token-budgeted)");
     expect(prelude).toContain("## Truncation report");
-    expect(prelude).toContain(`[${DEMO_SESSION.id} turn 0]`);
+    expect(prelude).toContain(`[${TEST_SESSION.id} turn 0]`);
   });
 
   it("fails the job for unknown targets when fallback is fail", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     const { service } = servicesFor(store);
-    const job = await service.request(DEMO_CONTEXT, { sessionId: DEMO_SESSION.id, target: "aider", fallback: "fail" });
+    const job = await service.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "aider", fallback: "fail" });
     expect(job.status).toBe("failed");
     expect((job.report as { error: string }).error).toContain("unsupported_conversion_target:aider");
   });
 
   it("does not build packs for native targets", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     let packCalls = 0;
     const search = new SearchService(new DeterministicLexicalBackend(store), new DisabledSemanticSearchProvider());
     const spy = new (class extends PackService {
@@ -74,20 +74,20 @@ describe("open conversion target", () => {
       }
     })(search);
     const { service } = servicesFor(store, spy);
-    const job = await service.request(DEMO_CONTEXT, { sessionId: DEMO_SESSION.id, target: "claude-code", fallback: "injection" });
+    const job = await service.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "claude-code", fallback: "injection" });
     expect(job.status).toBe("ready");
     expect(packCalls).toBe(0);
   });
 
   it("degrades to a transcript-only prelude when pack building fails", async () => {
     const store = new DevArchiveStore();
-    await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     const search = new SearchService(new DeterministicLexicalBackend(store), new DisabledSemanticSearchProvider());
     const broken = new (class extends PackService {
       override build(): never { throw new Error("search backend offline"); }
     })(search);
     const { service, objects } = servicesFor(store, broken);
-    const job = await service.request(DEMO_CONTEXT, { sessionId: DEMO_SESSION.id, target: "aider", fallback: "injection" });
+    const job = await service.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "aider", fallback: "injection" });
     expect(job.status).toBe("ready");
     const prelude = storedPrelude(objects);
     expect(prelude).not.toContain("## Related archive evidence (cited)");

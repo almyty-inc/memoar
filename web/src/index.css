@@ -124,7 +124,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .workspace-shell { min-height: 100vh; padding-left: 248px; }
 .topbar { position: sticky; top: 0; z-index: 40; height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: rgb(247 246 243 / 88%); border-bottom: 1px solid var(--line-soft); backdrop-filter: blur(16px); }
-.topbar-title, .topbar-actions, .command-search, .demo-badge, .live-badge { display: flex; align-items: center; }
+.topbar-title, .topbar-actions, .command-search, .live-badge { display: flex; align-items: center; }
 .topbar-title { gap: 8px; font-size: 12px; }
 .topbar-title .crumb { color: var(--quiet); }
 .crumb-separator { color: var(--quiet); }
@@ -133,7 +133,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .command-search { width: 248px; height: 34px; gap: 8px; padding: 0 9px; color: var(--quiet); background: var(--sidebar); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; text-align: left; }
 .command-search span { flex: 1; font-size: 11px; }
 kbd { display: inline-flex; align-items: center; gap: 2px; padding: 1px 5px; color: var(--quiet); background: var(--panel-raised); border: 1px solid var(--line); border-radius: 3px; font-family: var(--mono); font-size: 10px; }
-.demo-badge, .live-badge { gap: 5px; }
+.live-badge { gap: 5px; }
 .main-content { min-height: calc(100vh - 62px); outline: none; }
 .bottom-nav { display: none; }
 .mobile-scrim { display: none; }
@@ -766,7 +766,7 @@ mark { padding: 0 2px; color: #e5eed2; background: #3d7a1fd9; border-radius: 2px
   .page { padding: 26px 16px 88px; }
   .topbar { height: 57px; padding-inline: 11px; }
   .main-content { min-height: calc(100vh - 57px); }
-  .topbar-title .crumb, .crumb-separator, .topbar-actions .demo-badge, .topbar-actions .live-badge { display: none; }
+  .topbar-title .crumb, .crumb-separator, .topbar-actions .live-badge { display: none; }
   .bottom-nav { position: fixed; inset: auto 0 0; z-index: 50; height: 63px; display: grid; grid-template-columns: repeat(5, 1fr); padding: 5px 4px max(5px, env(safe-area-inset-bottom)); background: rgb(247 246 243 / 96%); border-top: 1px solid var(--line); backdrop-filter: blur(15px); }
   .bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); background: transparent; border: 0; border-radius: 7px; font-size: 7px; }
   .bottom-nav button.active { color: var(--acid); background: var(--sidebar); }

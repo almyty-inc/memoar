@@ -12,6 +12,9 @@
  * fails on somebody's request has already told the world it is up.
  */
 
+import { verifySecret } from "./auth/tokens.js";
+import { developmentAuthEnabled } from "./dev-mode.js";
+
 /** Values that ship in this repository and therefore protect nothing. */
 const PUBLISHED_DEFAULTS = new Set([
   "local-development-only-change-me",
@@ -53,6 +56,26 @@ function credentials(environment: NodeJS.ProcessEnv): Credential[] {
  */
 export function productionCredentialProblems(environment: NodeJS.ProcessEnv = process.env): StartupProblem[] {
   const problems: StartupProblem[] = [];
+
+  // The development conveniences accept a header naming any tenant at all.
+  // Enabling them here is not a weak credential, it is no credential.
+  if (developmentAuthEnabled(environment)) {
+    problems.push({
+      name: "MEMOAR_DEV_AUTH",
+      reason: "is enabled, which lets any caller name their own tenant",
+    });
+  }
+
+  // The first account's password is a real credential the moment it exists.
+  const bootstrapPassword = environment.MEMOAR_BOOTSTRAP_PASSWORD?.trim();
+  if (bootstrapPassword) {
+    if (PUBLISHED_DEFAULTS.has(bootstrapPassword.toLowerCase())) {
+      problems.push({ name: "MEMOAR_BOOTSTRAP_PASSWORD", reason: "is a value published in this repository" });
+    } else if (bootstrapPassword.length < 12) {
+      problems.push({ name: "MEMOAR_BOOTSTRAP_PASSWORD", reason: "is shorter than 12 characters" });
+    }
+  }
+
   for (const credential of credentials(environment)) {
     const value = credential.value?.trim();
     if (!value) {
@@ -68,6 +91,41 @@ export function productionCredentialProblems(environment: NodeJS.ProcessEnv = pr
     }
   }
   return problems;
+}
+
+/**
+ * Accounts this repository's code used to create on its own, with a password
+ * printed in the source. Deleting that code does not delete the accounts it
+ * already made: an archive upgraded from an earlier build still has them, and
+ * they still let anyone who has read the repository sign in.
+ */
+const SEEDED_ACCOUNTS: { email: string; password: string }[] = [
+  { email: "demo@memoar.dev", password: "memoar-demo-password" },
+];
+
+/**
+ * Refuses production while an account seeded by an older build still has the
+ * password that was published with it.
+ *
+ * Only the addresses this code ever created are checked, and only against the
+ * password it gave them — one lookup and one hash each, rather than trying
+ * every account in the archive against a word list at every boot.
+ */
+export async function assertNoPublishedAccountPasswords(
+  findIdentity: (email: string) => Promise<{ secretHash: string } | null>,
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  if (environment.NODE_ENV !== "production") return;
+  const exposed: string[] = [];
+  for (const account of SEEDED_ACCOUNTS) {
+    const identity = await findIdentity(account.email);
+    if (identity && verifySecret(account.password, identity.secretHash)) exposed.push(account.email);
+  }
+  if (exposed.length === 0) return;
+  throw new Error(
+    `refusing to start: ${exposed.join(", ")} still uses a password published in this repository. ` +
+    "Change the password or remove the account before serving this archive.",
+  );
 }
 
 /** Throws unless production is configured with credentials worth having. */

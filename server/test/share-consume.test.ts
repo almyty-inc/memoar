@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TenantContext } from "../src/archive-store.js";
 import { SharingService } from "../src/curation.js";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 
 /** Built at runtime so the repo's own secret scan does not flag this fixture. */
@@ -17,12 +17,12 @@ const consumer: TenantContext = {
 const SECRET = LIVE_KEY_FIXTURE;
 
 async function sharedLink(store: DevArchiveStore, permission: "viewer" | "importer"): Promise<{ sharing: SharingService; token: string }> {
-  const session = structuredClone(DEMO_SESSION);
+  const session = structuredClone(TEST_SESSION);
   session.turns[0]!.blocks[0]!.text = `deploy with ${SECRET} now`;
-  await store.saveSession(DEMO_CONTEXT, session);
+  await store.saveSession(TEST_CONTEXT, session);
   const sharing = new SharingService(store);
-  const review = await sharing.completeReview(DEMO_CONTEXT, session.id);
-  const link = await sharing.createLink(DEMO_CONTEXT, { sessionId: session.id, permission, redactionReviewId: review.id });
+  const review = await sharing.completeReview(TEST_CONTEXT, session.id);
+  const link = await sharing.createLink(TEST_CONTEXT, { sessionId: session.id, permission, redactionReviewId: review.id });
   return { sharing, token: link.token as string };
 }
 
@@ -42,7 +42,7 @@ describe("public share consume/import", () => {
     const store = new DevArchiveStore();
     const { sharing, token } = await sharedLink(store, "importer");
     const summary = await sharing.importShare(consumer, token);
-    expect(summary.id).not.toBe(DEMO_SESSION.id);
+    expect(summary.id).not.toBe(TEST_SESSION.id);
     const copy = await store.getSession(consumer, summary.id as string);
     expect(copy).not.toBeNull();
     expect(copy!.visibility).toEqual({ scope: "private", ownerId: consumer.userId });
@@ -59,11 +59,11 @@ describe("public share consume/import", () => {
     const { sharing, token } = await sharedLink(store, "viewer");
     await expect(sharing.consumeShare("not-a-real-token")).rejects.toThrow("Share link not found");
 
-    const grants = await store.listShareGrants(DEMO_CONTEXT);
-    await store.saveShareGrant(DEMO_CONTEXT, { ...grants[0]!, status: "revoked" });
+    const grants = await store.listShareGrants(TEST_CONTEXT);
+    await store.saveShareGrant(TEST_CONTEXT, { ...grants[0]!, status: "revoked" });
     await expect(sharing.consumeShare(token)).rejects.toThrow("Share link not found");
 
-    await store.saveShareGrant(DEMO_CONTEXT, { ...grants[0]!, status: "active", expiresAt: "2020-01-01T00:00:00.000Z" });
+    await store.saveShareGrant(TEST_CONTEXT, { ...grants[0]!, status: "active", expiresAt: "2020-01-01T00:00:00.000Z" });
     await expect(sharing.consumeShare(token)).rejects.toThrow("Share link not found");
   });
 });

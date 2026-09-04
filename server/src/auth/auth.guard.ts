@@ -3,6 +3,8 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import { Reflector } from "@nestjs/core";
 
 
+import { developmentAuthEnabled } from "../dev-mode.js";
+
 import { PUBLIC_ROUTE, REQUIRED_SCOPES } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
@@ -34,7 +36,7 @@ export class AuthGuard implements CanActivate {
     const authorizationHeader = request.headers.authorization;
     const authorization = Array.isArray(authorizationHeader) ? authorizationHeader[0] : authorizationHeader;
     let tenantContext = apiKey ? await this.auth.authenticateApiKey(apiKey) : null;
-    if (!tenantContext && process.env.NODE_ENV !== "production" && authorization === "Bearer memoar-development-token") {
+    if (!tenantContext && developmentAuthEnabled() && authorization === "Bearer memoar-development-token") {
       tenantContext = {
         tenantId: "0191cafe-0000-7000-8000-000000000002",
         userId: "0191cafe-0000-7000-8000-000000000002",
@@ -43,7 +45,9 @@ export class AuthGuard implements CanActivate {
       };
     }
     if (!tenantContext && authorization?.startsWith("Bearer ")) tenantContext = await this.auth.authenticateBearer(authorization.slice(7));
-    if (!tenantContext && process.env.NODE_ENV !== "production") {
+    // Headers that name their own tenant: a development convenience, and an
+    // impersonation of any tenant on earth if it were ever reachable.
+    if (!tenantContext && developmentAuthEnabled()) {
       const tenantHeader = request.headers["x-memoar-tenant"];
       const userHeader = request.headers["x-memoar-user"];
       const tenantId = Array.isArray(tenantHeader) ? tenantHeader[0] : tenantHeader;

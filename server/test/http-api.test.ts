@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { arr, obj, str, DEMO_SESSION_ID, startTestApi, type TestApi } from "./helpers/http-app.js";
+import { arr, obj, str, TEST_ACCOUNT, FIXTURE_SESSION_ID, startTestApi, type TestApi } from "./helpers/http-app.js";
 
 let api: TestApi;
 
@@ -20,7 +20,7 @@ describe("HTTP surface: health and auth", () => {
     // Well-formed but wrong is 401. A body that violates the contract's own
     // shape is 400, and is covered in auth.test.ts alongside the rest of the
     // auth surface, which used to answer 500 for every malformed request.
-    const badLogin = await api.request("POST", "/auth/login", { token: null, body: { email: "demo@memoar.dev", password: "wrong-but-long-enough" } });
+    const badLogin = await api.request("POST", "/auth/login", { token: null, body: { email: TEST_ACCOUNT.email, password: "wrong-but-long-enough" } });
     expect(badLogin.status).toBe(401);
   });
 
@@ -56,18 +56,18 @@ describe("HTTP surface: sessions", () => {
     expect(list.status).toBe(200);
     expect(arr(list.body).length).toBeGreaterThan(0);
 
-    const detail = await api.request("GET", `/sessions/${DEMO_SESSION_ID}?chunkSize=1`);
+    const detail = await api.request("GET", `/sessions/${FIXTURE_SESSION_ID}?chunkSize=1`);
     expect(detail.status).toBe(200);
     expect(arr(detail.body, "turns")).toHaveLength(1);
     expect(detail.body.nextCursor).not.toBeNull();
 
-    const page2 = await api.request("GET", `/sessions/${DEMO_SESSION_ID}?chunkSize=1&cursor=${str(detail.body, "nextCursor")}`);
+    const page2 = await api.request("GET", `/sessions/${FIXTURE_SESSION_ID}?chunkSize=1&cursor=${str(detail.body, "nextCursor")}`);
     expect(page2.status).toBe(200);
     expect(arr(page2.body, "turns")[0]!.id).not.toBe(arr(detail.body, "turns")[0]!.id);
   });
 
   it("carries provenance on the detail chunk so the client can show how a session arrived", async () => {
-    const detail = await api.request("GET", `/sessions/${DEMO_SESSION_ID}`);
+    const detail = await api.request("GET", `/sessions/${FIXTURE_SESSION_ID}`);
     expect(detail.status).toBe(200);
     const provenance = arr(detail.body, "provenance");
     expect(provenance.length).toBeGreaterThan(0);
@@ -85,10 +85,10 @@ describe("HTTP surface: sessions", () => {
   });
 
   it("exports canonical and HTML with the right content types", async () => {
-    const canonical = await api.request("GET", `/sessions/${DEMO_SESSION_ID}/export?format=canonical`);
+    const canonical = await api.request("GET", `/sessions/${FIXTURE_SESSION_ID}/export?format=canonical`);
     expect(canonical.status).toBe(200);
     expect(arr(canonical.body, "sessions")).toHaveLength(1);
-    expect((await api.request("GET", `/sessions/${DEMO_SESSION_ID}/export?format=pdf`)).status).toBe(400);
+    expect((await api.request("GET", `/sessions/${FIXTURE_SESSION_ID}/export?format=pdf`)).status).toBe(400);
   });
 
   it("serves the timeline grouped by day", async () => {
@@ -101,7 +101,7 @@ describe("HTTP surface: sessions", () => {
 
 describe("HTTP surface: request validation", () => {
   it("rejects annotations with a bad kind, missing fields, or unknown properties", async () => {
-    const badKind = await api.request("POST", "/annotations", { body: { sessionId: DEMO_SESSION_ID, kind: "nonsense", value: {} } });
+    const badKind = await api.request("POST", "/annotations", { body: { sessionId: FIXTURE_SESSION_ID, kind: "nonsense", value: {} } });
     expect(badKind.status).toBe(400);
     // A 4xx is the caller's own mistake, so the problem document says which
     // field was wrong; a 5xx would not.
@@ -109,16 +109,16 @@ describe("HTTP surface: request validation", () => {
     expect(str(badKind.body, "detail")).toContain("kind");
 
     expect((await api.request("POST", "/annotations", { body: { kind: "note", value: {} } })).status).toBe(400);
-    expect((await api.request("POST", "/annotations", { body: { sessionId: DEMO_SESSION_ID, kind: "note", value: {}, injected: true } })).status).toBe(400);
+    expect((await api.request("POST", "/annotations", { body: { sessionId: FIXTURE_SESSION_ID, kind: "note", value: {}, injected: true } })).status).toBe(400);
     expect((await api.request("POST", "/annotations", { body: { sessionId: "not-a-uuid", kind: "note", value: {} } })).status).toBe(400);
   });
 
   it("accepts a valid annotation and round-trips it through the filtered list", async () => {
-    const created = await api.request("POST", "/annotations", { body: { sessionId: DEMO_SESSION_ID, kind: "note", value: { text: "http suite" } } });
+    const created = await api.request("POST", "/annotations", { body: { sessionId: FIXTURE_SESSION_ID, kind: "note", value: { text: "http suite" } } });
     expect(created.status).toBe(201);
     expect(created.body.kind).toBe("note");
 
-    const listed = await api.request("GET", `/annotations?sessionId=${DEMO_SESSION_ID}`);
+    const listed = await api.request("GET", `/annotations?sessionId=${FIXTURE_SESSION_ID}`);
     expect(arr(listed.body).some((item) => item.id === created.body.id)).toBe(true);
 
     const annotationId = str(created.body, "id");
@@ -187,22 +187,22 @@ describe("HTTP surface: request validation", () => {
 
 describe("HTTP surface: sharing and visibility", () => {
   it("requires a current review before widening visibility or sharing", async () => {
-    const widen = await api.request("PATCH", `/sessions/${DEMO_SESSION_ID}`, { body: { visibility: { scope: "link" } } });
+    const widen = await api.request("PATCH", `/sessions/${FIXTURE_SESSION_ID}`, { body: { visibility: { scope: "link" } } });
     expect(widen.status).toBe(409);
     expect(widen.body.code).toBe("redaction_review_required");
 
     const link = await api.request("POST", "/sharing/links", {
-      body: { sessionId: DEMO_SESSION_ID, permission: "viewer", redactionReviewId: "0191cafe-0000-7000-8000-00000000dead" },
+      body: { sessionId: FIXTURE_SESSION_ID, permission: "viewer", redactionReviewId: "0191cafe-0000-7000-8000-00000000dead" },
     });
     expect(link.status).toBe(409);
   });
 
   it("completes a review, shares a link, consumes it unauthenticated, and revokes it", async () => {
-    const review = await api.request("POST", `/sessions/${DEMO_SESSION_ID}/redaction-reviews`);
+    const review = await api.request("POST", `/sessions/${FIXTURE_SESSION_ID}/redaction-reviews`);
     expect(review.status).toBe(201);
 
     const link = await api.request("POST", "/sharing/links", {
-      body: { sessionId: DEMO_SESSION_ID, permission: "viewer", redactionReviewId: str(review.body, "id") },
+      body: { sessionId: FIXTURE_SESSION_ID, permission: "viewer", redactionReviewId: str(review.body, "id") },
     });
     expect(link.status).toBe(201);
     const token = str(link.body, "token");
@@ -218,14 +218,14 @@ describe("HTTP surface: sharing and visibility", () => {
   });
 
   it("widens visibility once a current review exists and narrows without one", async () => {
-    const review = await api.request("POST", `/sessions/${DEMO_SESSION_ID}/redaction-reviews`);
-    const widened = await api.request("PATCH", `/sessions/${DEMO_SESSION_ID}`, {
+    const review = await api.request("POST", `/sessions/${FIXTURE_SESSION_ID}/redaction-reviews`);
+    const widened = await api.request("PATCH", `/sessions/${FIXTURE_SESSION_ID}`, {
       body: { visibility: { scope: "link" }, redactionReviewId: str(review.body, "id") },
     });
     expect(widened.status).toBe(200);
     expect(obj(widened.body, "visibility").scope).toBe("link");
 
-    const narrowed = await api.request("PATCH", `/sessions/${DEMO_SESSION_ID}`, { body: { visibility: { scope: "private" } } });
+    const narrowed = await api.request("PATCH", `/sessions/${FIXTURE_SESSION_ID}`, { body: { visibility: { scope: "private" } } });
     expect(narrowed.status).toBe(200);
     expect(obj(narrowed.body, "visibility").scope).toBe("private");
   });
@@ -259,7 +259,7 @@ describe("HTTP surface: teams, search, and distillation", () => {
   });
 
   it("requires distillation opt-in and validates its settings", async () => {
-    const disabled = await api.request("POST", `/distillation/sessions/${DEMO_SESSION_ID}`);
+    const disabled = await api.request("POST", `/distillation/sessions/${FIXTURE_SESSION_ID}`);
     expect(disabled.status).toBe(409);
     expect(disabled.body.code).toBe("distillation_not_opted_in");
 
@@ -268,7 +268,7 @@ describe("HTTP surface: teams, search, and distillation", () => {
     expect(enabled.status).toBe(200);
     expect(enabled.body.remainingCents).toBe(100);
 
-    const capped = await api.request("POST", `/distillation/sessions/${DEMO_SESSION_ID}`);
+    const capped = await api.request("POST", `/distillation/sessions/${FIXTURE_SESSION_ID}`);
     expect(capped.status).toBe(409);
     expect(capped.body.code).toBe("distillation_cost_cap_exceeded");
     await api.request("PUT", "/distillation/settings", { body: { enabled: false, monthlyBudgetCents: 0 } });
@@ -280,24 +280,24 @@ describe("HTTP surface: collections and conversion", () => {
     const collection = await api.request("POST", "/collections", { body: { name: "membership", description: "http suite" } });
     const collectionId = str(collection.body, "id");
 
-    expect((await api.request("PUT", `/collections/${collectionId}/sessions/${DEMO_SESSION_ID}`)).status).toBe(204);
+    expect((await api.request("PUT", `/collections/${collectionId}/sessions/${FIXTURE_SESSION_ID}`)).status).toBe(204);
     const members = await api.request("GET", `/collections/${collectionId}/sessions`);
     expect(arr(members.body)).toHaveLength(1);
-    expect((await api.request("DELETE", `/collections/${collectionId}/sessions/${DEMO_SESSION_ID}`)).status).toBe(204);
+    expect((await api.request("DELETE", `/collections/${collectionId}/sessions/${FIXTURE_SESSION_ID}`)).status).toBe(204);
     expect(arr((await api.request("GET", `/collections/${collectionId}/sessions`)).body)).toHaveLength(0);
     expect((await api.request("GET", "/collections/0191cafe-0000-7000-8000-00000000dead/sessions")).status).toBe(404);
   });
 
   it("converts to a native target and to an open target through injection fallback", async () => {
-    const native = await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "claude-code", fallback: "fail" } });
+    const native = await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "claude-code", fallback: "fail" } });
     expect(native.status).toBe(202);
     expect(native.body.status).toBe("ready");
 
-    const open = await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "aider", fallback: "injection" } });
+    const open = await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "aider", fallback: "injection" } });
     expect(open.body.status).toBe("ready");
     expect(obj(open.body, "report").fallback).toBe(true);
 
-    const failed = await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "aider", fallback: "fail" } });
+    const failed = await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "aider", fallback: "fail" } });
     expect(failed.body.status).toBe("failed");
 
     const job = await api.request("GET", `/convert/${str(native.body, "id")}`);
@@ -306,9 +306,9 @@ describe("HTTP surface: collections and conversion", () => {
   });
 
   it("rejects malformed conversion and materialize bodies", async () => {
-    expect((await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "", fallback: "fail" } })).status).toBe(400);
-    expect((await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "claude-code", fallback: "maybe" } })).status).toBe(400);
-    const job = await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "claude-code", fallback: "fail" } });
+    expect((await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "", fallback: "fail" } })).status).toBe(400);
+    expect((await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "claude-code", fallback: "maybe" } })).status).toBe(400);
+    const job = await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "claude-code", fallback: "fail" } });
     // An empty machineId used to reach Postgres and surface as a 500.
     expect((await api.request("POST", `/convert/${str(job.body, "id")}/materialize`, { body: { machineId: "" } })).status).toBe(400);
   });
@@ -321,7 +321,7 @@ describe("HTTP surface: collections and conversion", () => {
     // PackRequest was an interface, so the ValidationPipe had no metadata to act
     // on and the body passed through untouched: an absent query and unparsable
     // limits reached Postgres, which rejected NaN as a bigint and returned 500.
-    const malformed = await api.request("POST", "/pack", { body: { sessionIds: [DEMO_SESSION_ID], budgetTokens: 2000 } });
+    const malformed = await api.request("POST", "/pack", { body: { sessionIds: [FIXTURE_SESSION_ID], budgetTokens: 2000 } });
     expect(malformed.status).toBe(400);
     expect((await api.request("POST", "/pack", { body: { ...valid, maxTokens: 99_999 } })).status).toBe(400);
     expect((await api.request("POST", "/pack", { body: { ...valid, freshnessPolicy: "whenever" } })).status).toBe(400);
@@ -336,7 +336,7 @@ describe("HTTP surface: collections and conversion", () => {
   it("queues a materialize command carrying a pre-signed bundle URL", async () => {
     const machine = await api.request("POST", "/machines", { body: { name: "materialize-suite", platform: "darwin" } });
     const machineId = str(machine.body, "id");
-    const job = await api.request("POST", "/convert", { body: { sessionId: DEMO_SESSION_ID, target: "claude-code", fallback: "fail" } });
+    const job = await api.request("POST", "/convert", { body: { sessionId: FIXTURE_SESSION_ID, target: "claude-code", fallback: "fail" } });
     const queued = await api.request("POST", `/convert/${str(job.body, "id")}/materialize`, { body: { machineId } });
     expect(queued.status).toBe(202);
 

@@ -1,20 +1,29 @@
-import type { ArchiveStore, ArchivedSession, TenantContext } from "./archive-store.js";
+/**
+ * One tenant and one session for tests to build on.
+ *
+ * This lived in `src/` and was seeded into the running archive by default,
+ * which meant anyone starting the server saw a session they had never had. It
+ * is a test fixture, so it lives with the tests, and the only thing that puts
+ * it in an archive is a test that asked for it.
+ */
 
-export const DEMO_CONTEXT: TenantContext = {
+import type { ArchiveStore, ArchivedSession, TenantContext } from "../../src/archive-store.js";
+
+export const TEST_CONTEXT: TenantContext = {
   tenantId: "0191cafe-0000-7000-8000-000000000002",
   userId: "0191cafe-0000-7000-8000-000000000002",
   scopes: ["*"],
   authType: "dev",
 };
 
-export const DEMO_SESSION: ArchivedSession = {
+export const TEST_SESSION: ArchivedSession = {
   id: "0191cafe-0000-7000-8000-00000000d001",
   source: {
     vendor: "openai",
     tool: "codex",
-    version: "0.1.0-demo",
+    version: "0.1.0-test",
     machineId: "0191cafe-0000-7000-8000-00000000d002",
-    nativeSessionId: "memoar-demo-archive-parser",
+    nativeSessionId: "memoar-test-archive-parser",
   },
   workspace: {
     path: "/workspace/memoar",
@@ -29,12 +38,12 @@ export const DEMO_SESSION: ArchivedSession = {
   tokenTotals: { input: 622, output: 318, cacheRead: 120 },
   provenance: [{
     kind: "native",
-    sourceId: "memoar-demo-archive-parser",
+    sourceId: "memoar-test-archive-parser",
     capturedAt: "2026-08-17T09:07:00.000Z",
     parserVersion: "0.1.0",
-    details: { demo: true },
+    details: { fixture: true },
   }],
-  visibility: { scope: "private", ownerId: DEMO_CONTEXT.userId },
+  visibility: { scope: "private", ownerId: TEST_CONTEXT.userId },
   turns: [
     {
       id: "0191cafe-0000-7000-8000-00000000d003",
@@ -63,11 +72,11 @@ export const DEMO_SESSION: ArchivedSession = {
       }],
     },
   ],
-  ext: { demoAdapter: true },
+  ext: { fixture: true },
   redactionStatus: "clear",
 };
 
-export async function seedDevelopmentArchive(store: ArchiveStore): Promise<void> {
-  const existing = await store.getSession(DEMO_CONTEXT, DEMO_SESSION.id);
-  if (!existing) await store.saveSession(DEMO_CONTEXT, DEMO_SESSION);
+export async function seedTestSession(store: ArchiveStore): Promise<void> {
+  const existing = await store.getSession(TEST_CONTEXT, TEST_SESSION.id);
+  if (!existing) await store.saveSession(TEST_CONTEXT, TEST_SESSION);
 }

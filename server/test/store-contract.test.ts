@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import type { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ArchiveStore, RawArtifactRecord, TenantContext } from "../src/archive-store.js";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
-const alice: TenantContext = DEMO_CONTEXT;
+const alice: TenantContext = TEST_CONTEXT;
 const bob: TenantContext = {
   tenantId: "0191cafe-0000-7000-8000-0000000000b1",
   userId: "0191cafe-0000-7000-8000-0000000000b2",
@@ -123,7 +123,7 @@ for (const implementation of implementations) {
 
     it("round-trips a canonical session and isolates tenants", async () => {
       const store = implementation.create();
-      const session = structuredClone(DEMO_SESSION);
+      const session = structuredClone(TEST_SESSION);
       session.id = "0191cafe-0000-7000-8000-0000000c0001";
       await store.saveSession(alice, session);
 
@@ -155,7 +155,7 @@ for (const implementation of implementations) {
 
     it("updates visibility without rewriting turns", async () => {
       const store = implementation.create();
-      const session = structuredClone(DEMO_SESSION);
+      const session = structuredClone(TEST_SESSION);
       session.id = "0191cafe-0000-7000-8000-0000000c0004";
       await store.saveSession(alice, session);
 
@@ -168,7 +168,7 @@ for (const implementation of implementations) {
 
     it("stores artifacts with their session joins and reports duplicates", async () => {
       const store = implementation.create();
-      const session = structuredClone(DEMO_SESSION);
+      const session = structuredClone(TEST_SESSION);
       session.id = "0191cafe-0000-7000-8000-0000000c0005";
       await store.saveSession(alice, session);
       const sha = "c".repeat(64);
@@ -215,10 +215,10 @@ for (const implementation of implementations) {
 
     it("enumerates tenants and applies retention with the collected exemption", async () => {
       const store = implementation.create();
-      const stale = structuredClone(DEMO_SESSION);
+      const stale = structuredClone(TEST_SESSION);
       stale.id = "0191cafe-0000-7000-8000-0000000c0006";
       stale.updatedAt = "2020-01-01T00:00:00.000Z";
-      const staleCollected = structuredClone(DEMO_SESSION);
+      const staleCollected = structuredClone(TEST_SESSION);
       staleCollected.id = "0191cafe-0000-7000-8000-0000000c0007";
       staleCollected.updatedAt = "2020-01-01T00:00:00.000Z";
       await store.saveSession(alice, stale);
@@ -250,7 +250,7 @@ for (const implementation of implementations) {
       await store.addTeamMember(team.id, account!);
       expect(await store.isTeamMember(team.id, bob.userId)).toBe(true);
 
-      const bobSession = structuredClone(DEMO_SESSION);
+      const bobSession = structuredClone(TEST_SESSION);
       bobSession.id = "0191cafe-0000-7000-8000-0000000c0009";
       bobSession.visibility = { scope: "team", ownerId: bob.userId, teamId: team.id };
       await store.saveSession(bob, bobSession);
@@ -285,7 +285,7 @@ for (const implementation of implementations) {
 
     it("looks up share grants by token hash across tenants", async () => {
       const store = implementation.create();
-      const session = structuredClone(DEMO_SESSION);
+      const session = structuredClone(TEST_SESSION);
       session.id = "0191cafe-0000-7000-8000-0000000c000b";
       await store.saveSession(alice, session);
       const grant = {

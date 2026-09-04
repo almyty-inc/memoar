@@ -12,6 +12,11 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+      # Backups are taken from inside this container, where the client is the
+      # same major version as the server; see docs/backup.md.
+      - ./backup.sh:/backup.sh:ro
+      - ./restore.sh:/restore.sh:ro
+      - postgres-backups:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U memoar -d memoar"]
       interval: 3s
@@ -74,7 +79,10 @@ services:
       S3_SECRET_KEY: memoar-local-secret
       MEMOAR_TOKEN_SECRET: local-development-only-change-me
       MEMOAR_RUN_MIGRATIONS: "true"
-      MEMOAR_SEED_DEMO: "true"
+      # The first account for this local stack. Nothing else is created: the
+      # archive starts empty and fills up with what the agent captures.
+      MEMOAR_BOOTSTRAP_EMAIL: ${MEMOAR_BOOTSTRAP_EMAIL:-owner@memoar.local}
+      MEMOAR_BOOTSTRAP_PASSWORD: ${MEMOAR_BOOTSTRAP_PASSWORD:-local-stack-password-change-me}
       WEB_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
       MEMOAR_EMBEDDINGS_PROVIDER: ${MEMOAR_EMBEDDINGS_PROVIDER:-deterministic}
     ports:
@@ -108,7 +116,6 @@ services:
       S3_ACCESS_KEY: memoar-local
       S3_SECRET_KEY: memoar-local-secret
       MEMOAR_RUN_MIGRATIONS: "false"
-      MEMOAR_SEED_DEMO: "false"
       MEMOAR_EMBEDDINGS_PROVIDER: ${MEMOAR_EMBEDDINGS_PROVIDER:-deterministic}
     depends_on:
       api:
@@ -128,5 +135,6 @@ services:
 
 volumes:
   postgres-data:
+  postgres-backups:
   redis-data:
   minio-data:

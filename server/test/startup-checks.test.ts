@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertProductionCredentials, productionCredentialProblems } from "../src/startup-checks.js";
+import { hashSecret } from "../src/auth/tokens.js";
+import { assertNoPublishedAccountPasswords, assertProductionCredentials, productionCredentialProblems } from "../src/startup-checks.js";
 
 /** The example file the README tells you to copy. */
 function exampleEnvironment(): NodeJS.ProcessEnv {
@@ -53,6 +54,46 @@ describe("what production refuses to start with", () => {
   it("names every problem at once, rather than one per restart", () => {
     expect(() => assertProductionCredentials(exampleEnvironment()))
       .toThrow(/MEMOAR_TOKEN_SECRET.*MEMOAR_APP_DB_PASSWORD.*S3_SECRET_KEY/su);
+  });
+
+  it("refuses production with the development conveniences switched on", () => {
+    // MEMOAR_DEV_AUTH accepts an X-Memoar-Tenant header naming any tenant on
+    // earth. It is not a weak credential, it is the absence of one.
+    const problems = productionCredentialProblems({ ...STRONG, MEMOAR_DEV_AUTH: "true" });
+    expect(problems).toEqual([{ name: "MEMOAR_DEV_AUTH", reason: "is enabled, which lets any caller name their own tenant" }]);
+    expect(() => assertProductionCredentials({ ...STRONG, MEMOAR_DEV_AUTH: "true" })).toThrow(/MEMOAR_DEV_AUTH/u);
+  });
+
+  it("rejects the first account's password when it is published or guessable", () => {
+    const published = productionCredentialProblems({ ...STRONG, MEMOAR_BOOTSTRAP_PASSWORD: "memoar-demo-password" });
+    expect(published[0]).toEqual({ name: "MEMOAR_BOOTSTRAP_PASSWORD", reason: "is a value published in this repository" });
+
+    expect(productionCredentialProblems({ ...STRONG, MEMOAR_BOOTSTRAP_PASSWORD: "short-one" })[0]!.reason)
+      .toContain("shorter than 12");
+
+    // An archive with no first account configured is fine; that is the normal
+    // state of one that already has its accounts.
+    expect(productionCredentialProblems(STRONG)).toEqual([]);
+    expect(productionCredentialProblems({ ...STRONG, MEMOAR_BOOTSTRAP_PASSWORD: "a-password-nobody-published" })).toEqual([]);
+  });
+
+  it("refuses production while an account seeded by an older build keeps its published password", async () => {
+    // Removing the code that created demo@memoar.dev does not remove the
+    // account from an archive that already ran it, and the password is in the
+    // repository. This is the upgrade path, not the fresh install.
+    const seeded = async (email: string) =>
+      email === "demo@memoar.dev" ? { secretHash: hashSecret("memoar-demo-password") } : null;
+
+    await expect(assertNoPublishedAccountPasswords(seeded, { NODE_ENV: "production" }))
+      .rejects.toThrow(/demo@memoar\.dev still uses a password published/u);
+
+    // Once the password has been changed, the same account is fine.
+    const changed = async (email: string) =>
+      email === "demo@memoar.dev" ? { secretHash: hashSecret("something-nobody-published") } : null;
+    await expect(assertNoPublishedAccountPasswords(changed, { NODE_ENV: "production" })).resolves.toBeUndefined();
+
+    // And an archive that never had the account is untouched.
+    await expect(assertNoPublishedAccountPasswords(async () => null, { NODE_ENV: "production" })).resolves.toBeUndefined();
   });
 
   it("leaves development alone", () => {

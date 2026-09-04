@@ -1,6 +1,6 @@
 import { DataSource } from "typeorm";
 import { hashSecret } from "./auth.js";
-import { DEMO_CONTEXT } from "./demo-data.js";
+import { bootstrapAccount, PASSWORD_SCOPES, type BootstrapAccount } from "./bootstrap-account.js";
 import { AuthIdentityEntity, ENTITIES, UserEntity } from "./entities.js";
 import { Initial1700000000000 } from "./migrations/1700000000000-Initial.js";
 import { CredentialBilling1700000001000 } from "./migrations/1700000001000-CredentialBilling.js";
@@ -35,6 +35,39 @@ function dataSourceFor(url: string): DataSource {
   });
 }
 
+/**
+ * Creates the first account, once.
+ *
+ * Deliberately not an upsert: the password hash carries a fresh random salt
+ * every time it is computed, so an upsert would rewrite the row on every boot —
+ * and would put the environment's password back over one the owner had since
+ * changed. An account that already exists is left exactly as it is.
+ */
+export async function createBootstrapAccount(dataSource: DataSource, account: BootstrapAccount): Promise<boolean> {
+  const identities = dataSource.getRepository(AuthIdentityEntity);
+  const existing = await identities.findOneBy({ kind: "password", lookupKey: account.email });
+  if (existing) return false;
+
+  const secretHash = hashSecret(account.password);
+  await dataSource.getRepository(UserEntity).save({
+    id: account.userId,
+    email: account.email,
+    displayName: account.displayName,
+    passwordHash: secretHash,
+  });
+  await identities.save({
+    id: account.identityId,
+    kind: "password",
+    lookupKey: account.email,
+    tenantId: account.tenantId,
+    userId: account.userId,
+    secretHash,
+    scopes: PASSWORD_SCOPES,
+    machineId: null, expiresAt: null, revokedAt: null, lastUsedAt: null,
+  });
+  return true;
+}
+
 export async function dataSourceFactory(): Promise<DataSource | null> {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -57,23 +90,11 @@ export async function dataSourceFactory(): Promise<DataSource | null> {
   }
   const dataSource = dataSourceFor(url);
   await dataSource.initialize();
-  if (process.env.MEMOAR_SEED_DEMO === "true") {
-    await dataSource.getRepository(UserEntity).upsert({
-      id: DEMO_CONTEXT.userId,
-      email: "demo@memoar.dev",
-      displayName: "Memoar Demo",
-      passwordHash: hashSecret("memoar-demo-password", "memoar-compose-demo-salt"),
-    }, ["email"]);
-    await dataSource.getRepository(AuthIdentityEntity).upsert({
-      id: "0191cafe-0000-7000-8000-000000000003",
-      kind: "password",
-      lookupKey: "demo@memoar.dev",
-      tenantId: DEMO_CONTEXT.tenantId,
-      userId: DEMO_CONTEXT.userId,
-      secretHash: hashSecret("memoar-demo-password", "memoar-compose-demo-salt"),
-      scopes: ["archive:read", "archive:write", "sharing:write", "keys:write", "machines:write", "ingest:write", "mcp:use"],
-      machineId: null, expiresAt: null, revokedAt: null, lastUsedAt: null,
-    }, ["kind", "lookupKey"]);
-  }
+  // The first account, when the operator asked for one. An archive nobody can
+  // sign in to is useless, and an archive with a published password on it is
+  // worse; the credentials come from the environment and nothing is created
+  // without them.
+  const account = bootstrapAccount();
+  if (account) await createBootstrapAccount(dataSource, account);
   return dataSource;
 }

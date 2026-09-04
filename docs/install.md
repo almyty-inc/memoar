@@ -14,6 +14,35 @@ docker compose -f deploy/docker-compose.dev.yml up --build
 
 The local web app is available at `http://localhost:5173`. The API health endpoint is `http://localhost:4000/health`.
 
+Sign in with the account named by `MEMOAR_BOOTSTRAP_EMAIL` and
+`MEMOAR_BOOTSTRAP_PASSWORD`. It is created once, if it does not already exist,
+and an account that exists is never overwritten by what those variables say —
+so changing your password does not get undone by the next restart. The archive
+itself starts empty: it holds what the agent captures and nothing else.
+
+### Upgrading an archive from an earlier build
+
+Earlier builds created a `demo@memoar.dev` account whose password was printed
+in this repository, and wrote a fabricated session into every archive. Both are
+gone, but removing the code does not remove what it already created. On an
+existing archive:
+
+```sh
+# The published account, if it is still there. Check before deleting: on a
+# development stack it may own the sessions you captured.
+psql "$MIGRATION_DATABASE_URL" -c \
+  "SELECT u.id, u.email, (SELECT count(*) FROM sessions s WHERE s.\"tenantId\" = i.\"tenantId\") AS sessions
+     FROM users u JOIN auth_identities i ON i.\"userId\" = u.id
+    WHERE u.email = 'demo@memoar.dev'"
+```
+
+If it owns nothing, delete it. If it owns your sessions, change its password
+instead. The API refuses to start in production while that account still has
+its published password, so this cannot be forgotten quietly.
+
+The fabricated session is `0191cafe-0000-7000-8000-00000000d001`; delete it if
+it is in your archive.
+
 ## Install the capture agent
 
 During repository development:

@@ -4,8 +4,8 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 binary=${MEMOAR_E2E_BINARY:-"$repo_root/agent/target/debug/memoar"}
 endpoint=${MEMOAR_E2E_ENDPOINT:-http://127.0.0.1:4000/v1}
-email=${MEMOAR_E2E_EMAIL:-demo@memoar.dev}
-password=${MEMOAR_E2E_PASSWORD:-memoar-demo-password}
+email=${MEMOAR_E2E_EMAIL:-owner@memoar.local}
+password=${MEMOAR_E2E_PASSWORD:-local-stack-password-change-me}
 
 if [ ! -x "$binary" ]; then
   echo "memoar e2e: binary is missing or not executable: $binary" >&2

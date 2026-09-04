@@ -2,7 +2,14 @@ import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { Server } from "node:http";
 import { AppModule } from "../../src/app.module.js";
+import type { ArchiveStore, TenantContext } from "../../src/archive-store.js";
+import { bootstrapAccount } from "../../src/bootstrap-account.js";
 import { configureApp } from "../../src/main.js";
+import { ARCHIVE_STORE } from "../../src/tokens.js";
+import { TEST_SESSION } from "../fixtures/archive.js";
+
+/** The account every HTTP test signs in as. Not a default anywhere in src/. */
+export const TEST_ACCOUNT = { email: "owner@memoar.test", password: "test-account-password-not-a-default" };
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -49,13 +56,19 @@ export interface TestApi {
   app: INestApplication;
   baseUrl: string;
   token: string;
+  /**
+   * The tenant the token belongs to. A test that writes straight to the store
+   * must write here, or it will archive into one tenant and read as another —
+   * and see an empty archive that looks exactly like a broken query.
+   */
+  context: TenantContext;
   /** Authenticated request against /v1; returns status and parsed body. */
   request(method: string, path: string, options?: RequestOptions): Promise<TestResponse>;
   close(): Promise<void>;
 }
 
 /**
- * Boots the real AppModule against in-memory adapters and logs in as the demo
+ * Boots the real AppModule against in-memory adapters and logs in as the test
  * user. Tests built on this exercise the production wiring: guards, scopes,
  * the global ValidationPipe, route prefixes, and status codes.
  */
@@ -68,7 +81,12 @@ export async function startTestApi(env: Record<string, string> = {}): Promise<Te
   delete process.env.REDIS_URL;
   delete process.env.S3_ENDPOINT;
   process.env.NODE_ENV = "test";
-  process.env.MEMOAR_SEED_DEMO = "true";
+  // The suite signs in as a real account rather than relying on a back door,
+  // and asks for the development conveniences by name — they are off unless
+  // something says otherwise, which is the whole point of the switch.
+  process.env.MEMOAR_DEV_AUTH = "true";
+  process.env.MEMOAR_BOOTSTRAP_EMAIL = TEST_ACCOUNT.email;
+  process.env.MEMOAR_BOOTSTRAP_PASSWORD = TEST_ACCOUNT.password;
   for (const [key, value] of Object.entries(env)) process.env[key] = value;
 
   const app = await NestFactory.create(AppModule, { logger: ["error"], abortOnError: false });
@@ -98,18 +116,32 @@ export async function startTestApi(env: Record<string, string> = {}): Promise<Te
     return { status: response.status, body: (text ? JSON.parse(text) : {}) as JsonBody, headers: response.headers };
   };
 
-  const login = await call("POST", "/auth/login", { body: { email: "demo@memoar.dev", password: "memoar-demo-password" }, token: null });
+  const login = await call("POST", "/auth/login", { body: { email: TEST_ACCOUNT.email, password: TEST_ACCOUNT.password }, token: null });
   if (login.status !== 200) throw new Error(`test login failed: ${login.status} ${JSON.stringify(login.body)}`);
   const token = str(login.body, "accessToken");
+
+  // The archive no longer seeds itself, so a test that needs a session in it
+  // puts one there. Written as the account that just signed in, or the HTTP
+  // tests would be reading another tenant's archive and finding nothing.
+  const account = bootstrapAccount();
+  if (!account) throw new Error("the test account was not configured");
+  const context: TenantContext = {
+    tenantId: account.tenantId, userId: account.userId, scopes: ["*"], authType: "dev",
+  };
+  await app.get<ArchiveStore>(ARCHIVE_STORE).saveSession(context, {
+    ...TEST_SESSION,
+    visibility: { scope: "private", ownerId: account.userId },
+  });
 
   return {
     app,
     baseUrl,
     token,
+    context,
     request: (method, path, options) => call(method, path, options, token),
     close: () => app.close(),
   };
 }
 
-/** The demo session seeded into every test app. */
-export const DEMO_SESSION_ID = "0191cafe-0000-7000-8000-00000000d001";
+/** The fixture session this helper writes into every test app's archive. */
+export const FIXTURE_SESSION_ID = TEST_SESSION.id;

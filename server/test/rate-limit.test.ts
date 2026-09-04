@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MemoryRateLimitStore } from "../src/rate-limit.js";
-import { startTestApi, type TestApi } from "./helpers/http-app.js";
+import { TEST_ACCOUNT, startTestApi, type TestApi } from "./helpers/http-app.js";
 
 let api: TestApi;
 
@@ -49,7 +49,7 @@ describe("credential endpoints are rate limited", () => {
     // Differing here would turn the limiter into the account-enumeration oracle
     // the uniform 401 is meant to avoid.
     const unknown = await guess("nobody-here@memoar.dev");
-    const known = await guess("demo@memoar.dev");
+    const known = await guess(TEST_ACCOUNT.email);
     expect(unknown.status).toBe(known.status);
     // Every response carries its own request id, so the comparison is of what
     // the two answers say — which must be nothing that distinguishes them.
@@ -66,7 +66,7 @@ describe("credential endpoints are rate limited", () => {
     for (let index = 0; index < 8; index += 1) {
       const response = await api.request("POST", "/auth/login", {
         token: null,
-        body: { email: "demo@memoar.dev", password: "memoar-demo-password" },
+        body: { email: TEST_ACCOUNT.email, password: TEST_ACCOUNT.password },
       });
       expect(response.status, `sign-in ${index + 1} of 8 was refused`).toBe(200);
     }

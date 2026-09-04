@@ -3,8 +3,10 @@ import { RequestMethod, ValidationPipe, type INestApplication } from "@nestjs/co
 import { NestFactory } from "@nestjs/core";
 import { raw, type Express } from "express";
 import type { ServerResponse } from "node:http";
+import { DataSource, IsNull } from "typeorm";
 import { AppModule } from "./app.module.js";
-import { assertProductionCredentials } from "./startup-checks.js";
+import { AuthIdentityEntity } from "./entities.js";
+import { assertNoPublishedAccountPasswords, assertProductionCredentials } from "./startup-checks.js";
 
 /**
  * How many proxies sit in front of this process.
@@ -81,6 +83,14 @@ export async function bootstrap(): Promise<void> {
   // request has already announced it is up.
   assertProductionCredentials();
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  // An archive upgraded from an earlier build can still hold an account that
+  // build created with a published password, so this is asked of the database
+  // rather than of the environment.
+  const dataSource = app.get(DataSource, { strict: false }) as DataSource | null;
+  if (dataSource) {
+    await assertNoPublishedAccountPasswords(async (email) =>
+      dataSource.getRepository(AuthIdentityEntity).findOneBy({ kind: "password", lookupKey: email, revokedAt: IsNull() }));
+  }
   configureApp(app);
   await app.listen(Number(process.env.PORT ?? 4000), "0.0.0.0");
 }

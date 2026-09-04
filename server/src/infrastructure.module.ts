@@ -2,7 +2,6 @@ import { Global, Module } from "@nestjs/common";
 import { DataSource } from "typeorm";
 import type { ArchiveStore } from "./archive-store.js";
 import { dataSourceFactory } from "./data-source.js";
-import { seedDevelopmentArchive } from "./demo-data.js";
 import { DevArchiveStore } from "./dev-archive-store.js";
 import { distillationProviderFromEnv } from "./distillation.js";
 import {
@@ -28,13 +27,10 @@ import { ARCHIVE_STORE, DISTILLATION_PROVIDER, JOB_QUEUE, OBJECT_STORAGE, SEARCH
     {
       provide: ARCHIVE_STORE,
       inject: [DataSource],
-      useFactory: async (dataSource: DataSource | null): Promise<ArchiveStore> => {
-        const store: ArchiveStore = dataSource ? new PostgresArchiveStore(dataSource) : new DevArchiveStore();
-        if (process.env.MEMOAR_SEED_DEMO === "true" || (process.env.NODE_ENV !== "production" && process.env.MEMOAR_SEED_DEMO !== "false")) {
-          await seedDevelopmentArchive(store);
-        }
-        return store;
-      },
+      // An archive holds what was captured and nothing else. There is no
+      // seeding step here: a session that nobody had is not a session.
+      useFactory: (dataSource: DataSource | null): ArchiveStore =>
+        dataSource ? new PostgresArchiveStore(dataSource) : new DevArchiveStore(),
     },
     {
       provide: OBJECT_STORAGE,

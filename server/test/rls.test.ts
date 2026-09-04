@@ -1,6 +1,6 @@
 import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { appRoleUrl, countRows, dockerAvailable, queryRows, RLS_FIXTURE, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
@@ -15,8 +15,8 @@ const OTHER_TENANT = "0191cafe-0000-7000-8000-0000000000f1";
 beforeAll(async () => {
   if (!usePostgres) return;
   owner = await startPostgres(RLS_FIXTURE);
-  await seedAccount(owner, { userId: DEMO_CONTEXT.userId, tenantId: DEMO_CONTEXT.tenantId, email: "rls@example.test" });
-  await new PostgresArchiveStore(owner).saveSession(DEMO_CONTEXT, DEMO_SESSION);
+  await seedAccount(owner, { userId: TEST_CONTEXT.userId, tenantId: TEST_CONTEXT.tenantId, email: "rls@example.test" });
+  await new PostgresArchiveStore(owner).saveSession(TEST_CONTEXT, TEST_SESSION);
   appRole = new DataSource({ type: "postgres", url: appRoleUrl(RLS_FIXTURE), entities: [], synchronize: false });
   await appRole.initialize();
 }, 180_000);
@@ -95,7 +95,7 @@ suite("row level security is enforced for the runtime role", () => {
   });
 
   it("reveals rows only for the owning tenant", async () => {
-    await appRole!.query(`SELECT set_config('memoar.tenant_id', $1, false)`, [DEMO_CONTEXT.tenantId]);
+    await appRole!.query(`SELECT set_config('memoar.tenant_id', $1, false)`, [TEST_CONTEXT.tenantId]);
     expect(await countRows(appRole!, "sessions")).toBeGreaterThan(0);
   });
 
@@ -105,7 +105,7 @@ suite("row level security is enforced for the runtime role", () => {
   });
 
   it("refuses writes that claim another tenant", async () => {
-    await appRole!.query(`SELECT set_config('memoar.tenant_id', $1, false)`, [DEMO_CONTEXT.tenantId]);
+    await appRole!.query(`SELECT set_config('memoar.tenant_id', $1, false)`, [TEST_CONTEXT.tenantId]);
     await expect(appRole!.query(
       `INSERT INTO sessions (id, "tenantId", source, workspace, "capturedCreatedAt", "capturedUpdatedAt", title, models, "tokenTotals", provenance, visibility, "searchDocument")
        VALUES (gen_random_uuid(), $1, '{}', '{}', now(), now(), 'cross tenant write', '{}', '{}', '[]', '{}', '')`,

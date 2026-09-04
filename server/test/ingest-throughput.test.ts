@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import type { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TenantContext } from "../src/archive-store.js";
-import { DEMO_CONTEXT } from "../src/demo-data.js";
+import { TEST_CONTEXT } from "./fixtures/archive.js";
 import { DefaultPipelineSeedFactory, IngestPipeline, MemoryObjectStorage } from "../src/ingest.js";
 import { ParserRegistry } from "../libs/parsers/src/index.js";
 import { FormatDetector, SecretScanner } from "../src/ingest/detection.js";
@@ -78,12 +78,12 @@ let store: PostgresArchiveStore;
 let storage: MemoryObjectStorage;
 
 /** A machine context: sessions reference the machine that captured them. */
-const CONTEXT: TenantContext = { ...DEMO_CONTEXT, machineId: "0191cafe-0000-7000-8000-0000000000e3" };
+const CONTEXT: TenantContext = { ...TEST_CONTEXT, machineId: "0191cafe-0000-7000-8000-0000000000e3" };
 
 beforeAll(async () => {
   if (!usePostgres) return;
   dataSource = await startPostgres(FIXTURE);
-  await seedAccount(dataSource, { userId: DEMO_CONTEXT.userId, tenantId: DEMO_CONTEXT.tenantId, email: "ingest@example.test" });
+  await seedAccount(dataSource, { userId: TEST_CONTEXT.userId, tenantId: TEST_CONTEXT.tenantId, email: "ingest@example.test" });
   store = new PostgresArchiveStore(countingDataSource(dataSource));
   await store.saveMachine(CONTEXT, {
     id: CONTEXT.machineId!,

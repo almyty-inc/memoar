@@ -5,31 +5,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ConversionEngine, InjectionFallbackWriter, serializedBundleObject } from "../src/convert.js";
-import { DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_SESSION } from "./fixtures/archive.js";
 
 describe("conversion writers", () => {
   const engine = new ConversionEngine();
 
   it("writes Claude Code and Codex native JSONL layouts", () => {
-    const claude = engine.convert(DEMO_SESSION, "claude-code", "fail");
+    const claude = engine.convert(TEST_SESSION, "claude-code", "fail");
     expect(claude.files[0]!.path).toMatch(/\.claude\/projects\/.+\.jsonl$/u);
     const claudeRecords = Buffer.from(claude.files[0]!.bytes).toString("utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(claudeRecords[1]).toMatchObject({ uuid: DEMO_SESSION.turns[1]!.id, parentUuid: DEMO_SESSION.turns[0]!.id });
-    expect(claude.resumeCommand).toContain(`claude -r ${DEMO_SESSION.id}`);
+    expect(claudeRecords[1]).toMatchObject({ uuid: TEST_SESSION.turns[1]!.id, parentUuid: TEST_SESSION.turns[0]!.id });
+    expect(claude.resumeCommand).toContain(`claude -r ${TEST_SESSION.id}`);
 
-    const codex = engine.convert(DEMO_SESSION, "codex", "fail");
+    const codex = engine.convert(TEST_SESSION, "codex", "fail");
     expect(codex.files[0]!.path).toContain("/.codex/sessions/2026/08/17/rollout-");
     const codexRecords = Buffer.from(codex.files[0]!.bytes).toString("utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(codexRecords[0]).toMatchObject({ type: "session_meta", payload: { id: DEMO_SESSION.id, cwd: DEMO_SESSION.workspace.path } });
-    expect(codexRecords.filter((record) => record.type === "response_item")).toHaveLength(DEMO_SESSION.turns.length);
+    expect(codexRecords[0]).toMatchObject({ type: "session_meta", payload: { id: TEST_SESSION.id, cwd: TEST_SESSION.workspace.path } });
+    expect(codexRecords.filter((record) => record.type === "response_item")).toHaveLength(TEST_SESSION.turns.length);
   });
 
   it("writes the Antigravity matrix paths and always supports injection fallback", () => {
-    const antigravity = engine.convert(DEMO_SESSION, "antigravity-cli", "fail");
+    const antigravity = engine.convert(TEST_SESSION, "antigravity-cli", "fail");
     expect(antigravity.files.map((file) => file.path)).toEqual([
-      `~/.gemini/antigravity-cli/brain/${DEMO_SESSION.id}/.system_generated/logs/transcript.jsonl`,
-      `~/.gemini/antigravity-cli/brain/${DEMO_SESSION.id}/conversations/${DEMO_SESSION.id}.db`,
-      `~/.gemini/antigravity-cli/brain/${DEMO_SESSION.id}/walkthrough.md`,
+      `~/.gemini/antigravity-cli/brain/${TEST_SESSION.id}/.system_generated/logs/transcript.jsonl`,
+      `~/.gemini/antigravity-cli/brain/${TEST_SESSION.id}/conversations/${TEST_SESSION.id}.db`,
+      `~/.gemini/antigravity-cli/brain/${TEST_SESSION.id}/walkthrough.md`,
     ]);
     const databaseFile = antigravity.files.find((file) => file.path.endsWith(".db"));
     expect(databaseFile).toBeDefined();
@@ -43,22 +43,22 @@ describe("conversion writers", () => {
       const tables = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[];
       expect(tables.map((row) => row.name)).toEqual(["conversations", "messages"]);
       expect(database.prepare("SELECT id, workspace_path FROM conversations").get()).toMatchObject({
-        id: DEMO_SESSION.id,
-        workspace_path: DEMO_SESSION.workspace.path,
+        id: TEST_SESSION.id,
+        workspace_path: TEST_SESSION.workspace.path,
       });
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
     }
 
-    const fallback = engine.convert(DEMO_SESSION, "unsupported-agent", "injection");
+    const fallback = engine.convert(TEST_SESSION, "unsupported-agent", "injection");
     expect(fallback.report.fallback).toBe(true);
     expect(Buffer.from(fallback.files[0]!.bytes).toString("utf8")).toContain("# Memoar context prelude");
-    expect(() => engine.convert(DEMO_SESSION, "unsupported-agent", "fail")).toThrow("unsupported_conversion_target");
+    expect(() => engine.convert(TEST_SESSION, "unsupported-agent", "fail")).toThrow("unsupported_conversion_target");
   });
 
   it("adds deterministic bundle and per-file integrity metadata", () => {
-    const serialized = serializedBundleObject(engine.convert(DEMO_SESSION, "codex", "fail")) as {
+    const serialized = serializedBundleObject(engine.convert(TEST_SESSION, "codex", "fail")) as {
       contractVersion: string; bundleVersion: string; target: string; sessionId: string;
       files: { path: string; mediaType: string; base64: string; sha256: string; size: number }[];
       resumeCommand: string; report: unknown; bundleSha256: string;
@@ -77,13 +77,13 @@ describe("conversion writers", () => {
   });
 
   it("keeps injection fallback within its token budget with cited excerpts and a truncation report", () => {
-    const generous = new InjectionFallbackWriter().write(DEMO_SESSION, "unknown-agent");
+    const generous = new InjectionFallbackWriter().write(TEST_SESSION, "unknown-agent");
     const generousMarkdown = Buffer.from(generous.files[0]!.bytes).toString("utf8");
-    expect(generousMarkdown).toContain(`[${DEMO_SESSION.id} turn 0]`);
+    expect(generousMarkdown).toContain(`[${TEST_SESSION.id} turn 0]`);
     expect(generousMarkdown).toContain("No turns were omitted.");
     expect(generous.report.dropped).toHaveLength(0);
 
-    const tight = new InjectionFallbackWriter(40).write(DEMO_SESSION, "unknown-agent");
+    const tight = new InjectionFallbackWriter(40).write(TEST_SESSION, "unknown-agent");
     const tightMarkdown = Buffer.from(tight.files[0]!.bytes).toString("utf8");
     expect(tight.report.dropped.length).toBeGreaterThan(0);
     expect(tight.report.dropped[0]!.reason).toBe("injection_token_budget_exceeded");
@@ -94,13 +94,13 @@ describe("conversion writers", () => {
   /** A long conversation: 4000 turns of 400 characters, the odd short one. */
   function longSession(turns: number, charactersFor: (index: number) => number = (index) => (index % 7 === 0 ? 20 : 400)) {
     return {
-      ...DEMO_SESSION,
+      ...TEST_SESSION,
       turns: Array.from({ length: turns }, (_, index) => ({
         id: `0191cafe-0000-7000-8000-${(0x2000 + index).toString(16).padStart(12, "0")}`,
         ordinal: index,
         parentId: null,
         role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
-        createdAt: DEMO_SESSION.createdAt,
+        createdAt: TEST_SESSION.createdAt,
         blocks: [{ id: `0191cafe-0000-7000-8000-${(0x9000 + index).toString(16).padStart(12, "0")}`, kind: "text" as const, text: `${index} ${"x".repeat(charactersFor(index))}` }],
       })),
     };

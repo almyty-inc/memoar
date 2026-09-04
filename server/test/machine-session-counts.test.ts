@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { ARCHIVE_STORE } from "../src/tokens.js";
 import { arr, startTestApi, str, type TestApi } from "./helpers/http-app.js";
@@ -30,10 +30,10 @@ describe("what each machine has captured", () => {
     // Two sessions from one source on this machine, one from another.
     const store = api.app.get<DevArchiveStore>(ARCHIVE_STORE);
     for (const [index, tool] of ["claude-code", "claude-code", "codex"].entries()) {
-      await store.saveSession(DEMO_CONTEXT, {
-        ...DEMO_SESSION,
+      await store.saveSession(api.context, {
+        ...TEST_SESSION,
         id: `0191cafe-0000-7000-8000-00000000c1${index}0`,
-        source: { ...DEMO_SESSION.source, tool, machineId },
+        source: { ...TEST_SESSION.source, tool, machineId },
       });
     }
 
@@ -51,10 +51,10 @@ describe("what each machine has captured", () => {
     }
 
     const store = api.app.get<DevArchiveStore>(ARCHIVE_STORE);
-    await store.saveSession(DEMO_CONTEXT, {
-      ...DEMO_SESSION,
+    await store.saveSession(api.context, {
+      ...TEST_SESSION,
       id: "0191cafe-0000-7000-8000-00000000c200",
-      source: { ...DEMO_SESSION.source, tool: "claude-code", machineId: first },
+      source: { ...TEST_SESSION.source, tool: "claude-code", machineId: first },
     });
 
     const listed = await api.request("GET", "/machines");

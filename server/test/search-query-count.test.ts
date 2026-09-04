@@ -1,6 +1,6 @@
 import type { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DEMO_CONTEXT, DEMO_SESSION } from "../src/demo-data.js";
+import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { PostgresFtsBackend } from "../src/search.js";
 import { DisabledSemanticSearchProvider } from "../src/search.js";
@@ -54,10 +54,10 @@ function countingDataSource(inner: DataSource): DataSource {
 beforeAll(async () => {
   if (!usePostgres) return;
   dataSource = await startPostgres(FIXTURE);
-  await seedAccount(dataSource, { userId: DEMO_CONTEXT.userId, tenantId: DEMO_CONTEXT.tenantId, email: "count@example.test" });
+  await seedAccount(dataSource, { userId: TEST_CONTEXT.userId, tenantId: TEST_CONTEXT.tenantId, email: "count@example.test" });
   const store = new PostgresArchiveStore(dataSource);
   for (let index = 0; index < RESULT_COUNT + 5; index += 1) {
-    const session = structuredClone(DEMO_SESSION);
+    const session = structuredClone(TEST_SESSION);
     const suffix = String(index).padStart(12, "0");
     session.id = `01a01700-0000-7000-8000-${suffix}`;
     session.title = `archive decision session ${index}`;
@@ -73,7 +73,7 @@ beforeAll(async () => {
         id: `01a01702-${String(turnIndex).padStart(2, "0")}${String(blockIndex).padStart(2, "0")}-7000-8000-${suffix}`,
       })),
     }));
-    await store.saveSession(DEMO_CONTEXT, session);
+    await store.saveSession(TEST_CONTEXT, session);
   }
 
   // Assert the seeded SHAPE, not just that the loop ran. Cloning a fixture and
@@ -88,8 +88,8 @@ beforeAll(async () => {
   `);
   const seeded = shape[0]!;
   if (seeded.sessions !== RESULT_COUNT + 5) throw new Error(`seeded ${seeded.sessions} sessions, expected ${RESULT_COUNT + 5}`);
-  if (seeded.turns !== seeded.sessions * DEMO_SESSION.turns.length) {
-    throw new Error(`seeded ${seeded.turns} turns, expected ${seeded.sessions * DEMO_SESSION.turns.length}`);
+  if (seeded.turns !== seeded.sessions * TEST_SESSION.turns.length) {
+    throw new Error(`seeded ${seeded.turns} turns, expected ${seeded.sessions * TEST_SESSION.turns.length}`);
   }
   if (seeded.orphans !== 0) throw new Error(`${seeded.orphans} seeded sessions have no turns`);
 }, 180_000);
@@ -103,7 +103,7 @@ suite("search hydration cost", () => {
     const service = new SearchService(new PostgresFtsBackend(counted, store), new DisabledSemanticSearchProvider());
 
     queries = [];
-    const result = await service.execute(DEMO_CONTEXT, "archive decision", "lexical", {}, RESULT_COUNT);
+    const result = await service.execute(TEST_CONTEXT, "archive decision", "lexical", {}, RESULT_COUNT);
     expect(result.candidates.length).toBeGreaterThan(5);
 
     // Hydrating one session at a time cost a transaction plus three queries
@@ -114,7 +114,7 @@ suite("search hydration cost", () => {
   it("returns excerpts as plain text so the client can highlight them safely", async () => {
     const store = new PostgresArchiveStore(dataSource!);
     const service = new SearchService(new PostgresFtsBackend(dataSource!, store), new DisabledSemanticSearchProvider());
-    const result = await service.execute(DEMO_CONTEXT, "archive decision", "lexical", {}, 10);
+    const result = await service.execute(TEST_CONTEXT, "archive decision", "lexical", {}, 10);
     expect(result.candidates.length).toBeGreaterThan(0);
     for (const candidate of result.candidates) {
       // ts_headline marks matches with <b> by default. The client renders the
@@ -132,18 +132,18 @@ suite("search hydration cost", () => {
       "01a01700-0000-7000-8000-00000000dead",
       "01a01700-0000-7000-8000-000000000002",
     ];
-    const hydrated = await store.getSessions(DEMO_CONTEXT, ids);
-    expect(hydrated[0]?.turns.length).toBe(DEMO_SESSION.turns.length);
+    const hydrated = await store.getSessions(TEST_CONTEXT, ids);
+    expect(hydrated[0]?.turns.length).toBe(TEST_SESSION.turns.length);
     // Order follows the caller's ranking; unknown ids are skipped, not null.
     expect(hydrated.map((session) => session.id)).toEqual([ids[0], ids[1], ids[3]]);
-    expect(hydrated[0]!.turns.length).toBe(DEMO_SESSION.turns.length);
-    expect(hydrated[0]!.turns[0]!.blocks[0]!.text).toBe(DEMO_SESSION.turns[0]!.blocks[0]!.text);
+    expect(hydrated[0]!.turns.length).toBe(TEST_SESSION.turns.length);
+    expect(hydrated[0]!.turns[0]!.blocks[0]!.text).toBe(TEST_SESSION.turns[0]!.blocks[0]!.text);
   }, 60_000);
 
   it("returns nothing for an empty id list without touching the database", async () => {
     const counted = countingDataSource(dataSource!);
     queries = [];
-    expect(await new PostgresArchiveStore(counted).getSessions(DEMO_CONTEXT, [])).toEqual([]);
+    expect(await new PostgresArchiveStore(counted).getSessions(TEST_CONTEXT, [])).toEqual([]);
     expect(queries).toEqual([]);
   });
 
@@ -151,12 +151,12 @@ suite("search hydration cost", () => {
     const { DevArchiveStore } = await import("../src/dev-archive-store.js");
     const memory = new DevArchiveStore();
     const postgres = new PostgresArchiveStore(dataSource!);
-    const session = structuredClone(DEMO_SESSION);
+    const session = structuredClone(TEST_SESSION);
     session.id = "01a01700-0000-7000-8000-000000000001";
-    await memory.saveSession(DEMO_CONTEXT, session);
+    await memory.saveSession(TEST_CONTEXT, session);
 
-    const fromMemory = await memory.getSessions(DEMO_CONTEXT, [session.id, "01a01700-0000-7000-8000-00000000dead"]);
-    const fromPostgres = await postgres.getSessions(DEMO_CONTEXT, [session.id, "01a01700-0000-7000-8000-00000000dead"]);
+    const fromMemory = await memory.getSessions(TEST_CONTEXT, [session.id, "01a01700-0000-7000-8000-00000000dead"]);
+    const fromPostgres = await postgres.getSessions(TEST_CONTEXT, [session.id, "01a01700-0000-7000-8000-00000000dead"]);
     expect(fromMemory.map((item) => item.id)).toEqual(fromPostgres.map((item) => item.id));
   }, 60_000);
 });

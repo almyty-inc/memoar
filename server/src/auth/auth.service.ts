@@ -6,6 +6,8 @@ import { DataSource, IsNull, type EntityManager } from "typeorm";
 
 import type { ArchiveStore, TenantContext } from "../archive-store.js";
 
+import { bootstrapAccount, PASSWORD_SCOPES } from "../bootstrap-account.js";
+
 import { ApiKeyEntity, AuthIdentityEntity, MachineTokenEntity, UserEntity } from "../entities.js";
 
 import { uuidV7 } from "../ids.js";
@@ -25,14 +27,18 @@ export class AuthService {
     @Inject(DataSource) private readonly dataSource: DataSource | null,
     @Inject(ARCHIVE_STORE) private readonly store: ArchiveStore,
   ) {
-    if (!dataSource) {
-      const id = "0191cafe-0000-7000-8000-000000000002";
-      this.devUsers.set("demo@memoar.dev", {
-        id,
-        tenantId: id,
-        email: "demo@memoar.dev",
-        passwordHash: hashSecret("memoar-demo-password"),
-        displayName: "Memoar Demo",
+    // Without a database there is nowhere to keep accounts, so the one the
+    // operator named in the environment lives in memory for as long as the
+    // process does. No account is invented: absent those variables, nobody can
+    // sign in, which is the right answer for a server with no store behind it.
+    const account = bootstrapAccount();
+    if (!dataSource && account) {
+      this.devUsers.set(account.email, {
+        id: account.userId,
+        tenantId: account.tenantId,
+        email: account.email,
+        passwordHash: hashSecret(account.password),
+        displayName: account.displayName,
       });
     }
   }
@@ -57,7 +63,7 @@ export class AuthService {
     const issued = this.tokens.issue({
       sub: user.id,
       tenantId: user.tenantId,
-      scopes: ["archive:read", "archive:write", "sharing:write", "keys:write", "machines:write", "ingest:write", "mcp:use"],
+      scopes: PASSWORD_SCOPES,
       type: "browser",
     }, 3600);
     return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: user.id, email: user.email, displayName: user.displayName } };
