@@ -9,9 +9,11 @@ import { embeddingProviderFromEnv } from "./search.js";
 import { ConversionService } from "./convert/conversion.service.js";
 import { handlePipelineJob } from "./pipeline-jobs.js";
 import { runRetentionSweep } from "./settings.js";
+import { assertProductionCredentials } from "./startup-checks.js";
 import { ARCHIVE_STORE, OBJECT_STORAGE } from "./tokens.js";
 
 export async function runWorker(): Promise<void> {
+  assertProductionCredentials();
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) throw new Error("REDIS_URL is required for the worker");
   const context = await NestFactory.createApplicationContext(AppModule);

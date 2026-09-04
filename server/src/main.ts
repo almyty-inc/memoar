@@ -4,6 +4,7 @@ import { NestFactory } from "@nestjs/core";
 import { raw, type Express } from "express";
 import type { ServerResponse } from "node:http";
 import { AppModule } from "./app.module.js";
+import { assertProductionCredentials } from "./startup-checks.js";
 
 /**
  * How many proxies sit in front of this process.
@@ -76,6 +77,9 @@ export function configureApp(app: INestApplication): void {
 }
 
 export async function bootstrap(): Promise<void> {
+  // Before anything listens: a service that boots and then fails on somebody's
+  // request has already announced it is up.
+  assertProductionCredentials();
   const app = await NestFactory.create(AppModule, { rawBody: true });
   configureApp(app);
   await app.listen(Number(process.env.PORT ?? 4000), "0.0.0.0");
