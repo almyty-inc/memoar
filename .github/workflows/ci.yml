@@ -32,6 +32,13 @@ jobs:
       # contract suite against a throwaway pgvector container (Docker required).
       - run: npm test
       - run: npm run build
+      # The desktop application draws with the system WebView, which on Linux
+      # means WebKitGTK. Without these headers the workspace build fails at
+      # glib-sys and the app is the one crate CI cannot check.
+      - name: Install the Linux WebView toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
       - run: cargo fmt --all --manifest-path agent/Cargo.toml -- --check
       - run: cargo clippy --workspace --all-targets --manifest-path agent/Cargo.toml -- -D warnings
       - run: cargo test --workspace --manifest-path agent/Cargo.toml
