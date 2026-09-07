@@ -86,7 +86,7 @@ export async function bootstrap(): Promise<void> {
   // An archive upgraded from an earlier build can still hold an account that
   // build created with a published password, so this is asked of the database
   // rather than of the environment.
-  const dataSource = app.get(DataSource, { strict: false }) as DataSource | null;
+  const dataSource: DataSource | null = app.get(DataSource, { strict: false });
   if (dataSource) {
     await assertNoPublishedAccountPasswords(async (email) =>
       dataSource.getRepository(AuthIdentityEntity).findOneBy({ kind: "password", lookupKey: email, revokedAt: IsNull() }));

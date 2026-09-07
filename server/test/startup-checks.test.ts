@@ -81,19 +81,19 @@ describe("what production refuses to start with", () => {
     // Removing the code that created demo@memoar.dev does not remove the
     // account from an archive that already ran it, and the password is in the
     // repository. This is the upgrade path, not the fresh install.
-    const seeded = async (email: string) =>
-      email === "demo@memoar.dev" ? { secretHash: hashSecret("memoar-demo-password") } : null;
+    const seeded = (email: string) =>
+      Promise.resolve(email === "demo@memoar.dev" ? { secretHash: hashSecret("memoar-demo-password") } : null);
 
     await expect(assertNoPublishedAccountPasswords(seeded, { NODE_ENV: "production" }))
       .rejects.toThrow(/demo@memoar\.dev still uses a password published/u);
 
     // Once the password has been changed, the same account is fine.
-    const changed = async (email: string) =>
-      email === "demo@memoar.dev" ? { secretHash: hashSecret("something-nobody-published") } : null;
+    const changed = (email: string) =>
+      Promise.resolve(email === "demo@memoar.dev" ? { secretHash: hashSecret("something-nobody-published") } : null);
     await expect(assertNoPublishedAccountPasswords(changed, { NODE_ENV: "production" })).resolves.toBeUndefined();
 
     // And an archive that never had the account is untouched.
-    await expect(assertNoPublishedAccountPasswords(async () => null, { NODE_ENV: "production" })).resolves.toBeUndefined();
+    await expect(assertNoPublishedAccountPasswords(() => Promise.resolve(null), { NODE_ENV: "production" })).resolves.toBeUndefined();
   });
 
   it("leaves development alone", () => {
