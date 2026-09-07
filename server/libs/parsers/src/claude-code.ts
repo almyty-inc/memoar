@@ -1,5 +1,5 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, parseBlock, parseJsonLines, stringValue, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mapParent, parseBlock, parseJsonLines, stringValue, turnId, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
 export class ClaudeCodeV1Parser implements VersionedParser {
@@ -28,7 +28,9 @@ export class ClaudeCodeV1Parser implements VersionedParser {
 
     const turns: Turn[] = records.map((record, ordinal) => {
       const message = record.message as Record<string, unknown>;
-      const id = stringValue(record, "uuid")!;
+      // Claude Code writes real uuids, so this normally returns exactly what
+      // the transcript said. It is here for the transcript that does not.
+      const id = turnId(stringValue(record, "uuid")!, request.seed.id);
       const roleValue = stringValue(message, "role") ?? stringValue(record, "type") ?? "user";
       const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
       const content = message.content;
@@ -37,7 +39,9 @@ export class ClaudeCodeV1Parser implements VersionedParser {
       return withModelAndTokens({
         id,
         ordinal,
-        parentId: stringValue(record, "parentUuid"),
+        // Through the same derivation as the id above, or a remapped turn would
+        // be pointed at by a parent link that still names the original.
+        parentId: mapParent(stringValue(record, "parentUuid"), request.seed.id),
         role,
         createdAt: stringValue(record, "timestamp") ?? request.seed.createdAt,
         blocks,

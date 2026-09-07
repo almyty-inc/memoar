@@ -1,6 +1,8 @@
 import { CallHandler, CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable, NestInterceptor, SetMetadata } from "@nestjs/common";
 import { Observable, catchError, throwError } from "rxjs";
 import { Reflector } from "@nestjs/core";
+
+import { rateLimitRejections } from "./metrics/metrics.registry.js";
 import { Redis } from "ioredis";
 import type { Request, Response } from "express";
 
@@ -180,7 +182,10 @@ export class RateLimitGuard implements CanActivate {
 
     response.setHeader("RateLimit-Limit", flood.limit);
     response.setHeader("RateLimit-Remaining", Math.max(0, flood.limit - count));
-    if (count > flood.limit) throw tooMany(response, flood.windowSeconds);
+    if (count > flood.limit) {
+      rateLimitRejections.inc({ limit: "flood" });
+      throw tooMany(response, flood.windowSeconds);
+    }
 
     if (name !== "credential") return true;
     const budget = budgetFor("credential");
@@ -193,6 +198,10 @@ export class RateLimitGuard implements CanActivate {
       // Describe the budget that actually refused, not the flood budget.
       response.setHeader("RateLimit-Limit", budget.limit);
       response.setHeader("RateLimit-Remaining", 0);
+      // Separate from the flood label: a rising credential count is somebody
+      // working through passwords, which is a different alarm from a client
+      // that is merely too busy.
+      rateLimitRejections.inc({ limit: "credential" });
       throw tooMany(response, budget.windowSeconds);
     }
     return true;

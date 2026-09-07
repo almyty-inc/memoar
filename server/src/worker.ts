@@ -7,6 +7,8 @@ import { DefaultPipelineSeedFactory, FormatDetector, IngestPipeline, PIPELINE_QU
 import { ParserRegistry } from "../libs/parsers/src/index.js";
 import { embeddingProviderFromEnv } from "./search.js";
 import { ConversionService } from "./convert/conversion.service.js";
+import { startMetricsListener } from "./metrics/metrics-listener.js";
+import { MetricsService } from "./metrics/metrics.service.js";
 import { handlePipelineJob } from "./pipeline-jobs.js";
 import { runRetentionSweep } from "./settings.js";
 import { assertProductionCredentials } from "./startup-checks.js";
@@ -34,6 +36,12 @@ export async function runWorker(): Promise<void> {
   );
   await worker.waitUntilReady();
 
+  // The worker does the slow half of the product and said nothing about itself
+  // until now. Queue depth is read here too: this process is the one that knows
+  // whether the queue is draining.
+  const metrics = context.get(MetricsService);
+  const metricsServer = startMetricsListener(() => metrics.render());
+
   const sweep = async (): Promise<void> => {
     try {
       const result = await runRetentionSweep(store);
@@ -49,6 +57,7 @@ export async function runWorker(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     clearInterval(sweepTimer);
+    metricsServer?.close();
     await worker.close();
     await context.close();
     process.exitCode = 0;

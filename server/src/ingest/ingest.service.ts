@@ -7,6 +7,7 @@ import type { EmbeddingProvider } from "../search.js";
 import type { AnnotationStore, ArtifactStore, RawArtifactRecord, SessionStore, TenantContext } from "../archive-store.js";
 import { Tenant } from "../auth.js";
 import { uuidV5, uuidV7 } from "../ids.js";
+import { artifactsIngested, ingestBytes, sessionsArchived } from "../metrics/metrics.registry.js";
 import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "../tokens.js";
 import { type JobQueue, type QueueJob } from "./queues.js";
 import type { ObjectStorage } from "./object-storage.js";
@@ -52,6 +53,12 @@ export class IngestService {
     };
     const created = await this.store.saveRawArtifact(context, artifact);
     if (created) await this.objects.put(objectKey, bytes, "application/octet-stream");
+    // Counted apart, because they mean different things: "stored" is new
+    // capture arriving, "duplicate" is an agent re-offering what is already
+    // held, and a machine that only ever produces duplicates is a machine whose
+    // capture has quietly stopped moving.
+    artifactsIngested.inc({ result: created ? "stored" : "duplicate" });
+    if (created) ingestBytes.inc(bytes.byteLength);
     return { created, artifact };
   }
 
@@ -186,6 +193,10 @@ export class IngestPipeline {
         }
       }
       savedSessionIds.push(session.id);
+      // Labelled by tool, not by tenant: "how much is Codex capture producing"
+      // is a question about the product, and one series per customer is how a
+      // metrics store is brought down by the service it watches.
+      sessionsArchived.inc({ source: session.source.tool });
     }
     } catch (error) {
       const diagnostic = `session persistence failed: ${error instanceof Error ? error.message : String(error)}`;

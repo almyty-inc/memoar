@@ -4,6 +4,7 @@ import { Reflector } from "@nestjs/core";
 
 
 import { developmentAuthEnabled } from "../dev-mode.js";
+import { authFailures } from "../metrics/metrics.registry.js";
 
 import { PUBLIC_ROUTE, REQUIRED_SCOPES } from "./decorators.js";
 
@@ -56,9 +57,16 @@ export class AuthGuard implements CanActivate {
         tenantId, userId, scopes: ["*"], authType: "dev",
       };
     }
-    if (!tenantContext) throw new UnauthorizedException("Valid bearer, machine, or API-key credentials are required");
+    if (!tenantContext) {
+      // Counted by why, not by who: a climb in "unauthenticated" is someone
+      // knocking, a climb in "missing_scope" is usually a client of ours that
+      // has been given the wrong token.
+      authFailures.inc({ reason: "unauthenticated" });
+      throw new UnauthorizedException("Valid bearer, machine, or API-key credentials are required");
+    }
     const requiredScopes = this.reflector.getAllAndOverride<string[]>(REQUIRED_SCOPES, [handler, controller]) ?? inferredScopes(request);
     if (!tenantContext.scopes.includes("*") && requiredScopes.some((scope) => !tenantContext.scopes.includes(scope))) {
+      authFailures.inc({ reason: "missing_scope" });
       throw new ForbiddenException(`Missing required scope: ${requiredScopes.join(", ")}`);
     }
     if (tenantContext.authType === "machine") {
@@ -68,9 +76,13 @@ export class AuthGuard implements CanActivate {
       // on it read. Reading the archive is not on the list — and does not need
       // to be excluded here, because it asks for a scope a machine has not got.
       const capturePath = path.includes("/ingest") || path.includes("/memory");
-      if (!capturePath && !ownCommandPath) throw new ForbiddenException("Machine credentials are restricted to their capture and command channels");
+      if (!capturePath && !ownCommandPath) {
+        authFailures.inc({ reason: "machine_restricted" });
+        throw new ForbiddenException("Machine credentials are restricted to their capture and command channels");
+      }
       const bodyMachineId = request.body?.machineId;
       if (typeof bodyMachineId === "string" && bodyMachineId !== tenantContext.machineId) {
+        authFailures.inc({ reason: "machine_mismatch" });
         throw new ForbiddenException("Machine credential does not match request machineId");
       }
     }

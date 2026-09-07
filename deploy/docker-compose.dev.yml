@@ -83,6 +83,8 @@ services:
       # archive starts empty and fills up with what the agent captures.
       MEMOAR_BOOTSTRAP_EMAIL: ${MEMOAR_BOOTSTRAP_EMAIL:-owner@memoar.local}
       MEMOAR_BOOTSTRAP_PASSWORD: ${MEMOAR_BOOTSTRAP_PASSWORD:-local-stack-password-change-me}
+      # /v1/metrics exists only while this is set, and always requires it.
+      MEMOAR_METRICS_TOKEN: ${MEMOAR_METRICS_TOKEN:-local-stack-metrics-token}
       WEB_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
       MEMOAR_EMBEDDINGS_PROVIDER: ${MEMOAR_EMBEDDINGS_PROVIDER:-deterministic}
     ports:
@@ -117,6 +119,10 @@ services:
       S3_SECRET_KEY: memoar-local-secret
       MEMOAR_RUN_MIGRATIONS: "false"
       MEMOAR_EMBEDDINGS_PROVIDER: ${MEMOAR_EMBEDDINGS_PROVIDER:-deterministic}
+      # The worker is not a web server, so it listens for scrapes and nothing
+      # else. It is also the process that knows whether the queue is draining.
+      MEMOAR_METRICS_TOKEN: ${MEMOAR_METRICS_TOKEN:-local-stack-metrics-token}
+      MEMOAR_WORKER_METRICS_PORT: "9464"
     depends_on:
       api:
         condition: service_healthy

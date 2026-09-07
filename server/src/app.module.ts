@@ -11,6 +11,8 @@ import { InfrastructureModule } from "./infrastructure.module.js";
 import { IngestModule } from "./ingest.module.js";
 import { MachinesModule } from "./machines.module.js";
 import { McpModule } from "./mcp.module.js";
+import { MetricsInterceptor } from "./metrics/metrics.interceptor.js";
+import { MetricsModule } from "./metrics/metrics.module.js";
 import { ProblemFilter, RequestLogInterceptor } from "./observability.js";
 import { OpenApiController } from "./openapi.js";
 import { SearchModule } from "./search.module.js";
@@ -40,12 +42,16 @@ import { TeamsModule } from "./teams.module.js";
     ConvertModule,
     McpModule,
     DistillationModule,
+    MetricsModule,
   ],
   controllers: [HealthController, OpenApiController],
   providers: [
     // Every request gets an id and one structured line; every failure gets the
     // problem document the contract describes, carrying that id.
     { provide: APP_INTERCEPTOR, useClass: RequestLogInterceptor },
+    // Counted as well as logged: the log says what happened to one request, the
+    // metric says what is happening to all of them.
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_FILTER, useClass: ProblemFilter },
   ],
 })

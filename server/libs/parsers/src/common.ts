@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ContentBlock, ContentBlockKind, Turn } from "../../canonical/src/generated.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -15,6 +16,60 @@ export function parseJsonLines(raw: Uint8Array): Record<string, unknown>[] | nul
 export function stringValue(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return typeof value === "string" ? value : null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/** Whether a value can be stored in a uuid column at all. */
+export function isUuid(value: string): boolean {
+  return UUID.test(value);
+}
+
+/** The namespace every derived id in memoar shares. Mirrors `uuidV5` in the server. */
+const MEMOAR_NAMESPACE = "6ba7b8109dad11d180b400c04fd430c8";
+
+/**
+ * A uuid derived from a name, the same every time.
+ *
+ * The server has this too, as `uuidV5`. It is repeated here because the parsers
+ * are a library the server depends on and not the other way round, and a test
+ * asserts the two produce identical output so they cannot drift apart.
+ */
+export function derivedUuid(name: string): string {
+  const bytes = createHash("sha1")
+    .update(Buffer.from(MEMOAR_NAMESPACE, "hex"))
+    .update(name, "utf8")
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = 0x50 | (bytes[6]! & 0x0f);
+  bytes[8] = 0x80 | (bytes[8]! & 0x3f);
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * The id a turn is stored under, given whatever the source called it.
+ *
+ * Turn ids are a uuid column, and several parsers used to hand the source's own
+ * id straight to it. That works for as long as every tool numbers its messages
+ * with uuids, and the moment one does not the *whole session* is refused with
+ * `invalid input syntax for type uuid` — parsed correctly, never archived. This
+ * was found in a live archive, on an artifact that had been sitting failed for
+ * twenty days.
+ *
+ * A native uuid is kept as it is, so nothing already archived moves. Anything
+ * else is derived from the session and the native id together: deterministic,
+ * so re-capturing the same conversation lands on the same turn again, and
+ * scoped to the session, so two sessions that both call a message "1" do not
+ * collide.
+ */
+export function turnId(nativeId: string, sessionId: string): string {
+  return isUuid(nativeId) ? nativeId : derivedUuid(`${sessionId}:turn:${nativeId}`);
+}
+
+/** The same mapping for a parent link, which may legitimately be absent. */
+export function mapParent(nativeParentId: string | null, sessionId: string): string | null {
+  return nativeParentId === null ? null : turnId(nativeParentId, sessionId);
 }
 
 export function incrementUuid(uuid: string, amount: number): string {
@@ -94,7 +149,11 @@ export function parseBlock(value: unknown, fallbackId: string): ContentBlock | n
   // UUID belongs. A block that names its call separately is stating its own id.
   const namesItsCall = typeof value.callId === "string" || typeof value.tool_use_id === "string";
   const ownId = aliased === "tool_call" && !namesItsCall ? null : stringValue(value, "id");
-  const id = ownId ?? fallbackId;
+  // And only if it is one. Block ids are a uuid column, so a source that
+  // numbers its blocks any other way had its whole session refused by the
+  // database after parsing perfectly. The minted fallback is derived from the
+  // session and the block's position, so it is stable across re-captures.
+  const id = ownId !== null && isUuid(ownId) ? ownId : fallbackId;
   const block: ContentBlock = {
     id,
     kind,

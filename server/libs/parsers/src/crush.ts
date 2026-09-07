@@ -1,5 +1,5 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
-import { epochToIso, incrementUuid } from "./common.js";
+import { epochToIso, incrementUuid, turnId } from "./common.js";
 import { parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
@@ -26,22 +26,28 @@ export class CrushV1Parser implements VersionedParser {
           .prepare("SELECT id, role, parts, model, created_at FROM messages WHERE session_id = ? ORDER BY created_at, id");
         return sessionRows.map((sessionRow, sessionIndex): Session => {
           const rows = messagesFor.all(sessionRow.id) as unknown as { id: string; role: string; parts: string | Uint8Array; model: string | null; created_at: number }[];
+          // Worked out before the turns, because a turn id is derived from the
+          // session it belongs to when the source's own id is not a uuid.
+          const sessionId = sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex);
           let previousId: string | null = null;
           const turns = rows.map((row, ordinal): Turn => {
+            // Crush's message id goes into a uuid column. Passed through as it
+            // came, one id that is not a uuid refuses the entire session.
+            const id = turnId(row.id, sessionId);
             const turn = turnFromRow({
-              id: row.id,
+              id,
               // Crush stores a flat conversation, so the order is the chain.
               parentId: previousId,
               role: row.role,
               createdAt: epochToIso(row.created_at, request.seed.createdAt),
               blocks: parseJsonColumn(row.parts, `messages.parts row ${ordinal}`),
             }, ordinal, request.seed);
-            previousId = row.id;
+            previousId = id;
             return row.model ? { ...turn, model: row.model } : turn;
           });
           return {
             ...request.seed,
-            id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
+            id: sessionId,
             source: { ...request.seed.source, nativeSessionId: sessionRow.id },
             ...(sessionRow.title ? { title: sessionRow.title } : {}),
             turns,

@@ -1,0 +1,180 @@
+# What is worth waking someone for.
+#
+# Every rule below is about a way this service is known to fail, not about a
+# number that happens to be easy to graph. Two rules were applied throughout:
+#
+#   - An alert names what a person should do. "Error rate is high" is a
+#     sentence; "capture has stopped arriving from every machine" is a job.
+#   - Nothing pages on a threshold that a busy Tuesday can cross. The ones that
+#     mean data is being lost page; the rest are warnings and can wait for
+#     office hours.
+#
+# Load these into Prometheus with rule_files; see docs/observability.md.
+
+groups:
+  - name: memoar-availability
+    rules:
+      - alert: MemoarApiDown
+        expr: up{job="memoar-api"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "The API has not answered a scrape for two minutes"
+          description: >-
+            Nothing can be captured or read while this is true. Check the
+            container, then /health, which reports the database, object store
+            and queue separately.
+
+      - alert: MemoarWorkerDown
+        expr: up{job="memoar-worker"} == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "The worker has not answered a scrape for five minutes"
+          description: >-
+            Capture keeps arriving and nothing parses it: uploads are accepted
+            and queue depth grows, so this looks healthy from the outside until
+            a user notices their sessions never appeared.
+
+      - alert: MemoarServerErrors
+        expr: >-
+          sum(rate(memoar_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(memoar_http_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "More than 5% of requests are failing"
+          description: >-
+            Ten minutes of it, so a deploy blip does not page. Group by route to
+            find which one; the request log carries the same route labels and a
+            request id.
+
+  - name: memoar-capture
+    rules:
+      # The failure this product cannot survive: capture stops and nobody
+      # notices, because everything that is already archived still reads fine.
+      - alert: MemoarCaptureStopped
+        expr: sum(rate(memoar_ingest_artifacts_total[1h])) == 0
+        for: 3h
+        labels:
+          severity: page
+        annotations:
+          summary: "No transcript has been received for three hours"
+          description: >-
+            The archive keeps serving what it already holds, so this is
+            invisible from the outside. Check that agents can still reach
+            /v1/ingest and that their machine tokens have not expired.
+
+      - alert: MemoarOnlyDuplicatesArriving
+        expr: >-
+          sum(rate(memoar_ingest_artifacts_total{result="stored"}[1h])) == 0
+            and sum(rate(memoar_ingest_artifacts_total{result="duplicate"}[1h])) > 0
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agents are uploading, but nothing new is being stored"
+          description: >-
+            Every artifact offered for three hours was one the archive already
+            had. Usually means an agent is re-offering an old file rather than
+            following the transcript it is meant to be watching.
+
+      - alert: MemoarQueueNotDraining
+        expr: memoar_queue_depth{state="waiting"} > 100
+        for: 30m
+        labels:
+          severity: page
+        annotations:
+          summary: "Work has been waiting in the queue for half an hour"
+          description: >-
+            Uploads are being accepted faster than they are parsed. Either the
+            worker is stuck on something or there are not enough of them; check
+            memoar_jobs_total for failures first.
+
+      # Written after finding a parse job that had been sitting in the failed
+      # set for twenty days. Nothing watched for it: the rate rules below only
+      # see jobs failing *now*, and a job that exhausted its retries once and
+      # then sat there produces no rate at all.
+      - alert: MemoarFailedJobsAccumulating
+        expr: memoar_queue_depth{state="failed"} > 0
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jobs have been sitting in the failed set for six hours"
+          description: >-
+            A job that exhausted its retries stays here silently. The transcript
+            it was parsing is not lost — raw bytes are always preserved and the
+            artifact carries a diagnostic — but it is not archived either, so
+            somebody's session is missing. Read the diagnostic on the artifact,
+            then reprocess it.
+
+      - alert: MemoarJobsFailing
+        expr: >-
+          sum(rate(memoar_jobs_total{result="failed"}[15m]))
+            / sum(rate(memoar_jobs_total[15m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 10% of background jobs are failing"
+          description: >-
+            Failed jobs are retried, so this is a warning rather than a page
+            until the queue stops draining — but a parser that fails on every
+            transcript from one tool will sit here indefinitely.
+
+  - name: memoar-security
+    rules:
+      - alert: MemoarCredentialGuessing
+        expr: sum(rate(memoar_rate_limit_rejections_total{limit="credential"}[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sign-ins are being refused by the credential limit"
+          description: >-
+            The limit is doing its job — this is not a breach — but a sustained
+            rate means somebody is working through passwords against a real
+            account. Worth knowing which.
+
+      - alert: MemoarAuthFailureSpike
+        expr: sum(rate(memoar_auth_failures_total{reason="unauthenticated"}[5m])) > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A lot of requests are arriving with bad credentials"
+          description: >-
+            Most often a client of ours holding an expired token rather than an
+            attack; check whether it is one route or many.
+
+  - name: memoar-saturation
+    rules:
+      - alert: MemoarEventLoopBlocked
+        expr: memoar_nodejs_eventloop_lag_p99_seconds > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The event loop is lagging"
+          description: >-
+            This process parses and hashes transcripts on request threads. When
+            the loop lags, every route is slow at once for a reason no single
+            route explains — and the health endpoint starts timing out before
+            anything else does.
+
+      - alert: MemoarSlowReads
+        expr: >-
+          histogram_quantile(0.99,
+            sum by (le, route) (rate(memoar_http_request_duration_seconds_bucket[10m]))) > 2
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The 99th percentile on {{ $labels.route }} is over two seconds"
+          description: >-
+            Twenty minutes, so a large export does not raise it. If the route is
+            a read, look for a query that lost its index.
