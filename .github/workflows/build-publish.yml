@@ -1,0 +1,114 @@
+name: build-publish
+
+# Builds the container images and hands them to the deploy repository.
+#
+# This repository never talks to the cluster. It builds, pushes to GHCR, and
+# fires a repository_dispatch at almyty-inc/infra, which is the only place that
+# holds cluster credentials — so a compromise of this repository cannot reach
+# the deployment.
+#
+# Two images. The API image also runs the worker and the migration job, because
+# they are the same program invoked differently and a second image would be a
+# second thing to keep in step. The web image is built per environment: Vite
+# bakes the API address into the bundle, so the image is tied to the API it
+# talks to whether we like it or not.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to build for
+        required: true
+        type: choice
+        options: [development]
+        default: development
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/almyty-inc/memoar-api
+  WEB_IMAGE: ghcr.io/almyty-inc/memoar-web
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'development' }}"
+          case "$ENV" in
+            development)
+              echo "tag=dev" >> "$GITHUB_OUTPUT"
+              echo "api_url=https://api.dev.memoar.dev/v1" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "Unknown environment: '$ENV'" >&2; exit 1 ;;
+          esac
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # linux/amd64 only. The cluster is amd64, and building arm64 as well
+      # doubles the build for an architecture nothing here runs on.
+      - name: API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ steps.env.outputs.tag }}
+            ${{ env.API_IMAGE }}:${{ steps.env.outputs.tag }}-${{ github.sha }}
+          cache-from: type=gha,scope=memoar-api
+          cache-to: type=gha,scope=memoar-api,mode=max
+
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            VITE_API_URL=${{ steps.env.outputs.api_url }}
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ steps.env.outputs.tag }}
+            ${{ env.WEB_IMAGE }}:${{ steps.env.outputs.tag }}-${{ github.sha }}
+          cache-from: type=gha,scope=memoar-web
+          cache-to: type=gha,scope=memoar-web,mode=max
+
+      # The deploy repository holds the cluster credentials and does the rest:
+      # gated migration, then rollout. A missing INFRA_DISPATCH_TOKEN is a
+      # published image that nothing deployed, so it says so rather than
+      # finishing green.
+      - name: Ask the deploy repository to roll it out
+        env:
+          INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$INFRA_DISPATCH_TOKEN" ]; then
+            echo "INFRA_DISPATCH_TOKEN is not set: images were published but nothing was deployed." >&2
+            exit 1
+          fi
+          curl -fsS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $INFRA_DISPATCH_TOKEN" \
+            https://api.github.com/repos/almyty-inc/infra/dispatches \
+            -d '{"event_type":"deploy-memoar","client_payload":{"environment":"development","image_tag":"${{ steps.env.outputs.tag }}-${{ github.sha }}"}}'
