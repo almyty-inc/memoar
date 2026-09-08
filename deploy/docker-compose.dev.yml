@@ -125,10 +125,17 @@ services:
       # Encrypts the provider credentials accounts bring for distillation.
       # Without it the API refuses to store one rather than storing it weakly.
       MEMOAR_CREDENTIAL_KEY: ${MEMOAR_CREDENTIAL_KEY:-6b1f3c7d9a2e4f508192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8}
+      # Failure counts survive a restart. Separate paths per process: the API
+      # and the worker group their own failures, and one file would have each
+      # overwriting the other.
+      MEMOAR_ERROR_STATE_PATH: /var/lib/memoar/api-errors.json
       WEB_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
       MEMOAR_EMBEDDINGS_PROVIDER: ${MEMOAR_EMBEDDINGS_PROVIDER:-deterministic}
     ports:
       - "4000:4000"
+    volumes:
+      # Survives a rebuild, which is when the error history is most wanted.
+      - memoar-state:/var/lib/memoar
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,6 +171,9 @@ services:
       # else. It is also the process that knows whether the queue is draining.
       MEMOAR_METRICS_TOKEN: ${MEMOAR_METRICS_TOKEN:-local-stack-metrics-token}
       MEMOAR_WORKER_METRICS_PORT: "9464"
+      MEMOAR_ERROR_STATE_PATH: /var/lib/memoar/worker-errors.json
+    volumes:
+      - memoar-state:/var/lib/memoar
     depends_on:
       api:
         condition: service_healthy
@@ -183,6 +193,7 @@ services:
 
 volumes:
   postgres-data:
+  memoar-state:
   postgres-backups:
   redis-data:
   minio-data:

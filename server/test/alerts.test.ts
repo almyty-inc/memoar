@@ -21,6 +21,53 @@ const rules = alerts.groups.flatMap((group) => group.rules);
 /** Suffixes Prometheus derives from a metric rather than ones we declare. */
 const DERIVED = ["", "_bucket", "_sum", "_count", "_total"];
 
+/**
+ * A dashboard that queries a metric which no longer exists is not broken in any
+ * visible way: the panel is simply empty, which looks exactly like a quiet
+ * system. Same failure as an alert on a renamed metric, and the same guard.
+ */
+describe("the dashboard", () => {
+  const dashboard = JSON.parse(readFileSync(resolve(process.cwd(), "../deploy/dashboard.json"), "utf8")) as {
+    title: string;
+    panels: { title: string; type: string; targets?: { expr: string }[] }[];
+  };
+
+  it("only queries metrics this service exposes", async () => {
+    const exposition = await renderMetrics();
+    const declared = new Set(
+      exposition.split("\n").filter((line) => line.startsWith("# TYPE ")).map((line) => line.split(" ")[2] ?? ""),
+    );
+
+    const referenced = new Set<string>();
+    for (const panel of dashboard.panels) {
+      for (const target of panel.targets ?? []) {
+        for (const match of target.expr.matchAll(/memoar_[a-z0-9_]+/gu)) referenced.add(match[0]);
+      }
+    }
+    expect(referenced.size, "the dashboard queries nothing at all").toBeGreaterThan(8);
+
+    const missing = [...referenced].filter((name) =>
+      !DERIVED.some((suffix) => name.endsWith(suffix) && declared.has(suffix ? name.slice(0, -suffix.length) : name)));
+    expect(missing, `these panels would silently render empty: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("leads with the failure nothing else would show", () => {
+    // Capture stopping is invisible from every other angle: the archive keeps
+    // serving what it already holds, so health, latency and error rate all stay
+    // exactly as they were.
+    const first = dashboard.panels.find((panel) => panel.type !== "row");
+    expect(first?.title).toContain("received");
+    expect(JSON.stringify(first)).toContain("memoar_ingest_artifacts_total");
+  });
+
+  it("explains what each graph is for", () => {
+    // A panel whose meaning lives in the head of whoever added it is a panel
+    // that gets misread at three in the morning.
+    const explained = dashboard.panels.filter((panel) => panel.type !== "row" && "description" in panel);
+    expect(explained.length, "at least the non-obvious panels carry a description").toBeGreaterThan(5);
+  });
+});
+
 describe("the alert rules", () => {
   it("only refers to metrics this service actually exposes", async () => {
     // The failure this prevents: a metric is renamed, every dashboard is fixed

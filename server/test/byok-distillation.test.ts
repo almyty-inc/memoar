@@ -33,7 +33,8 @@ describe("a provider credential at rest", () => {
     // Authenticated encryption: an edited row fails to open rather than
     // decrypting to something else.
     const raw = Buffer.from(sealed, "base64");
-    raw[raw.length - 1] ^= 0xff;
+    const last = raw.length - 1;
+    raw[last] = (raw[last] ?? 0) ^ 0xff;
     expect(openCredential(raw.toString("base64"), { MEMOAR_CREDENTIAL_KEY: CREDENTIAL_KEY })).toBeNull();
   });
 

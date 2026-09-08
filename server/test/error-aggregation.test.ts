@@ -1,5 +1,9 @@
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { ErrorAggregator, errorAggregator } from "../src/errors/error-aggregator.js";
+import { ErrorAggregator, errorAggregator, persistErrors } from "../src/errors/error-aggregator.js";
+import { readErrorState, writeErrorState } from "../src/errors/error-store.js";
 import { fingerprint, normalizeMessage, originFrame } from "../src/errors/fingerprint.js";
 import { handlePipelineJob } from "../src/pipeline-jobs.js";
 import { startTestApi, type TestApi } from "./helpers/http-app.js";
@@ -110,6 +114,99 @@ describe("grouping failures", () => {
     const { groups } = errorAggregator.snapshot();
     expect(groups[0]!.shape).toBe("parse_job_missing_sha256");
     expect(groups[0]!.lastRoute).toBe("job:parse");
+  });
+});
+
+describe("surviving a restart", () => {
+  const directory = mkdtempSync(join(tmpdir(), "memoar-errors-"));
+  const path = join(directory, "errors.json");
+
+  it("carries the counts across, rather than starting again", () => {
+    // "This has happened 4,000 times since Tuesday" is the sentence that
+    // separates a real problem from a one-off, and the deploy made because of
+    // it would otherwise erase exactly that.
+    const before = new ErrorAggregator();
+    for (let index = 0; index < 7; index += 1) before.record(new Error("the same failure"));
+    writeErrorState(path, before.persistable());
+
+    const after = new ErrorAggregator();
+    after.restore(readErrorState(path)!);
+
+    expect(after.snapshot().groups[0]).toMatchObject({ shape: "the same failure", count: 7 });
+  });
+
+  it("adds to what this process has already seen rather than replacing it", () => {
+    const before = new ErrorAggregator();
+    before.record(new Error("the same failure"));
+    writeErrorState(path, before.persistable());
+
+    const after = new ErrorAggregator();
+    // Something failed between starting and reading the file, which is exactly
+    // when a restart is happening.
+    after.record(new Error("the same failure"));
+    after.restore(readErrorState(path)!);
+
+    expect(after.snapshot().groups[0]!.count, "the live occurrence must not be lost").toBe(2);
+  });
+
+  it("keeps no archive content in the file", () => {
+    // The file gets copied around, attached to tickets, and left on disks. What
+    // is written is the normalised shape, never the message that quoted its
+    // input.
+    const aggregator = new ErrorAggregator();
+    aggregator.record(new Error('invalid input syntax for type uuid: "0191cafe-0000-7000-8000-0000000take0e"'));
+    writeErrorState(path, aggregator.persistable());
+
+    const written = readFileSync(path, "utf8");
+    expect(written).not.toContain("take0e");
+    expect(written).toContain('invalid input syntax for type uuid: \\"?\\"');
+  });
+
+  it("starts empty rather than refusing to start, when the file cannot be read", () => {
+    // This is the component that reports failures. It must not be able to
+    // become the one that stops the service.
+    const damaged = join(directory, "damaged.json");
+    writeFileSync(damaged, '{"groups":[{"id":"x"', "utf8");
+    expect(readErrorState(damaged)).toBeNull();
+    expect(readErrorState(join(directory, "absent.json"))).toBeNull();
+  });
+
+  it("writes atomically, so a crash mid-write cannot empty the list", () => {
+    // A write that went straight to the target would leave a truncated file
+    // when the process died halfway through it, and the next boot would fail to
+    // parse it — the error list emptied by the very restart it exists to
+    // survive. Writing to a temporary name and renaming means a crash before
+    // the rename leaves the previous file completely intact.
+    const atomic = join(directory, "atomic.json");
+    const aggregator = new ErrorAggregator();
+    aggregator.record(new Error("written before the crash"));
+    writeErrorState(atomic, aggregator.persistable());
+
+    // The state a process killed mid-write leaves behind.
+    writeFileSync(`${atomic}.writing`, '{"groups":[{"id":"trun', "utf8");
+
+    expect(readErrorState(atomic)!.groups[0]!.shape, "the last good file must still be readable").toBe("written before the crash");
+    // And the next successful write clears the debris rather than accumulating it.
+    writeErrorState(atomic, aggregator.persistable());
+    expect(existsSync(`${atomic}.writing`)).toBe(false);
+  });
+
+  it("does nothing at all when no path is configured", () => {
+    // The default is what it was: in memory, per process, gone on restart.
+    const stop = persistErrors(new ErrorAggregator(), undefined);
+    expect(() => { stop(); }).not.toThrow();
+  });
+
+  it("loads on start and writes on stop", () => {
+    const roundTrip = join(directory, "round-trip.json");
+    const first = new ErrorAggregator();
+    first.record(new Error("kept across the restart"));
+    persistErrors(first, roundTrip, 3_600_000)();
+
+    const second = new ErrorAggregator();
+    persistErrors(second, roundTrip, 3_600_000)();
+
+    expect(second.snapshot().groups[0]!.shape).toBe("kept across the restart");
   });
 });
 

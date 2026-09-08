@@ -1,0 +1,140 @@
+{
+  "title": "Memoar",
+  "uid": "memoar-overview",
+  "tags": ["memoar"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "description": "Is capture arriving, is it being archived, and is anything failing. Ordered so the first row answers the question that has no other answer: capture can stop while everything else looks perfectly healthy, because the archive keeps serving what it already holds.",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Is capture still arriving",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Transcripts received per minute",
+      "description": "Split by outcome. `duplicate` alone means agents are still talking to the archive but offering only files it already has — capture that has quietly stopped moving.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "cpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (result) (rate(memoar_ingest_artifacts_total[5m])) * 60", "legendFormat": "{{result}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sessions archived per minute, by tool",
+      "description": "What the product is actually for. A tool dropping to zero while the others continue usually means its parser stopped matching a format that changed.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "cpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (source) (rate(memoar_sessions_archived_total[5m])) * 60", "legendFormat": "{{source}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Transcript bytes accepted (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [{ "expr": "sum(increase(memoar_ingest_bytes_total[24h]))", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Sessions archived (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [{ "expr": "sum(increase(memoar_sessions_archived_total[24h]))", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth",
+      "description": "Read from the queue itself at scrape time. Waiting climbing while active stays flat is a worker that is stuck rather than busy; failed above zero means jobs exhausted their retries and some transcript was never archived.",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "memoar_queue_depth", "legendFormat": "{{state}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Is anything failing",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by status",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (status) (rate(memoar_http_requests_total[5m]))", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Failures by error class",
+      "description": "Counted by class only, because a fingerprint comes from a message and would be an unbounded label. Ask /v1/errors for which failure this is, how often, and a request id that finds the full line in the log.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (type) (rate(memoar_errors_total[5m])) * 60", "legendFormat": "{{type}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Background jobs per minute",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "cpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (job, result) (rate(memoar_jobs_total[5m])) * 60", "legendFormat": "{{job}} {{result}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Refused credentials and rate limits",
+      "description": "A sustained credential rate is somebody working through passwords against a real account; the limit refusing them is the system working, not a breach.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "cpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (reason) (rate(memoar_auth_failures_total[5m])) * 60", "legendFormat": "auth: {{reason}}", "refId": "A" },
+        { "expr": "sum by (limit) (rate(memoar_rate_limit_rejections_total[5m])) * 60", "legendFormat": "limit: {{limit}}", "refId": "B" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Is it keeping up",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request latency by route (p50 / p99)",
+      "description": "Route patterns, never paths. Buckets run to ten seconds because export and ingest are not sub-second operations and a scale that stops at one cannot tell a slow export from a hang.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le, route) (rate(memoar_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{route}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le, route) (rate(memoar_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p99 {{route}}", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Job duration (p99)",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le, job) (rate(memoar_job_duration_seconds_bucket[10m])))", "legendFormat": "{{job}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Event loop lag (p99) and heap",
+      "description": "This process parses and hashes transcripts on request threads. When the loop lags every route is slow at once, for a reason no single route explains.",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [{ "matcher": { "id": "byName", "options": "heap used" }, "properties": [{ "id": "unit", "value": "bytes" }] }] },
+      "targets": [
+        { "expr": "memoar_nodejs_eventloop_lag_p99_seconds", "legendFormat": "loop lag p99", "refId": "A" },
+        { "expr": "memoar_nodejs_heap_size_used_bytes", "legendFormat": "heap used", "refId": "B" }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import type { ServerResponse } from "node:http";
 import { DataSource, IsNull } from "typeorm";
 import { AppModule } from "./app.module.js";
 import { AuthIdentityEntity } from "./entities.js";
+import { errorAggregator, persistErrors } from "./errors/error-aggregator.js";
 import { assertNoPublishedAccountPasswords, assertProductionCredentials } from "./startup-checks.js";
 
 /**
@@ -110,5 +111,10 @@ export async function bootstrap(): Promise<void> {
       dataSource.getRepository(AuthIdentityEntity).findOneBy({ kind: "password", lookupKey: email, revokedAt: IsNull() }));
   }
   configureApp(app);
+  // Failure counts carry across a restart, so "this has happened 4,000 times
+  // since Tuesday" survives the deploy that was made because of it.
+  const stopPersistingErrors = persistErrors(errorAggregator);
+  process.once("SIGTERM", stopPersistingErrors);
+  process.once("SIGINT", stopPersistingErrors);
   await app.listen(Number(process.env.PORT ?? 4000), "0.0.0.0");
 }

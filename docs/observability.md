@@ -144,13 +144,54 @@ the one moment the database may be the thing that is broken. And it is capped at
 a message and an unbounded one would grow fastest during the incident it exists
 to explain.
 
+### Across a restart
+
+Set `MEMOAR_ERROR_STATE_PATH` and the groups are written there on a timer and on
+shutdown, then read back at boot. Without it the behaviour is what it was: in
+memory, per process, gone on restart.
+
+Counts carry over rather than starting again, because "this has happened 4,000
+times since Tuesday" is the sentence that separates a real problem from a
+one-off — and the deploy you made *because* of it would otherwise erase exactly
+that. Restoring merges rather than replaces, since a process can fail between
+starting and reading the file.
+
+Give each process its own path. The API and the worker group their own failures,
+and pointed at one file each would overwrite what the other wrote.
+
+The file is written to a temporary name and renamed over the target. Rename is
+atomic, so a process killed halfway through a write leaves the previous file
+completely intact — a direct write would leave a truncated file that fails to
+parse, and the error history would be emptied by the very restart it exists to
+survive. Anything unreadable is treated as empty rather than thrown: this is the
+component that reports failures and must not become one that stops the service.
+
+It carries no archive content. Only the normalised shapes are written, never the
+messages that quoted their input, and a test asserts a transcript value cannot
+appear in the file.
+
+## Dashboards
+
+`deploy/dashboard.json`, importable into Grafana. Three rows, in the order the
+questions matter:
+
+1. **Is capture still arriving** — first, because it is the failure nothing else
+   reveals. The archive keeps serving what it already holds, so health, latency
+   and error rate all look completely normal while no new session has arrived
+   for a day.
+2. **Is anything failing** — request status, failures by class, jobs, refused
+   credentials.
+3. **Is it keeping up** — latency percentiles, job duration, event-loop lag.
+
+`server/test/alerts.test.ts` checks that every metric the panels query is one
+this service actually exposes. A dashboard querying a renamed metric is not
+visibly broken: the panel is simply empty, which looks exactly like a quiet
+system.
+
 ## What is not here yet
 
-Nothing keeps this across a restart, so the error list answers "what has been
-failing recently" rather than "what happened last Tuesday" — the log lines,
-carrying the same fingerprints, are what reach further back. Shipping them
-somewhere durable is a decision about where this runs and what may leave the
-machine, which is not settled.
-
-Dashboards are deliberately absent for the same reason: a dashboard checked into
-a repository that nobody opens is worse than none.
+Nothing ships the error state or the metrics off the machine. Both are readable
+from the processes that produced them, which is enough to answer questions about
+a running deployment and not enough to answer questions about one that is gone.
+Where those go is a decision about hosting and about what may leave the machine,
+and neither is settled.
