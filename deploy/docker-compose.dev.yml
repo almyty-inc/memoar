@@ -1,7 +1,11 @@
+# Every service restarts on its own. Docker went down mid-run once and took the
+# whole stack with it: nothing brought it back, and an archive that needs a
+# person to notice and restart it is not running.
 name: memoar-dev
 
 services:
   postgres:
+    restart: unless-stopped
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: memoar
@@ -24,6 +28,7 @@ services:
       retries: 20
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
@@ -37,6 +42,7 @@ services:
       retries: 20
 
   minio:
+    restart: unless-stopped
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -53,6 +59,36 @@ services:
       timeout: 3s
       retries: 20
 
+  # Takes the backup nobody would otherwise remember to take. Runs the same
+  # scripts an operator runs by hand, in the database's own image so that the
+  # client and the server are the same major version — a mismatched pg_dump
+  # writes a file that fails part way through a restore.
+  backup:
+    restart: unless-stopped
+    image: pgvector/pgvector:pg16
+    entrypoint: ["sh", "/backup-cron.sh"]
+    environment:
+      MEMOAR_BACKUP_URL: postgres://memoar:memoar@postgres:5432/memoar
+      MEMOAR_BACKUP_INTERVAL_SECONDS: ${MEMOAR_BACKUP_INTERVAL_SECONDS:-86400}
+      MEMOAR_BACKUP_KEEP: ${MEMOAR_BACKUP_KEEP:-14}
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backup-cron.sh:/backup-cron.sh:ro
+      - ./backup-check.sh:/backup-check.sh:ro
+      - postgres-backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Unhealthy means no backup has succeeded recently — the failure that
+      # otherwise goes unnoticed for months, because nothing else looks any
+      # different.
+      test: ["CMD", "sh", "/backup-check.sh"]
+      interval: 300s
+      timeout: 10s
+      retries: 2
+      start_period: 120s
+
   minio-create-bucket:
     image: minio/mc:latest
     depends_on:
@@ -63,6 +99,7 @@ services:
       - "mc alias set local http://minio:9000 memoar-local memoar-local-secret && mc mb --ignore-existing local/memoar-raw"
 
   api:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: server/Dockerfile
@@ -106,6 +143,7 @@ services:
       retries: 20
 
   worker:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: server/Dockerfile
@@ -131,6 +169,7 @@ services:
         condition: service_healthy
 
   web:
+    restart: unless-stopped
     build:
       context: ../web
       dockerfile: Dockerfile

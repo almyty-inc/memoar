@@ -140,6 +140,52 @@ suite("backing up and restoring the archive", () => {
       .toThrow(/does not match its checksum/u);
   }, 300_000);
 
+  it("takes backups on a schedule and prunes to a bounded number", async () => {
+    // backup.sh is the mechanism; this is the protection. A dump nobody takes
+    // is exactly as useful as one nobody restores.
+    const scheduled = "/tmp/memoar-scheduled";
+    // At the paths the compose service mounts them at, because backup-cron.sh
+    // runs `sh /backup.sh` and a test that put them somewhere else would prove
+    // a layout nothing uses.
+    for (const name of ["backup.sh", "backup-cron.sh", "backup-check.sh"]) {
+      execFileSync("docker", ["cp", resolve(process.cwd(), "..", "deploy", name), `${FIXTURE.container}:/${name}`]);
+    }
+
+    // One second apart and keeping three, so the loop and the pruning are both
+    // observable inside a test rather than inferred from the code.
+    shellInContainer(
+      `mkdir -p ${scheduled} && MEMOAR_BACKUP_URL='${URL_IN_CONTAINER}' MEMOAR_BACKUP_DIR=${scheduled}` +
+      ` MEMOAR_BACKUP_INTERVAL_SECONDS=1 MEMOAR_BACKUP_KEEP=3 nohup sh /backup-cron.sh > ${scheduled}/log 2>&1 &`,
+    );
+    await new Promise((done) => setTimeout(done, 12_000));
+    shellInContainer("pkill -f backup-cron.sh || true");
+
+    const dumps = shellInContainer(`ls -1 ${scheduled}/memoar-*.dump | wc -l`).trim();
+    expect(Number(dumps), "the loop never produced a backup").toBeGreaterThan(1);
+    expect(Number(dumps), "old dumps must be pruned or the disk fills quietly").toBeLessThanOrEqual(3);
+
+    const log = shellInContainer(`cat ${scheduled}/log`);
+    expect(log, "failures have to be loud, or a stopped schedule is invisible").not.toContain('"level":"error"');
+
+    // And the staleness check agrees a recent backup exists.
+    expect(() => shellInContainer(`MEMOAR_BACKUP_DIR=${scheduled} sh /backup-check.sh`)).not.toThrow();
+  }, 300_000);
+
+  it("reports a schedule that has stopped, which is the failure nobody notices", () => {
+    // Losing a backup is visible. A backup that quietly stopped four months ago
+    // looks exactly like a healthy one until the day it is needed.
+    const stale = "/tmp/memoar-stale";
+    shellInContainer(`mkdir -p ${stale} && echo 1 > ${stale}/last-success`);
+
+    expect(() => shellInContainer(`MEMOAR_BACKUP_DIR=${stale} sh /backup-check.sh`))
+      .toThrow(/older than/u);
+
+    // And a directory where no backup has ever succeeded is not "fine so far".
+    shellInContainer("mkdir -p /tmp/memoar-never");
+    expect(() => shellInContainer("MEMOAR_BACKUP_DIR=/tmp/memoar-never sh /backup-check.sh"))
+      .toThrow(/no successful backup/u);
+  });
+
   it("refuses to dump with a client of the wrong major version", () => {
     // pg_dump writes its own version's settings into the file: an 18 client
     // emits `SET transaction_timeout`, which a 16 server rejects part-way

@@ -28,6 +28,13 @@ jobs:
       - run: make contracts-check
       - run: node scripts/check-version-pins.mjs
       - run: npm run lint
+      # Advisories are found when somebody remembers to look, which is to say
+      # not found. Two were sitting here — one high — until a check was run by
+      # hand. Moderate and above fails the build; anything lower is reported and
+      # left, because a build that fails on an unfixable low advisory teaches
+      # people to ignore this step.
+      - name: Known vulnerabilities in npm dependencies
+        run: npm audit --audit-level=moderate
       # npm test enforces server coverage thresholds and runs the ArchiveStore
       # contract suite against a throwaway pgvector container (Docker required).
       - run: npm test
@@ -42,6 +49,12 @@ jobs:
       - run: cargo fmt --all --manifest-path agent/Cargo.toml -- --check
       - run: cargo clippy --workspace --all-targets --manifest-path agent/Cargo.toml -- -D warnings
       - run: cargo test --workspace --manifest-path agent/Cargo.toml
+      # The same for the agent, which is the half that runs on other people's
+      # machines and reads their transcripts.
+      - name: Known vulnerabilities in Rust dependencies
+        run: |
+          cargo install cargo-audit --locked --quiet
+          cargo audit --file agent/Cargo.lock
       - run: docker compose -f deploy/docker-compose.dev.yml config
 
   data-gates:

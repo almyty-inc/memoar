@@ -81,9 +81,40 @@ Do the same against a copy of production periodically. The failure mode this
 protects against is not "the backup did not run" — that is visible. It is "the
 backup ran for a year and cannot be read", which is not.
 
-## What is not automated yet
+## The schedule
 
-Scheduling and off-site copies are deployment decisions and depend on where the
-service runs, which is not settled. What exists here is the mechanism and the
-proof it works; a cron entry that calls `backup.sh` and ships the file somewhere
-durable is the remaining step, and it belongs with the hosting choice.
+`deploy/backup-cron.sh` runs as the `backup` service in the compose stack. It
+takes a dump every `MEMOAR_BACKUP_INTERVAL_SECONDS` (a day by default), keeps
+the newest `MEMOAR_BACKUP_KEEP` (fourteen), and logs one JSON object per line
+like the API does.
+
+It counts dumps rather than days when pruning. A stretch where backups were
+failing must not silently delete the last good copies as they age past a date.
+
+A failed run is loud but not fatal: the loop continues, because one bad night
+should not end all future backups. It also leaves `last-success` untouched,
+which is what makes a run of failures visible:
+
+```sh
+docker compose -f deploy/docker-compose.dev.yml exec backup sh /backup-check.sh
+# {"lastSuccessSecondsAgo":3612,"maxAgeSeconds":129600}
+```
+
+That is the service's health check, so a schedule that has stopped shows up as
+an unhealthy container. **This is the failure worth guarding against.** A lost
+backup is visible. A backup that quietly stopped running four months ago looks
+exactly like a healthy one until the day it is needed, which is why the check
+exists and why it is wired to something that goes red on its own.
+
+`server/test/backup-restore.test.ts` runs the loop with a one-second interval
+and a limit of three, then asserts that backups appeared, that old ones were
+pruned, and that the staleness check fails on a directory whose last success is
+old and on one where no backup ever succeeded.
+
+## What is still yours to decide
+
+Where the dumps go. They are on a volume beside the database, which protects
+against a dropped table and not against losing the machine. Copying them
+somewhere else is a decision about hosting and about what may leave the machine,
+and both are open. When that is settled it is one `aws s3 cp` — or equivalent —
+after the `wrote` line in `backup-cron.sh`.
