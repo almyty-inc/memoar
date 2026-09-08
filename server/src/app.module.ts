@@ -13,6 +13,7 @@ import { MachinesModule } from "./machines.module.js";
 import { McpModule } from "./mcp.module.js";
 import { MetricsInterceptor } from "./metrics/metrics.interceptor.js";
 import { MetricsModule } from "./metrics/metrics.module.js";
+import { ErrorsModule } from "./errors/errors.module.js";
 import { ProblemFilter, RequestLogInterceptor } from "./observability.js";
 import { OpenApiController } from "./openapi.js";
 import { SearchModule } from "./search.module.js";
@@ -43,6 +44,7 @@ import { TeamsModule } from "./teams.module.js";
     McpModule,
     DistillationModule,
     MetricsModule,
+    ErrorsModule,
   ],
   controllers: [HealthController, OpenApiController],
   providers: [

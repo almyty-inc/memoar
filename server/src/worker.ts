@@ -40,7 +40,12 @@ export async function runWorker(): Promise<void> {
   // until now. Queue depth is read here too: this process is the one that knows
   // whether the queue is draining.
   const metrics = context.get(MetricsService);
-  const metricsServer = startMetricsListener(() => metrics.render());
+  const metricsServer = startMetricsListener({
+    token: process.env.MEMOAR_METRICS_TOKEN,
+    port: Number(process.env.MEMOAR_WORKER_METRICS_PORT ?? 9464),
+    ...(process.env.MEMOAR_METRICS_HOST ? { host: process.env.MEMOAR_METRICS_HOST } : {}),
+    render: () => metrics.render(),
+  });
 
   const sweep = async (): Promise<void> => {
     try {

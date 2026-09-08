@@ -46,6 +46,21 @@ export const httpDuration = new Histogram({
   registers: [registry],
 });
 
+/**
+ * Errors, by class only.
+ *
+ * Not by fingerprint: that label is derived from a message, and a message is
+ * attacker-influenced often enough that it would be an unbounded label set on
+ * the one path where things are already going wrong. The fingerprints live in
+ * the aggregator, which is bounded and is not a time series.
+ */
+export const errorsRecorded = new Counter({
+  name: "memoar_errors_total",
+  help: "Unhandled failures, by error class.",
+  labelNames: ["type"] as const,
+  registers: [registry],
+});
+
 export const authFailures = new Counter({
   name: "memoar_auth_failures_total",
   help: "Rejected credentials, by why they were rejected.",

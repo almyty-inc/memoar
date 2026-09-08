@@ -1,6 +1,7 @@
 import type { TenantContext } from "./archive-store.js";
 import type { ConversionService } from "./convert/conversion.service.js";
 import type { IngestPipeline } from "./ingest.js";
+import { errorAggregator } from "./errors/error-aggregator.js";
 import { jobDuration, jobsProcessed } from "./metrics/metrics.registry.js";
 
 /** The shape both BullMQ jobs and tests hand to the dispatcher. */
@@ -40,6 +41,11 @@ export async function handlePipelineJob(job: PipelineJob, handlers: PipelineHand
     return result;
   } catch (error) {
     jobsProcessed.inc({ job: job.name, result: "failed" });
+    // A failed job is nobody's request, so it has no request id and never
+    // reaches the exception filter. Without this, the failure that matters most
+    // — the one that means a transcript was never archived — is the one nothing
+    // groups. A job sat failed in a live queue for twenty days.
+    errorAggregator.record(error, { route: `job:${job.name}` });
     throw error;
   } finally {
     done();

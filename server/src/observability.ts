@@ -11,6 +11,7 @@ import {
   NestInterceptor,
 } from "@nestjs/common";
 import { Observable, tap } from "rxjs";
+import { errorAggregator } from "./errors/error-aggregator.js";
 import type { Request, Response } from "express";
 
 /**
@@ -105,6 +106,10 @@ export class ProblemFilter implements ExceptionFilter {
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (status >= 500) {
+      // Grouped as well as logged, and the group's id goes in the line: the log
+      // says what happened once, the fingerprint says which of these is one
+      // problem happening repeatedly.
+      const group = errorAggregator.record(exception, { requestId: id, route: routeOf(request) });
       logLine({
         level: "error",
         message: "unhandled",
@@ -113,6 +118,7 @@ export class ProblemFilter implements ExceptionFilter {
         route: routeOf(request),
         status,
         ...(tenantOf(request) ? { tenantId: tenantOf(request) } : {}),
+        ...(group ? { fingerprint: group.id, occurrences: group.count } : {}),
         error: exception instanceof Error ? exception.message : String(exception),
         stack: exception instanceof Error ? exception.stack : undefined,
       });

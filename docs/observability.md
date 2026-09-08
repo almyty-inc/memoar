@@ -7,6 +7,7 @@ Three things report, and they answer different questions.
 | `/health` | Is it up, and can it reach Postgres, the object store and Redis? | `GET /health`, public |
 | Request log | What happened to *this* request? | stdout, one JSON object per line |
 | Metrics | What is happening to *all* of them, and has it changed? | `GET /v1/metrics`, token required |
+| Error report | Which exception is this, and how often? | `GET /v1/errors`, token required |
 
 The health endpoint answers one question and the log answers questions you
 already know to ask. Neither tells you that the 99th percentile has been
@@ -98,12 +99,58 @@ renamed, the dashboards get fixed because somebody is looking at them, and the
 alert that was meant to notice capture stopping quietly stops evaluating. An
 alert on a metric that does not exist never fires and never complains.
 
+## Errors, grouped
+
+`GET /v1/errors`, behind the same operator token:
+
+```json
+{
+  "groups": [
+    {
+      "id": "8835f21be743036e",
+      "type": "QueryFailedError",
+      "shape": "invalid input syntax for type uuid: \"?\"",
+      "origin": "postgres-archive-store.js:214",
+      "count": 47,
+      "firstSeen": "2026-09-08T06:12:04.001Z",
+      "lastSeen": "2026-09-08T08:55:41.882Z",
+      "lastRequestId": "0f3a…",
+      "lastRoute": "/v1/sessions/:sessionId"
+    }
+  ],
+  "distinct": 3,
+  "dropped": 0
+}
+```
+
+This answers the question neither of the others could: *which* exception is
+this, and how often. The metric counts failures by class, which says something
+is wrong but not what; the log has every detail and no grouping, so finding out
+meant grepping a container. The fingerprint is in the log line too, so a group
+here leads straight to its full occurrences with stacks.
+
+**No message is ever stored as it was written.** Error messages quote their
+input, and the input is somebody's transcript — a real one from this archive
+read `invalid input syntax for type uuid: "0191cafe-…-take0e"`, a value out of a
+captured session, sitting in a string an operator would paste into a chat
+window. Quoted literals, uuids, hashes, paths and numbers are replaced before
+anything is kept, so what is stored is the shape of a failure rather than its
+data. A test asserts a private value cannot come back out of this endpoint.
+
+Two more properties worth knowing. It is in memory and per process: writing
+failures to the archive would put database writes on the failure path, which is
+the one moment the database may be the thing that is broken. And it is capped at
+200 distinct groups, reporting what it dropped, because a fingerprint comes from
+a message and an unbounded one would grow fastest during the incident it exists
+to explain.
+
 ## What is not here yet
 
-Errors are logged as structured lines and are not aggregated anywhere, so
-"which exception is this, and how often has it happened?" still means grepping
-container logs. That is the next piece.
+Nothing keeps this across a restart, so the error list answers "what has been
+failing recently" rather than "what happened last Tuesday" — the log lines,
+carrying the same fingerprints, are what reach further back. Shipping them
+somewhere durable is a decision about where this runs and what may leave the
+machine, which is not settled.
 
-Dashboards are deliberately absent: they depend on where this runs, which is not
-settled, and a dashboard checked into a repository that nobody opens is worse
-than none.
+Dashboards are deliberately absent for the same reason: a dashboard checked into
+a repository that nobody opens is worse than none.
