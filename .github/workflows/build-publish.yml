@@ -42,6 +42,10 @@ jobs:
   build:
     name: Build and publish
     runs-on: ubuntu-latest
+    env:
+      # Secrets cannot be read in a step-level `if`, so the presence of the
+      # token becomes a job-level value the steps can branch on.
+      HAS_DISPATCH: ${{ secrets.INFRA_DISPATCH_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -96,17 +100,23 @@ jobs:
           cache-to: type=gha,scope=memoar-web,mode=max
 
       # The deploy repository holds the cluster credentials and does the rest:
-      # gated migration, then rollout. A missing INFRA_DISPATCH_TOKEN is a
-      # published image that nothing deployed, so it says so rather than
-      # finishing green.
+      # gated migration, then rollout.
+      #
+      # Without the token the images are published and nothing is deployed,
+      # which is a legitimate state — deploys can be run by hand — but it must
+      # not look like a deploy happened. A warning annotation rather than a
+      # failed build: a job that goes red on every push is a job people stop
+      # reading, and then a real failure is invisible too.
+      - name: Note that nothing will be deployed
+        if: env.HAS_DISPATCH != 'true'
+        run: |
+          echo "::warning::Images published, but INFRA_DISPATCH_TOKEN is not set so no deploy was triggered. Run it by hand: gh workflow run deploy-memoar.yml -R almyty-inc/infra -f environment=development"
+
       - name: Ask the deploy repository to roll it out
+        if: env.HAS_DISPATCH == 'true'
         env:
           INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
         run: |
-          if [ -z "$INFRA_DISPATCH_TOKEN" ]; then
-            echo "INFRA_DISPATCH_TOKEN is not set: images were published but nothing was deployed." >&2
-            exit 1
-          fi
           curl -fsS -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $INFRA_DISPATCH_TOKEN" \

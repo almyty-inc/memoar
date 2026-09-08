@@ -19,3 +19,10 @@ compose-up:
 
 compose-down:
 	docker compose -f deploy/docker-compose.dev.yml down
+
+# Runs each parser against the real store of a tool installed on this machine.
+# Cannot run in CI: there are no transcripts on a build agent, only fixtures —
+# which is the whole point.
+verify-parsers-local:
+	npm run build --workspace @memoar/server
+	node scripts/verify-parsers-locally.mjs
