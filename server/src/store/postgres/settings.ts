@@ -2,7 +2,7 @@ import { AccountSettingsEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { TenantContext } from "../context.js";
 import type { RetentionStore, SettingsStore } from "../interfaces.js";
-import { DEFAULT_TENANT_SETTINGS, type DistillationSettings, type TenantSettingsRecord } from "../records.js";
+import { DEFAULT_TENANT_SETTINGS, defaultDistillationSettings, type DistillationSettings, type TenantSettingsRecord } from "../records.js";
 import { TenantRunner } from "./runner.js";
 
 export class PostgresSettingsStore implements SettingsStore, RetentionStore {
@@ -38,10 +38,13 @@ export class PostgresSettingsStore implements SettingsStore, RetentionStore {
       const row = await manager.getRepository(AccountSettingsEntity).findOneBy({ tenantId: context.tenantId });
       return row ? {
         enabled: row.distillationEnabled,
+        provider: (row.distillationProvider ?? "none") as DistillationSettings["provider"],
+        model: row.distillationModel ?? null,
+        sealedApiKey: row.distillationApiKey ?? null,
         monthlyBudgetCents: row.monthlyDistillationBudgetCents,
         monthlySpentCents: row.monthlyDistillationSpentCents,
         budgetWindowStartedAt: row.budgetWindowStartedAt?.toISOString() ?? new Date().toISOString(),
-      } : { enabled: false, monthlyBudgetCents: 0, monthlySpentCents: 0, budgetWindowStartedAt: new Date().toISOString() };
+      } : defaultDistillationSettings();
     });
   }
 
@@ -53,6 +56,9 @@ export class PostgresSettingsStore implements SettingsStore, RetentionStore {
         id: existing?.id ?? uuidV7(),
         tenantId: context.tenantId,
         distillationEnabled: settings.enabled,
+        distillationProvider: settings.provider,
+        distillationModel: settings.model,
+        distillationApiKey: settings.sealedApiKey,
         monthlyDistillationBudgetCents: settings.monthlyBudgetCents,
         monthlyDistillationSpentCents: settings.monthlySpentCents,
         budgetWindowStartedAt: new Date(settings.budgetWindowStartedAt),

@@ -1,3 +1,4 @@
+import { defaultDistillationSettings } from "../src/store/records.js";
 import { createHash } from "node:crypto";
 import type { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -198,6 +199,7 @@ for (const implementation of implementations) {
       expect(settings.redaction.customPatterns).toEqual(["ACME_[A-Z]{4}"]);
 
       await store.saveDistillationSettings(alice, {
+        ...defaultDistillationSettings(),
         enabled: true, monthlyBudgetCents: 100, monthlySpentCents: 0, budgetWindowStartedAt: new Date().toISOString(),
       });
       expect(await store.reserveDistillationBudget(alice, 60)).toMatchObject({ reserved: true });

@@ -95,8 +95,43 @@ export interface JobRecord {
   updatedAt: string;
 }
 
+export type DistillationProviderName = "none" | "anthropic";
+
+/**
+ * What an account has before it has chosen anything.
+ *
+ * One definition, used by both stores and by the tests, so a new field cannot
+ * be added to the type and forgotten in one of the three places that build it.
+ */
+export function defaultDistillationSettings(now = new Date()): DistillationSettings {
+  return {
+    enabled: false,
+    provider: "none",
+    model: null,
+    sealedApiKey: null,
+    monthlyBudgetCents: 0,
+    monthlySpentCents: 0,
+    budgetWindowStartedAt: now.toISOString(),
+  };
+}
+
 export interface DistillationSettings {
   enabled: boolean;
+  /**
+   * Which provider this account distills with, and with whose credential.
+   *
+   * "none" is the default and means the account has not chosen one, which is
+   * different from disabled: an account can be enabled and still have nothing
+   * to distill with.
+   */
+  provider: DistillationProviderName;
+  model: string | null;
+  /**
+   * The tenant's own API key, AES-256-GCM sealed. Never leaves the process in
+   * this form or any other: the API reports only whether one is set and its
+   * last four characters.
+   */
+  sealedApiKey: string | null;
   monthlyBudgetCents: number;
   monthlySpentCents: number;
   budgetWindowStartedAt: string;

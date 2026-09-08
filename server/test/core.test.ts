@@ -1,3 +1,4 @@
+import { defaultDistillationSettings } from "../src/store/records.js";
 import { describe, expect, it } from "vitest";
 import type { ArchivedSession, TenantContext } from "../src/archive-store.js";
 import { SharingService } from "../src/curation.js";
@@ -105,6 +106,7 @@ describe("distillation cost cap", () => {
     const store = new DevArchiveStore();
     await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     await store.saveDistillationSettings(TEST_CONTEXT, {
+      ...defaultDistillationSettings(),
       enabled: true,
       monthlyBudgetCents: 5,
       monthlySpentCents: 4,

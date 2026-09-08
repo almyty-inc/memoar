@@ -758,6 +758,16 @@ paths:
               type: object
               properties:
                 enabled: { type: boolean }
+                provider: { type: string, enum: [none, anthropic] }
+                model: { type: string, nullable: true }
+                apiKey:
+                  type: string
+                  nullable: true
+                  writeOnly: true
+                  description: >-
+                    Omit to leave the stored credential untouched; send null to
+                    clear it. Never returned by any endpoint, and never written
+                    to a log or an audit record.
                 monthlyBudgetCents: { type: integer, minimum: 0 }
       responses:
         '200':
@@ -1288,9 +1298,23 @@ components:
         exemptCollected: { type: boolean }
     DistillationSettings:
       type: object
-      required: [enabled, monthlyBudgetCents, monthlySpentCents, remainingCents, budgetWindowStartedAt]
+      description: >-
+        Distillation is the only feature that sends archived content to a third
+        party, so the account that owns the sessions brings its own provider
+        credential and pays for its own use. The credential itself is never
+        returned by any endpoint: keySet says whether one is stored and keyHint
+        is its last four characters, which is enough to recognise which key it
+        is and not enough to use it.
+      required: [enabled, provider, keySet, monthlyBudgetCents, monthlySpentCents, remainingCents, budgetWindowStartedAt]
       properties:
         enabled: { type: boolean }
+        provider:
+          type: string
+          enum: [none, anthropic]
+          description: An enum rather than a boolean, so adding a provider is a new value and not a second field.
+        model: { type: string, nullable: true }
+        keySet: { type: boolean }
+        keyHint: { type: string, nullable: true, description: Last four characters of the stored credential. }
         monthlyBudgetCents: { type: integer, minimum: 0 }
         monthlySpentCents: { type: integer, minimum: 0 }
         remainingCents: { type: integer, minimum: 0 }

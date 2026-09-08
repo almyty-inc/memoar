@@ -85,6 +85,9 @@ services:
       MEMOAR_BOOTSTRAP_PASSWORD: ${MEMOAR_BOOTSTRAP_PASSWORD:-local-stack-password-change-me}
       # /v1/metrics exists only while this is set, and always requires it.
       MEMOAR_METRICS_TOKEN: ${MEMOAR_METRICS_TOKEN:-local-stack-metrics-token}
+      # Encrypts the provider credentials accounts bring for distillation.
+      # Without it the API refuses to store one rather than storing it weakly.
+      MEMOAR_CREDENTIAL_KEY: ${MEMOAR_CREDENTIAL_KEY:-6b1f3c7d9a2e4f508192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8}
       WEB_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
       MEMOAR_EMBEDDINGS_PROVIDER: ${MEMOAR_EMBEDDINGS_PROVIDER:-deterministic}
     ports:

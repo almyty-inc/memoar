@@ -14,12 +14,14 @@ import { TeamScope1700000008000 } from "./migrations/1700000008000-TeamScope.js"
 import { MachineCommands1700000009000 } from "./migrations/1700000009000-MachineCommands.js";
 import { AppRole1700000010000 } from "./migrations/1700000010000-AppRole.js";
 import { MemoryDocuments1700000011000 } from "./migrations/1700000011000-MemoryDocuments.js";
+import { TenantProviderCredentials1700000012000 } from "./migrations/1700000012000-TenantProviderCredentials.js";
 
 export const MIGRATIONS = [
   Initial1700000000000, CredentialBilling1700000001000, SessionIdentity1700000002000,
   TransferOffers1700000003000, ReviewMaskSnapshot1700000004000, ArtifactSessions1700000005000,
   TenantSettings1700000006000, ShareTokens1700000007000, TeamScope1700000008000,
   MachineCommands1700000009000, AppRole1700000010000, MemoryDocuments1700000011000,
+  TenantProviderCredentials1700000012000,
 ];
 
 function dataSourceFor(url: string): DataSource {

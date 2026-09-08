@@ -1,6 +1,6 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
 import { readArchiveEntry } from "./archive.js";
-import { incrementUuid, isRecord, stringValue, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mapParent, stringValue, turnId, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
 /** ChatGPT exports arrive as a ZIP whose payload is this file. */
@@ -197,9 +197,11 @@ export class ChatgptExportParser implements VersionedParser {
         .findLast((slug) => slug !== null) ?? null;
       const turnBlocks = group.flatMap((step) => blocks(step.message!, mint));
       return withModelAndTokens({
-        id: node.id,
+        // ChatGPT's node ids are uuids in every export seen so far, so this
+        // normally returns exactly what the file said.
+        id: turnId(node.id, seed.id),
         ordinal,
-        parentId,
+        parentId: mapParent(parentId, seed.id),
         role: role(message),
         createdAt: timestamp(message, seed.createdAt),
         blocks: turnBlocks,

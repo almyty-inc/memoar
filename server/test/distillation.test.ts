@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { defaultDistillationSettings } from "../src/store/records.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TenantContext } from "../src/archive-store.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
@@ -32,6 +33,7 @@ async function seededStore(budgetCents: number): Promise<DevArchiveStore> {
   const store = new DevArchiveStore();
   await store.saveSession(context, TEST_SESSION);
   await store.saveDistillationSettings(context, {
+    ...defaultDistillationSettings(),
     enabled: true,
     monthlyBudgetCents: budgetCents,
     monthlySpentCents: 0,
@@ -39,6 +41,16 @@ async function seededStore(budgetCents: number): Promise<DevArchiveStore> {
   });
   return store;
 }
+
+/**
+ * These exercise the distillation flow itself with an injected fake provider,
+ * not credential resolution, which byok-distillation.test covers. An injected
+ * provider is the operator's shared key, and reaching it now takes an explicit
+ * opt-in — the whole point being that an unconfigured deployment spends nobody's
+ * money by default.
+ */
+beforeEach(() => { process.env.MEMOAR_ALLOW_SHARED_DISTILLATION_KEY = "true"; });
+afterEach(() => { delete process.env.MEMOAR_ALLOW_SHARED_DISTILLATION_KEY; });
 
 describe("distillation", () => {
   it("selects providers from the environment", () => {
@@ -84,6 +96,7 @@ describe("distillation", () => {
   it("requires explicit opt-in", async () => {
     const store = await seededStore(1000);
     await store.saveDistillationSettings(context, {
+      ...defaultDistillationSettings(),
       enabled: false, monthlyBudgetCents: 1000, monthlySpentCents: 0, budgetWindowStartedAt: new Date().toISOString(),
     });
     const service = new DistillationService(store, new AnthropicDistillationProvider(fakeClient(3)));

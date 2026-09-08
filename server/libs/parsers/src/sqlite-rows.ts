@@ -1,5 +1,5 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { derivedBlockId, isRecord, parseBlock, stringValue, withModelAndTokens } from "./common.js";
+import { derivedBlockId, isRecord, mapParent, parseBlock, stringValue, turnId, withModelAndTokens } from "./common.js";
 import type { SessionSeed } from "./types.js";
 
 interface RowShape {
@@ -12,8 +12,12 @@ interface RowShape {
 
 export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed): Turn {
   const record = row as Record<string, unknown>;
-  const id = stringValue(record, "id");
-  if (!id) throw new Error(`row ${ordinal} lacks a message id`);
+  const nativeId = stringValue(record, "id");
+  if (!nativeId) throw new Error(`row ${ordinal} lacks a message id`);
+  // Turn ids are a uuid column. Several of the stores behind this function
+  // number their messages some other way, and passing one straight through had
+  // the database refuse the whole session after it had parsed perfectly.
+  const id = turnId(nativeId, seed.id);
   const roleValue = stringValue(record, "role") ?? "user";
   const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
   const rawBlocks = Array.isArray(row.blocks) ? row.blocks : [];
@@ -21,7 +25,7 @@ export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed): 
   return withModelAndTokens({
     id,
     ordinal,
-    parentId: stringValue(record, "parentId"),
+    parentId: mapParent(stringValue(record, "parentId"), seed.id),
     role,
     createdAt: stringValue(record, "createdAt") ?? seed.createdAt,
     blocks,

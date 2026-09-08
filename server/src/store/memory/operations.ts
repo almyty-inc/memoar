@@ -4,6 +4,7 @@ import type { TenantContext } from "../context.js";
 import type { ArtifactStore, JobStore, MachineStore, RetentionStore, SettingsStore } from "../interfaces.js";
 import {
   DEFAULT_TENANT_SETTINGS,
+  defaultDistillationSettings,
   type DistillationSettings,
   type JobRecord,
   type MachineCommandRecord,
@@ -129,12 +130,7 @@ export class MemorySettingsStore implements SettingsStore, RetentionStore {
   }
 
   async getDistillationSettings(context: TenantContext): Promise<DistillationSettings> {
-    return copy(this.tables.distillation.get(context.tenantId) ?? {
-      enabled: false,
-      monthlyBudgetCents: 0,
-      monthlySpentCents: 0,
-      budgetWindowStartedAt: new Date().toISOString(),
-    });
+    return copy(this.tables.distillation.get(context.tenantId) ?? defaultDistillationSettings());
   }
 
   async saveDistillationSettings(context: TenantContext, settings: DistillationSettings): Promise<void> {

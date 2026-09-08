@@ -31,6 +31,23 @@ export class AccountSettingsEntity extends TenantEntity {
   @Column("boolean", { default: false })
   distillationEnabled!: boolean;
 
+  /** Which provider this account distills with: "none" until it chooses one. */
+  @Column("text", { nullable: true })
+  distillationProvider!: string | null;
+
+  @Column("text", { nullable: true })
+  distillationModel!: string | null;
+
+  /**
+   * The account's own provider key, AES-256-GCM sealed.
+   *
+   * Ciphertext in the column and nowhere else in plaintext: this table is in
+   * every backup and every restore, and a dump that carried usable customer
+   * credentials would make losing a backup far worse than losing an archive.
+   */
+  @Column("text", { nullable: true })
+  distillationApiKey!: string | null;
+
   @Column("integer", { default: 0 })
   monthlyDistillationBudgetCents!: number;
 

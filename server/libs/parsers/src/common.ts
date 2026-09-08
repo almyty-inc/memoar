@@ -67,6 +67,16 @@ export function turnId(nativeId: string, sessionId: string): string {
   return isUuid(nativeId) ? nativeId : derivedUuid(`${sessionId}:turn:${nativeId}`);
 }
 
+/**
+ * The same for a block, kept in its own name space.
+ *
+ * Separate from `turnId` so that a store whose message and part tables share an
+ * id does not derive the same uuid for both.
+ */
+export function blockId(nativeId: string, sessionId: string): string {
+  return isUuid(nativeId) ? nativeId : derivedUuid(`${sessionId}:block:${nativeId}`);
+}
+
 /** The same mapping for a parent link, which may legitimately be absent. */
 export function mapParent(nativeParentId: string | null, sessionId: string): string | null {
   return nativeParentId === null ? null : turnId(nativeParentId, sessionId);

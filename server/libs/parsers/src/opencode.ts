@@ -1,5 +1,5 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, stringValue } from "./common.js";
+import { blockId, incrementUuid, isRecord, mapParent, stringValue, turnId } from "./common.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
@@ -91,14 +91,18 @@ export class OpencodeV1Parser implements VersionedParser {
           const turns = messages.map((message, ordinal): Turn => {
             const data = JSON.parse(message.data) as Record<string, unknown>;
             const blocks = (partsByMessage.get(message.id) ?? [])
-              .map((part) => partToBlock(JSON.parse(part.data) as Record<string, unknown>, part.id))
+              // Block ids are a uuid column too, and a part id is opencode's
+              // own, so it is derived rather than trusted.
+              .map((part) => partToBlock(JSON.parse(part.data) as Record<string, unknown>, blockId(part.id, request.seed.id)))
               .filter((block): block is ContentBlock => block !== null);
             const tokens = isRecord(data.tokens) ? data.tokens : null;
             const model = stringValue(data, "modelID");
             const turn: Turn = {
-              id: message.id,
+              // opencode numbers its messages its own way, and a turn id is a
+              // uuid column: passed through, one such id refuses the session.
+              id: turnId(message.id, request.seed.id),
               ordinal,
-              parentId: stringValue(data, "parentID"),
+              parentId: mapParent(stringValue(data, "parentID"), request.seed.id),
               role: turnRole(stringValue(data, "role")),
               createdAt: new Date(message.time_created).toISOString(),
               blocks,

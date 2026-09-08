@@ -49,16 +49,23 @@ export function configureApp(app: INestApplication): void {
       { path: "mcp", method: RequestMethod.ALL },
     ],
   });
-  // CORS fails closed in production. `origin: true` reflects whatever Origin
-  // the caller sends, which with credentials enabled lets any site on the
-  // internet make authenticated requests on a user's behalf. Reflecting is
-  // convenient for local work and unacceptable once deployed, so an explicit
-  // WEB_ORIGIN is required there.
-  const origins = process.env.WEB_ORIGIN?.split(",").map((entry) => entry.trim()).filter(Boolean);
-  if (process.env.NODE_ENV === "production" && (!origins || origins.length === 0)) {
-    throw new Error("WEB_ORIGIN is required in production: refusing to reflect arbitrary origins with credentials");
+  // CORS fails closed everywhere. `origin: true` reflects whatever Origin the
+  // caller sends, which with credentials enabled lets any site on the internet
+  // make authenticated requests on a user's behalf.
+  //
+  // This used to reflect whenever NODE_ENV was not exactly "production" — the
+  // same fail-open shape as the authentication guard, and wrong for the same
+  // reason: a deployment that never set that variable published an API any
+  // website could call. Unconfigured now means the local web app's own
+  // addresses and nothing else, so forgetting WEB_ORIGIN costs a developer a
+  // clear CORS error rather than costing everyone else their archive.
+  // An empty or whitespace WEB_ORIGIN parses to an empty list, which is not
+  // the same as unset and must not be treated as "allow nothing" by accident.
+  const configured = (process.env.WEB_ORIGIN ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  if (process.env.NODE_ENV === "production" && configured.length === 0) {
+    throw new Error("WEB_ORIGIN is required in production: refusing to serve a browser app from an unnamed origin");
   }
-  app.enableCors({ origin: origins ?? true, credentials: true });
+  app.enableCors({ origin: configured.length > 0 ? configured : LOCAL_ORIGINS, credentials: true });
 
   // Set on every response. The API serves JSON to a browser app, so the
   // headers that matter are the ones stopping a response being reinterpreted:
@@ -77,6 +84,17 @@ export function configureApp(app: INestApplication): void {
   });
   app.enableShutdownHooks();
 }
+
+/**
+ * Where the web app runs when nobody has said otherwise.
+ *
+ * Both spellings of localhost and both dev ports, because a browser treats them
+ * as different origins and a developer should not have to know that.
+ */
+export const LOCAL_ORIGINS = [
+  "http://localhost:5173", "http://127.0.0.1:5173",
+  "http://localhost:4173", "http://127.0.0.1:4173",
+];
 
 export async function bootstrap(): Promise<void> {
   // Before anything listens: a service that boots and then fails on somebody's

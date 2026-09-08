@@ -158,6 +158,27 @@ export interface TenantSettings {
 }
 
 
+/**
+ * Distillation reads sessions with a language model to leave durable notes
+ * behind. It is the only feature that sends archived content anywhere else, so
+ * the account chooses the provider and brings the key.
+ *
+ * The key itself never appears here. `keySet` says whether one is stored and
+ * `keyHint` is its last four characters, which is enough to recognise which key
+ * it is and not enough to use it.
+ */
+export interface DistillationSettings {
+  enabled: boolean;
+  provider: 'none' | 'anthropic';
+  model: string | null;
+  keySet: boolean;
+  keyHint: string | null;
+  monthlyBudgetCents: number;
+  monthlySpentCents: number;
+  remainingCents: number;
+  budgetWindowStartedAt: string;
+}
+
 export interface RawArtifactStatus {
   sha256: string;
   status: 'stored' | 'queued' | 'parsed' | 'unknown_format' | 'failed';
@@ -658,6 +679,32 @@ export class MemoarApiClient {
   }): Promise<TenantSettings> {
     this.requireArchive();
     return this.request<TenantSettings>('/settings', { method: 'PUT', body: JSON.stringify(update) });
+  }
+
+  async getDistillationSettings(): Promise<DistillationSettings> {
+    this.requireArchive();
+    return this.request<DistillationSettings>('/distillation/settings');
+  }
+
+  /**
+   * Distillation is the only feature that sends archived content to a third
+   * party, so the account brings its own provider key and pays for its own use.
+   *
+   * `apiKey` is omitted to leave the stored credential untouched and sent as
+   * null to clear it — the two are different, and collapsing them would delete
+   * the key every time somebody changed their monthly budget. The key is never
+   * returned by the server; what comes back is `keySet` and the last four
+   * characters.
+   */
+  async updateDistillationSettings(update: {
+    enabled?: boolean;
+    provider?: DistillationSettings['provider'];
+    model?: string | null;
+    apiKey?: string | null;
+    monthlyBudgetCents?: number;
+  }): Promise<DistillationSettings> {
+    this.requireArchive();
+    return this.request<DistillationSettings>('/distillation/settings', { method: 'PUT', body: JSON.stringify(update) });
   }
 
   async createCollection(name: string, description: string): Promise<Collection> {
