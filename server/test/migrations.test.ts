@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "../src/data-source.js";
+import { runMigrations } from "../src/migrate.js";
 import { ENTITIES } from "../src/entities.js";
 import { connectWithRetry, dockerAvailable, queryRows } from "./helpers/postgres.js";
 
@@ -114,4 +115,77 @@ suite("migrations", () => {
       await appRole.destroy();
     }
   }, 60_000);
+
+  /**
+   * The entrypoint the deploy runs before it rolls any pod.
+   *
+   * The API can migrate on boot, which is right for one process and wrong for
+   * several: a rollout starts replicas together and they race the same DDL. So
+   * a deployment runs this first, waits, and aborts if it fails — which means
+   * this is the code standing between a schema and every pod that serves it.
+   */
+  it("migrates a fresh database from the command the deploy job runs", async () => {
+    const container = "memoar-migrate-entrypoint-test";
+    const port = 55992;
+    try { docker("rm", "-f", container); } catch { /* not running */ }
+    docker(
+      "run", "-d", "--name", container,
+      "-e", "POSTGRES_DB=memoar", "-e", "POSTGRES_USER=memoar", "-e", "POSTGRES_PASSWORD=migrate",
+      "-p", `${port}:5432`, "pgvector/pgvector:pg16",
+    );
+    try {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        try { docker("exec", container, "pg_isready", "-U", "memoar"); break; } catch { await new Promise((done) => setTimeout(done, 1000)); }
+      }
+      // The extensions the schema needs. They take a superuser, which is why
+      // they are not in a migration: the migration role owns the schema and is
+      // deliberately not one.
+      docker("exec", container, "psql", "-U", "memoar", "-d", "memoar", "-c",
+        `CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
+
+      const previousUrl = process.env.MIGRATION_DATABASE_URL;
+      const previousPassword = process.env.MEMOAR_APP_DB_PASSWORD;
+      process.env.MIGRATION_DATABASE_URL = `postgres://memoar:migrate@127.0.0.1:${port}/memoar`;
+      process.env.MEMOAR_APP_DB_PASSWORD = "a-runtime-password-of-real-length";
+      try {
+        await runMigrations();
+        // Run twice: the deploy applies this Job on every rollout, so a second
+        // run against an already-migrated database has to be a no-op rather
+        // than an error that aborts a deploy of an unchanged schema.
+        await runMigrations();
+      } finally {
+        if (previousUrl === undefined) delete process.env.MIGRATION_DATABASE_URL;
+        else process.env.MIGRATION_DATABASE_URL = previousUrl;
+        if (previousPassword === undefined) delete process.env.MEMOAR_APP_DB_PASSWORD;
+        else process.env.MEMOAR_APP_DB_PASSWORD = previousPassword;
+      }
+
+      const migrated = new DataSource({ type: "postgres", url: `postgres://memoar:migrate@127.0.0.1:${port}/memoar`, entities: [...ENTITIES] });
+      await connectWithRetry(migrated, { container, port });
+      try {
+        const applied = await queryRows<{ count: number }>(migrated, "SELECT count(*)::int AS count FROM migrations");
+        expect(applied[0]?.count).toBe(MIGRATIONS.length);
+        // The least-privilege runtime role the API connects as is created by a
+        // migration, so the API cannot start before this has run.
+        const role = await queryRows<{ rolname: string }>(migrated, "SELECT rolname FROM pg_roles WHERE rolname = 'memoar_app'");
+        expect(role, "the runtime role the API signs in as").toHaveLength(1);
+      } finally {
+        await migrated.destroy();
+      }
+    } finally {
+      try { docker("rm", "-f", container); } catch { /* already gone */ }
+    }
+  }, 300_000);
+
+  it("refuses to migrate without being told which database", async () => {
+    const previous = { url: process.env.MIGRATION_DATABASE_URL, fallback: process.env.DATABASE_URL };
+    delete process.env.MIGRATION_DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      await expect(runMigrations()).rejects.toThrow(/MIGRATION_DATABASE_URL is required/u);
+    } finally {
+      if (previous.url !== undefined) process.env.MIGRATION_DATABASE_URL = previous.url;
+      if (previous.fallback !== undefined) process.env.DATABASE_URL = previous.fallback;
+    }
+  });
 });

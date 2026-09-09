@@ -304,5 +304,34 @@ for (const implementation of implementations) {
       await store.saveShareGrant(alice, { ...grant, status: "revoked" });
       expect((await store.getShareGrantByTokenHash(grant.tokenHash))!.status).toBe("revoked");
     });
+
+    it("keeps a redaction review, which is what a share is allowed on the strength of", async () => {
+      const store = implementation.create();
+      // The review points at a session, and the database enforces that.
+      const reviewed = structuredClone(TEST_SESSION);
+      reviewed.id = `0191cafe-0000-7000-8000-0000000c00${implementation.name === "postgres" ? "60" : "61"}`;
+      await store.saveSession(alice, reviewed);
+      const review = {
+        id: `0191cafe-0000-7000-8000-0000000c0${implementation.name === "postgres" ? "01a" : "01b"}`,
+        tenantId: alice.tenantId,
+        sessionId: reviewed.id,
+        reviewerUserId: alice.userId,
+        status: "completed" as const,
+        contentDigest: "a".repeat(64),
+        masks: [{ kind: "secret", start: 4, end: 12, preview: "sk-…" }],
+        completedAt: new Date().toISOString(),
+      };
+      await store.saveReview(alice, review);
+
+      const read = await store.getReview(alice, review.id);
+      expect(read).toMatchObject({ id: review.id, status: "completed", sessionId: reviewed.id });
+      // The masks are the record of what was approved. A review that came back
+      // without them would let a share be granted against nothing.
+      expect(read!.masks).toEqual(review.masks);
+      expect(await store.getReview(alice, "0191cafe-0000-7000-8000-00000000dead")).toBeNull();
+      // And it belongs to its tenant.
+      expect(await store.getReview(bob, review.id)).toBeNull();
+    });
+
   });
 }
