@@ -28,6 +28,22 @@ node scripts/verify-parsers-locally.mjs
 It reads the live stores, never copies them, prints only counts, and fails if
 any identifier it produced could not be stored.
 
+That script still grades itself, though — the same hand wrote the parsers, the
+fixtures and the checks, so it verifies what its author thought to check.
+`scripts/parser-coverage.mjs` asks a question its author does not get to define:
+it pulls the long text strings out of the tool's own store without going through
+any memoar code, and reports what fraction survives into the archived session.
+
+It found a real one. opencode keeps a command and its output in the same part,
+and only the command was being kept — every `ls`, every test run, every diff an
+agent read was dropped. Coverage went from 66% to 97% once results were
+archived, and `native-store-parsers.test.ts` now holds that in CI.
+
+Read the number as a floor with known noise rather than a score. It counts
+strings the archive is not meant to hold — a tool's own instruction files, the
+system prompt, whole rows of the storage format — so a low figure is a prompt to
+look, not a verdict.
+
 | Source | Store it was read from | Last checked |
 | --- | --- | --- |
 | `claude-code` | `~/.claude/projects/**/*.jsonl` | 2026-09-08 |

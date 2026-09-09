@@ -119,6 +119,50 @@ describe("opencode", () => {
     if (result.kind !== "unknown") return;
     expect(result.diagnostic).toContain("no sessions");
   });
+
+  it("keeps what a tool printed, not only what it was asked", () => {
+    // opencode puts the command and its output in one part, and only the
+    // command was kept: every `ls`, every test run, every diff an agent read
+    // came back empty. A session where you see what was asked and not what came
+    // back is not a record of what happened.
+    //
+    // The shape here is copied from a real store — ids like `msg_…`/`prt_…`,
+    // state.input beside state.output — because the fixture that missed this
+    // was written by the same person as the parser, and agreed with it.
+    const raw = buildDatabase(
+      "CREATE TABLE session (id text PRIMARY KEY, project_id text NOT NULL, parent_id text, slug text NOT NULL, directory text NOT NULL, title text NOT NULL, version text NOT NULL);"
+      + "CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL);"
+      + "CREATE TABLE part (id text PRIMARY KEY, message_id text NOT NULL, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL);",
+      [
+        ["session", ["ses_ff093415effen84wM6Nk6Ll0aX", "prj_1", null, "slug", "/workspace/real", "A real session", "1"]],
+        ["message", ["msg_00f6cbeba001oL9mtU4uPS9zzM", "ses_ff093415effen84wM6Nk6Ll0aX", 1786965180090, 1786965180090,
+          JSON.stringify({ role: "assistant", modelID: "some-model" })]],
+        ["part", ["prt_00f6cbebc001vfEoa7E0G6Z1fV", "msg_00f6cbeba001oL9mtU4uPS9zzM", "ses_ff093415effen84wM6Nk6Ll0aX", 1786965180090, 1786965180090,
+          JSON.stringify({
+            type: "tool",
+            tool: "bash",
+            callID: "call_xaaxx8o3",
+            state: { status: "completed", input: { command: "ls -la" }, output: "total 0\ndrwxr-xr-x  2 someone  staff  64 Aug 17 12:39 ." },
+          })]],
+      ],
+    );
+
+    const result = parse("opencode", raw);
+    expect(result.kind).toBe("parsed");
+    if (result.kind !== "parsed") return;
+
+    const blocks = result.sessions[0]!.turns[0]!.blocks;
+    const call = blocks.find((block) => block.kind === "tool_call");
+    const output = blocks.find((block) => block.kind === "tool_result");
+
+    expect(call?.data).toMatchObject({ command: "ls -la" });
+    expect(output?.text, "the command ran and printed this; the archive must hold it").toContain("drwxr-xr-x");
+    // Both belong to the same call, or a reader cannot tell which output
+    // answered which command.
+    expect(output?.callId).toBe(call?.callId);
+    // Distinct ids: they are two rows in a table keyed by id.
+    expect(output?.id).not.toBe(call?.id);
+  });
 });
 
 describe("copilot", () => {

@@ -27,30 +27,40 @@ function turnRole(role: string | null): Turn["role"] {
  * and exist for the UI's progress display — so they produce nothing rather than
  * empty blocks that would clutter every transcript.
  */
-function partToBlock(part: Record<string, unknown>, id: string): ContentBlock | null {
+function partsToBlocks(part: Record<string, unknown>, id: string, resultId: string): ContentBlock[] {
   const type = stringValue(part, "type");
   if (type === "text") {
     const text = stringValue(part, "text");
-    return text === null || text.length === 0 ? null : { id, kind: "text", text };
+    return text === null || text.length === 0 ? [] : [{ id, kind: "text", text }];
   }
   if (type === "reasoning") {
     const text = stringValue(part, "text");
-    return text === null || text.length === 0 ? null : { id, kind: "thinking", text };
+    return text === null || text.length === 0 ? [] : [{ id, kind: "thinking", text }];
   }
   if (type === "tool") {
     const state = isRecord(part.state) ? part.state : {};
-    return {
+    const callId = stringValue(part, "callID") ?? id;
+    const blocks: ContentBlock[] = [{
       id,
       kind: "tool_call",
       name: stringValue(part, "tool") ?? "tool",
-      callId: stringValue(part, "callID") ?? id,
+      callId,
       data: isRecord(state.input) ? state.input : {},
-    };
+    }];
+    // opencode keeps the command and what it printed in one part, and only the
+    // command was being kept: every `ls`, every test run, every diff an agent
+    // read came back empty in the archive. A session where you can see what was
+    // asked and not what came back is not a record of what happened.
+    const output = stringValue(state, "output");
+    if (output !== null && output.length > 0) {
+      blocks.push({ id: resultId, kind: "tool_result", callId, text: output });
+    }
+    return blocks;
   }
   if (type === "patch") {
-    return { id, kind: "diff", data: { hash: stringValue(part, "hash"), files: part.files } };
+    return [{ id, kind: "diff", data: { hash: stringValue(part, "hash"), files: part.files } }];
   }
-  return null;
+  return [];
 }
 
 /**
@@ -92,9 +102,14 @@ export class OpencodeV1Parser implements VersionedParser {
             const data = JSON.parse(message.data) as Record<string, unknown>;
             const blocks = (partsByMessage.get(message.id) ?? [])
               // Block ids are a uuid column too, and a part id is opencode's
-              // own, so it is derived rather than trusted.
-              .map((part) => partToBlock(JSON.parse(part.data) as Record<string, unknown>, blockId(part.id, request.seed.id)))
-              .filter((block): block is ContentBlock => block !== null);
+              // own, so it is derived rather than trusted. A tool part becomes
+              // two blocks — the call and what it returned — so the result gets
+              // its own derived id rather than colliding with the call's.
+              .flatMap((part) => partsToBlocks(
+                JSON.parse(part.data) as Record<string, unknown>,
+                blockId(part.id, request.seed.id),
+                blockId(`${part.id}:result`, request.seed.id),
+              ));
             const tokens = isRecord(data.tokens) ? data.tokens : null;
             const model = stringValue(data, "modelID");
             const turn: Turn = {
