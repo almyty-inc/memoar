@@ -459,7 +459,7 @@ impl OfflineQueue {
             params![
                 sha256,
                 source_path,
-                transformed.bytes.len() as u64,
+                transformed.bytes.len() as i64,
                 source,
                 blob_path.to_string_lossy(),
                 modified_at.to_rfc3339(),
@@ -482,17 +482,21 @@ impl OfflineQueue {
              ORDER BY queued_at ASC
              LIMIT ?1",
         )?;
-        let rows = statement.query_map([limit as u64], row_to_artifact)?;
+        let rows = statement.query_map([limit as i64], row_to_artifact)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn counts(&self) -> Result<QueueCounts, DaemonError> {
+        // SQLite integers are signed, and rusqlite 0.40 stopped pretending
+        // otherwise. A row count cannot be negative, so the conversion is
+        // stated here rather than implied by a type that never fitted.
         let count = |status: &str| -> Result<u64, rusqlite::Error> {
-            self.connection.query_row(
+            let value: i64 = self.connection.query_row(
                 "SELECT COUNT(*) FROM artifacts WHERE status = ?1",
                 [status],
                 |row| row.get(0),
-            )
+            )?;
+            Ok(value.max(0) as u64)
         };
         Ok(QueueCounts {
             pending: count("pending")?,
@@ -617,7 +621,7 @@ fn row_to_artifact(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedArtifact> 
     let status: String = row.get(6)?;
     Ok(QueuedArtifact {
         sha256: row.get(0)?,
-        size: row.get(1)?,
+        size: row.get::<_, i64>(1)?.max(0) as u64,
         source: row.get(2)?,
         source_path: row.get(3)?,
         local_path: PathBuf::from(row.get::<_, String>(4)?),

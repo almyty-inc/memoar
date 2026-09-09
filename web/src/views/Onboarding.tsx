@@ -1,7 +1,7 @@
-import { ArrowRight, Github, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '../components/ui';
-import { MemoarMark } from '../components/MemoarMark';
+import { GithubMark, MemoarMark } from '../components/MemoarMark';
 import { memoarApi, type AuthMethods } from '../lib/api';
 
 type Mode = 'signIn' | 'createAccount';
@@ -59,7 +59,7 @@ export function SignInView({ onSignIn, onCreateAccount, onOAuth }: {
           <>
             <div className="oauth-buttons">
               {methods.oauth.includes('github') ? (
-                <Button onClick={() => onOAuth('github')}><Github size={16} /> Continue with GitHub</Button>
+                <Button onClick={() => onOAuth('github')}><GithubMark size={16} /> Continue with GitHub</Button>
               ) : null}
               {methods.oauth.includes('google') ? (
                 <Button onClick={() => onOAuth('google')}><span className="google-mark">G</span> Continue with Google</Button>

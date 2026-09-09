@@ -228,7 +228,13 @@ fn canonical_json(value: &Value) -> Value {
 }
 
 pub fn content_sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    // sha2 0.11 returns an Array that no longer implements LowerHex, so the
+    // hex is written here rather than by the formatter. Lowercase and
+    // zero-padded, because this digest is compared against the server's.
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub fn materialize_bundle(

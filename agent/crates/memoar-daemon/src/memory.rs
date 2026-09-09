@@ -107,7 +107,11 @@ impl MemorySync {
                 // the name. Not an error, and not ours to report as one.
                 continue;
             };
-            let digest = format!("{:x}", Sha256::digest(text.as_bytes()));
+            // sha2 0.11 no longer implements LowerHex on its output array.
+            let digest: String = Sha256::digest(text.as_bytes())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
             if self.uploaded.get(&file.path) == Some(&digest) {
                 continue;
             }
