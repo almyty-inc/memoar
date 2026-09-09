@@ -28,6 +28,12 @@ const PUBLISHED_DEFAULTS = new Set([
   "changeme",
   "secret",
   "password",
+  // The local stack's credential key. Sixty-four hex characters look exactly
+  // like a key somebody generated, which is what makes this one dangerous: it
+  // passes every length and entropy check by eye, and it is in the repository.
+  // Anything encrypted with it — every tenant's provider API key — is readable
+  // by anyone who has cloned this.
+  "6b1f3c7d9a2e4f508192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
 ]);
 
 interface Credential {
@@ -49,6 +55,20 @@ function credentials(environment: NodeJS.ProcessEnv): Credential[] {
     { name: "MEMOAR_APP_DB_PASSWORD", value: environment.MEMOAR_APP_DB_PASSWORD, minimumLength: 16 },
     { name: "S3_SECRET_KEY", value: environment.S3_SECRET_KEY, minimumLength: 16 },
   ];
+}
+
+/**
+ * The credential key, which is optional and checked only when it is present.
+ *
+ * Unlike the three above, a deployment can legitimately run without one: it
+ * simply refuses to store provider credentials. But a weak or published one is
+ * worse than none, because it looks like encryption and is not — 44 characters
+ * is base64 of 32 bytes, the shortest honest form of a key this takes.
+ */
+function optionalCredentials(environment: NodeJS.ProcessEnv): Credential[] {
+  return environment.MEMOAR_CREDENTIAL_KEY
+    ? [{ name: "MEMOAR_CREDENTIAL_KEY", value: environment.MEMOAR_CREDENTIAL_KEY, minimumLength: 44 }]
+    : [];
 }
 
 /**
@@ -76,7 +96,7 @@ export function productionCredentialProblems(environment: NodeJS.ProcessEnv = pr
     }
   }
 
-  for (const credential of credentials(environment)) {
+  for (const credential of [...credentials(environment), ...optionalCredentials(environment)]) {
     const value = credential.value?.trim();
     if (!value) {
       problems.push({ name: credential.name, reason: "is not set" });

@@ -20,17 +20,10 @@ function describeRange(from: number, to: number): string {
  * Writes a paste-in prelude for a target with no native format.
  *
  * What it must decide is which part of a long conversation survives a token
- * budget. Filling from the beginning and skipping whatever no longer fits
- * looked reasonable and was wrong twice over: a four-thousand-turn session came
- * out as turns 0 to 37, so somebody resuming their work was handed the opening
- * of the conversation and nothing of what they had been doing; and because the
- * loop kept scanning after the budget ran out, it admitted any later turn small
- * enough to squeeze in. That silently preferred the shortest turns — the
- * "ok"s and the "yes"es — over the substantive ones, and left the transcript
- * full of holes.
- *
- * So: the first turn, which states the task, and then as much of the end as
- * fits, contiguously. That is what somebody resuming needs.
+ * budget: the first turn, which states the task, and then as much of the end as
+ * fits, contiguously. That is what somebody resuming needs — not the opening
+ * alone, and not whichever later turns happened to be short enough to squeeze
+ * in, which would prefer the "ok"s over the substance.
  */
 export class InjectionFallbackWriter {
   constructor(private readonly maxTokens = 4000) {}

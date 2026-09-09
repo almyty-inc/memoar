@@ -3,9 +3,9 @@
  * real deployment.
  *
  * These conveniences — a fixed bearer token, tenant headers that name whatever
- * tenant they like, an in-memory account — used to be enabled by the *absence*
- * of `NODE_ENV=production`. That fails open: an operator who runs the built
- * server without setting that one variable gets an API where anybody can send
+ * tenant they like, an in-memory account — must never be enabled by the
+ * *absence* of configuration. That fails open: an operator who runs the built
+ * server without setting one variable would get an API where anybody can send
  *
  *     X-Memoar-Tenant: <someone's tenant>
  *     X-Memoar-User: <anybody>

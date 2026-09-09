@@ -1,12 +1,9 @@
 /**
  * What each source is called.
  *
- * The web client carried five of these and title-cased the rest, so Kilo Code
- * appeared as "Kilo", OpenCode as "Opencode", and antigravity-cli as
- * "Antigravity Cli" — names invented by a string transform rather than taken
- * from the tools. These are the tools' own names, the same ones the capture
- * agent's connector table uses, plus the import-only formats which are named
- * for what the file is.
+ * The tools. own names, the same ones the capture agent.s connector table uses,
+ * plus the import-only formats, which are named for what the file is. Never
+ * title-cased from an id: that produces "Kilo" and "Antigravity Cli".
  */
 const LABELS: Readonly<Record<string, string>> = {
   "claude-code": "Claude Code",

@@ -54,12 +54,10 @@ export function configureApp(app: INestApplication): void {
   // caller sends, which with credentials enabled lets any site on the internet
   // make authenticated requests on a user's behalf.
   //
-  // This used to reflect whenever NODE_ENV was not exactly "production" — the
-  // same fail-open shape as the authentication guard, and wrong for the same
-  // reason: a deployment that never set that variable published an API any
-  // website could call. Unconfigured now means the local web app's own
-  // addresses and nothing else, so forgetting WEB_ORIGIN costs a developer a
-  // clear CORS error rather than costing everyone else their archive.
+  // Unconfigured means the local web app.s own addresses and nothing else, so
+  // forgetting WEB_ORIGIN costs a developer a clear CORS error rather than
+  // costing everyone else their archive.
+  //
   // An empty or whitespace WEB_ORIGIN parses to an empty list, which is not
   // the same as unset and must not be treated as "allow nothing" by accident.
   const configured = (process.env.WEB_ORIGIN ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);

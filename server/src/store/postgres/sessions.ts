@@ -146,8 +146,7 @@ export class PostgresSessionStore implements SessionStore {
       const rows = await query.take(filter.limit + 1).getMany();
       const hasNext = rows.length > filter.limit;
       const pageRows = rows.slice(0, filter.limit);
-      // Hydrated together. One page used to cost three queries per session, so
-      // a fifty-session page was a hundred and fifty round trips for a list.
+      // Hydrated together: three queries for the page, not three per session.
       const items = await this.hydrateWithManager(manager, context, pageRows.map((row) => row.id));
       const last = pageRows.at(-1);
       return { items, total, nextCursor: hasNext && last ? encodeCursor(last.capturedUpdatedAt, last.id) : null };
@@ -179,8 +178,6 @@ export class PostgresSessionStore implements SessionStore {
 
   /**
    * Hydrates many sessions with three queries instead of three per session.
-   * Search results used to be fetched one at a time, which put dozens of round
-   * trips inside a single request.
    */
   async getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> {
     if (sessionIds.length === 0) return [];

@@ -22,8 +22,8 @@ export function CollectionsView({ collections, onOpen, onCreate }: {
   const [opened, setOpened] = useState<{ id: string; name: string; sessions: SessionSummary[] } | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
 
-  // "Open collection" did nothing. Membership lives server-side, so it is
-  // fetched rather than guessed from whatever sessions happen to be loaded.
+  // Membership lives server-side, so it is fetched rather than guessed from
+  // whatever sessions happen to be loaded.
   const openCollection = async (collectionId: string) => {
     setOpeningId(collectionId);
     setOpenError(null);
@@ -106,13 +106,6 @@ export function CollectionsView({ collections, onOpen, onCreate }: {
         </button>
       </div>
 
-      {/*
-        A "Durable notes" panel used to sit here showing one hardcoded note —
-        "Keep annotations separate from captured session data", attributed to
-        "3 sources" — with Review notes and AGENTS.md fragment buttons that did
-        nothing. None of it came from the archive. Distillation is a real
-        feature and this panel will return when it is wired to it.
-      */}
 
       <Modal open={opened !== null} title={opened?.name ?? 'Collection'} description="Sessions in this collection." onClose={() => setOpened(null)}>
         <div className="modal-body">
@@ -134,12 +127,6 @@ export function CollectionsView({ collections, onOpen, onCreate }: {
           <div className="modal-body form-stack">
             <label className="field-label">Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Example: Retrieval quality" autoFocus required /></label>
             <label className="field-label">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What belongs here?" rows={3} /></label>
-            {/*
-              A row of four colour swatches used to sit here with no click
-              handler and no field to write to: choosing one did nothing, and
-              the collection was created with whatever colour the server picked.
-              A control that cannot change anything is worse than no control.
-            */}
           </div>
           <footer className="modal-actions"><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" variant="primary" disabled={saving}>{saving ? 'Creating…' : 'Create collection'}</Button></footer>
         </form>

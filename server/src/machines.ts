@@ -23,8 +23,6 @@ function machineResponse(machine: MachineRecord, captured: Map<string, number>):
       source,
       settings,
       // This view exists to say what each source has produced, and the field
-      // was never filled in: every source on every machine read zero sessions
-      // however much had been archived from it.
       sessionCount: captured.get(`${machine.id}:${source}`) ?? 0,
     })),
   };

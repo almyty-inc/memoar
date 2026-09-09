@@ -9,8 +9,7 @@
  * Absent a token the endpoint does not exist. That is deliberately not 403: an
  * endpoint that answers differently when it is unconfigured tells a stranger it
  * is there and waiting for a secret. And there is no NODE_ENV branch, because
- * the last thing in this codebase that decided its own security from a missing
- * environment variable was the authentication guard, and it was wrong.
+ * security must never be decided by the absence of an environment variable.
  */
 
 import { ForbiddenException, NotFoundException } from "@nestjs/common";

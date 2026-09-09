@@ -77,12 +77,8 @@ export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfe
         <div><div className="eyebrow"><Share2 size={13} /> Controlled portability</div><h1>Sharing</h1><p>Review redactions before a session leaves your private archive.</p></div>
       </section>
 
-      {/*
-        Links are created from a session, because the redaction review a link
-        requires belongs to one. The button that used to sit here opened a
-        modal with invented findings for no particular session and a "Create
-        link" button that did nothing.
-      */}
+      {/* Links are created from a session, because the redaction review a link
+          requires belongs to one. */}
       <section className="privacy-banner">
         <span><ShieldCheck size={20} /></span>
         <div><strong>Visibility stays private until review is complete.</strong><p>Open a session and choose Share to review its redactions and mint a link.</p></div>

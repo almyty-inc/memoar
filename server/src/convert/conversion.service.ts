@@ -51,12 +51,10 @@ export class ConversionService {
    * Accepts a conversion and hands the work to the worker.
    *
    * Converting is processor work — rendering every turn, hashing and base64ing
-   * the files, serialising the bundle — and it used to run inside the request.
-   * Measured against the Compose stack on a 2000-turn session, one conversion
-   * took 53ms and twenty at once took 1256ms: they did not overlap at all,
-   * because it is all synchronous work on one thread. Everything else queued
-   * behind it, including /health, whose latency went from 28ms to 403ms — long
-   * enough for an orchestrator to decide a busy container is a dead one.
+   * the files, serialising the bundle — and all of it is synchronous on one
+   * thread. Run inside the request, twenty at once took 1256ms and starved
+   * /health to 403ms, which is long enough for an orchestrator to call a busy
+   * container a dead one.
    *
    * The contract has said `queued` since the beginning; only the implementation
    * disagreed.

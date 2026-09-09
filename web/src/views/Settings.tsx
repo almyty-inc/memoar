@@ -78,10 +78,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
   const [saving, setSaving] = useState(false);
   const [newPattern, setNewPattern] = useState('');
   const [revoking, setRevoking] = useState<string | null>(null);
-  // Distillation used to be a server-wide environment variable, which meant one
-  // operator key paid for everybody and every account's sessions went through
-  // the operator's provider. It is an account's own choice and an account's own
-  // key, so it is a screen.
+  // An account chooses its own provider and brings its own key.
   const [distillation, setDistillation] = useState<DistillationSettings | null>(null);
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [distillationError, setDistillationError] = useState<string | null>(null);
@@ -230,11 +227,6 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
 
           {tab === 'privacy' ? (
             <section className="settings-section">
-              {/*
-                The badge here read "14 masks active" and the custom pattern
-                list showed a hardcoded ACME_[A-Z0-9]{24} rule with a delete
-                button that did nothing. Both are real values now.
-              */}
               <header>
                 <div><h2>Redaction rules</h2><p>Scan captured blocks before upload and before any visibility change.</p></div>
                 <Badge><ScanSearch size={12} /> {settings ? `${settings.redaction.customPatterns.length} custom ${settings.redaction.customPatterns.length === 1 ? 'pattern' : 'patterns'}` : 'Loading…'}</Badge>
@@ -448,13 +440,8 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
           {tab === 'general' ? (
             <section className="settings-section">
               <header><div><h2>Account</h2><p>The identity this archive belongs to.</p></div></header>
-              {/*
-                Everything here reflects the signed-in account. It previously
-                showed a hardcoded name and address, and sat beside an archive
-                picker, a timezone picker and an appearance toggle that were
-                wired to nothing. Controls that cannot act do not belong in a
-                settings page: they read as capabilities the product has.
-              */}
+              {/* Only controls that can act: a setting wired to nothing reads
+                  as a capability the product has. */}
               <div className="profile-card">
                 <span className="avatar large">{user ? accountInitials(user.displayName) : '·'}</span>
                 <div><strong>{user?.displayName ?? 'Not signed in'}</strong><p>{user?.email ?? '—'}</p></div>

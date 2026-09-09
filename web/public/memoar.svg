@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Memoar">
+  <title>Memoar</title>
+  <rect width="64" height="64" rx="14" fill="#3d7a1f"/>
+  <g stroke="#f2fbe2" stroke-width="5" stroke-linecap="round" fill="none">
+    <path d="M21 15v34"/>
+    <path d="M34 23h13"/>
+    <path d="M34 41h9"/>
+  </g>
+  <circle cx="21" cy="23" r="5" fill="#f2fbe2"/>
+  <circle cx="21" cy="41" r="5" fill="#f2fbe2"/>
+</svg>

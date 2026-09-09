@@ -2,11 +2,8 @@
  * The one account a fresh archive can be created with.
  *
  * An empty archive has nobody in it, so there has to be some way to make the
- * first account. What used to be here was a `demo@memoar.dev` user whose
- * password — `memoar-demo-password` — was written in the source, created
- * whenever `MEMOAR_SEED_DEMO` was set. A published password on a real archive
- * is a back door, so both halves are gone: the credentials come from the
- * environment, and there is no default for either.
+ * first account. A published password on a real archive is a back door, so the
+ * credentials come from the environment and there is no default for either.
  *
  * The identifiers are derived from the address rather than fixed, so running
  * the server twice over the same database converges on one account instead of

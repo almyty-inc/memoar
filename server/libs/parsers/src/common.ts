@@ -50,12 +50,10 @@ export function derivedUuid(name: string): string {
 /**
  * The id a turn is stored under, given whatever the source called it.
  *
- * Turn ids are a uuid column, and several parsers used to hand the source's own
- * id straight to it. That works for as long as every tool numbers its messages
- * with uuids, and the moment one does not the *whole session* is refused with
- * `invalid input syntax for type uuid` — parsed correctly, never archived. This
- * was found in a live archive, on an artifact that had been sitting failed for
- * twenty days.
+ * Turn ids are a uuid column. A source id handed straight to it works only for
+ * as long as every tool numbers its messages with uuids; the moment one does
+ * not, the *whole session* is refused with `invalid input syntax for type uuid`
+ * — parsed correctly, never archived.
  *
  * A native uuid is kept as it is, so nothing already archived moves. Anything
  * else is derived from the session and the native id together: deterministic,

@@ -95,8 +95,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   // page for anyone with a machine connected.
   const machineName = machines.find((machine) => machine.id === session.machineId)?.name ?? null;
 
-  // Pins live as annotations, so the current state has to be read rather than
-  // assumed: the button previously guessed from a field the server never set.
+  // Pins live as annotations, so the current state is read rather than assumed.
   useEffect(() => {
     let active = true;
     void memoarApi.listAnnotations(session.id)
@@ -401,11 +400,6 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
               </button>
             ))}
           </div>
-          {/*
-            This listed "Atlas · MacBook Pro" and "Kepler · Linux workstation",
-            neither of which exists. It shows the machines actually registered,
-            and says so when there are none rather than offering invented ones.
-          */}
           <label className="field-label">Materialize on
             {machines.length === 0 ? (
               <span className="field-empty">No machines connected yet</span>
@@ -588,11 +582,8 @@ function ShareReviewModal({ open, approved, link, busy, sessionId, onApprove, on
   /*
     What the scanner actually found, read from the session's redaction masks.
 
-    This panel used to announce "2 findings in 1 session" and list a workspace
-    path and a commit author email — the same two every time, for every session,
-    invented. It is the gate that decides whether a session may leave the
-    archive, so showing anything other than the real findings makes the review
-    worthless: you would be approving a mask over somebody's imagination.
+    This is the gate that decides whether a session may leave the archive, so
+    anything other than the real findings would make the review worthless.
   */
   const [findings, setFindings] = useState<RedactionFinding[] | null>(null);
   const [findingsError, setFindingsError] = useState<string | null>(null);

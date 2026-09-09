@@ -97,12 +97,10 @@ export interface PipelineSeedFactory {
  * Identifies a capture when the transcript itself carries no session id.
  *
  * The agent watches a session file and uploads it again whenever it changes, so
- * a conversation arrives many times as it grows. Identity used to be the hash
- * of the file, which changes on every append: each capture of the same
- * conversation looked like a new session, and for formats whose turns carry
- * their own ids the save then failed outright, because those turns already
- * belonged to the session captured before. Ongoing sessions stopped being
- * archived after their first capture.
+ * a conversation arrives many times as it grows. Identity therefore cannot be
+ * the hash of the file, which changes on every append — each capture would look
+ * like a new session, and for formats whose turns carry their own ids the save
+ * would fail outright.
  *
  * Where the file sits is the stable fact. Antigravity, for one, keeps the
  * conversation id in the directory name and nowhere in the file. The machine is

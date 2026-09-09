@@ -46,12 +46,7 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
         <div><span className="overview-icon online"><Wifi size={18} /></span><div><strong>{machines.filter((machine) => machine.status === 'online').length} online</strong><p>of {machines.length} registered machines</p></div></div>
         <div><span className="overview-icon"><Code2 size={18} /></span><div><strong>{new Set(machines.flatMap((machine) => machine.sources.map((source) => source.id))).size} sources</strong><p>across every machine</p></div></div>
         <div><span className="overview-icon"><Cloud size={18} /></span><div><strong>{sessionCount} {sessionCount === 1 ? 'session' : 'sessions'}</strong><p>captured by these machines</p></div></div>
-        {/*
-          "Capture healthy — raw mirror is up to date" was printed whatever the
-          machines were doing: a reassurance with nothing behind it, on the page
-          you would open precisely because you suspected something was wrong.
-          What this page can actually see is which machines have reported in.
-        */}
+        {/* What this page can see is which machines have reported in. */}
         <div>
           <span className={cn('overview-icon', silent.length === 0 && 'secure')}><ShieldCheck size={18} /></span>
           <div>

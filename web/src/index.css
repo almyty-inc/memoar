@@ -1037,7 +1037,7 @@ code, pre, samp { font-family: var(--mono); }
 .install-card, .sync-card { box-shadow: none; }
 
 /* Nothing in a fixed column may be wider than the column: a content hash is one
-   unbroken word, and it used to carry the whole panel off the screen. */
+   unbroken word. */
 .session-layout > aside, .session-layout > aside * { min-width: 0; }
 .session-layout > aside pre, .session-layout > aside code { overflow-wrap: anywhere; }
 

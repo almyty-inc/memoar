@@ -5,15 +5,8 @@ import type { Machine } from '../lib/types';
 import { Badge, Button, CopyButton, StatusDot, cn, formatRelative } from '../components/ui';
 
 /**
- * What it takes to get a machine archiving.
- *
- * This page used to be a mock-up: it offered `npx memoar connect`, which is not
- * a command the agent has; it reported "284 found" for Claude Code and "312 of
- * 542 sessions" uploaded, numbers nobody counted; and it claimed a machine
- * called "Atlas · MacBook Pro" that does not exist. Somebody following it would
- * have run a command that fails and then watched a progress bar that was a
- * drawing. Every number here is now read from the archive, and the commands are
- * the ones the CLI actually accepts.
+ * What it takes to get a machine archiving. Every number is read from the
+ * archive, and the commands are the ones the CLI accepts.
  */
 export function OnboardingView({ machines, onComplete, onRefresh }: {
   machines: Machine[];

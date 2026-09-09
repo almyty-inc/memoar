@@ -53,8 +53,6 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // "Best match" was a button that did nothing, and "Preview pack" was a
-  // primary call to action that did nothing at all.
   const [sort, setSort] = useState<'relevance' | 'recent'>('relevance');
   const [packOpen, setPackOpen] = useState(false);
   const [pack, setPack] = useState<PackResponse | null>(null);

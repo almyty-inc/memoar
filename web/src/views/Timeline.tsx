@@ -53,12 +53,8 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
         </div>
         <h3>{session.title}</h3>
         <p>{session.summary}</p>
-        {/*
-          Only what the session actually has. Every row used to carry a branch
-          reading "unknown", a duration of 0m and "0 tokens" whether or not any
-          of it was known, which is a placeholder pretending to be a
-          measurement.
-        */}
+        {/* Only what the session actually has: no placeholder standing in for a
+            measurement nobody took. */}
         <div className="session-meta">
           <span><GitBranch size={13} /> {session.workspace}</span>
           {session.branch ? <span className="branch-name">{session.branch}</span> : null}
@@ -109,9 +105,8 @@ export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearc
   const scrollRef = useRef<HTMLDivElement>(null);
   const [source, setSource] = useState('all');
   const [workspace, setWorkspace] = useState('all');
-  // "Any time" was a button that did nothing. It filters now. The cutoff is
-  // stamped when the range is chosen — an event, where reading the clock is
-  // fine — rather than during render, where it would not be a pure value.
+  // The cutoff is stamped when the range is chosen — an event, where reading
+  // the clock is fine — rather than during render, which must stay pure.
   const [within, setWithin] = useState('all');
   const [cutoff, setCutoff] = useState<number | null>(null);
 

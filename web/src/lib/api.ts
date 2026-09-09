@@ -195,11 +195,7 @@ export interface ImportProgress {
 }
 
 /**
- * A summary as the app uses it.
- *
- * Branch, machine, model, tokens and duration used to be filled in here with
- * "unknown", "Archived machine", "Unknown model", 0 and 0, because the server
- * did not send them. It does now, and what is genuinely absent stays absent
+ * A summary as the app uses it. What the archive does not know stays absent
  * rather than being given a stand-in that reads like a fact.
  */
 function mapSession(session: WireSessionSummary): SessionSummary {
@@ -362,12 +358,8 @@ export class MemoarApiClient {
   }
 
   /**
-   * Refuses to answer without an archive to ask.
-   *
-   * Every read here used to fall back to a sample archive when no endpoint was
-   * configured, so a deployment that had lost its VITE_API_URL looked like a
-   * working product full of sessions that belonged to nobody. There is no
-   * substitute for the archive: if it is not configured, that is the answer.
+   * Refuses to answer without an archive to ask. There is no substitute for it:
+   * an unconfigured endpoint is an error, never sample data.
    */
   private requireArchive(): void {
     if (!this.configured) throw new MemoarApiError(0, 'No archive endpoint is configured for this build (VITE_API_URL).');
@@ -708,8 +700,6 @@ export class MemoarApiClient {
   }
 
   async createCollection(name: string, description: string): Promise<Collection> {
-    // This returned a collection it had invented, so the screen showed one that
-    // no archive had ever heard of and that vanished on reload.
     this.requireArchive();
     return mapCollection(await this.request<WireCollection>('/collections', {
       method: 'POST',
@@ -806,10 +796,8 @@ export class MemoarApiClient {
         return mapSession(imported);
       }
 
-      // The server knows when an artifact will never produce a session, and
-      // has recorded why. Polling on regardless is how an unsupported format
-      // used to spend thirty seconds on a progress bar and then report a
-      // timeout that explained nothing.
+      // The server records why an artifact will never produce a session, so
+      // stop rather than polling on to a timeout that explains nothing.
       const status = await this.artifactStatus(sha256);
       if (status && (status.status === 'unknown_format' || status.status === 'failed')) {
         throw new Error(status.diagnostic ?? `The archive could not be parsed (${status.status}).`);

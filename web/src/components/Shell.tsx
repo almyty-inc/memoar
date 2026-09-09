@@ -1,7 +1,6 @@
 import {
   Archive,
   BookMarked,
-  Boxes,
   ChevronsUpDown,
   CircleHelp,
   LibraryBig as Collection,
@@ -17,6 +16,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { MemoarMark } from './MemoarMark';
 import { useEffect, useState, type ReactNode } from 'react';
 import { accountInitials } from '../lib/account';
 import type { CurrentUser, Machine, ViewId } from '../lib/types';
@@ -74,15 +74,8 @@ export function Shell({ view, user, machines, children, onNavigate }: {
   children: ReactNode;
   onNavigate: (view: ViewId) => void;
 }) {
-  /*
-    Setup progress, measured rather than drawn.
-
-    This counted every source entry on every machine and reported "80 of 80
-    sources connected", which is true and tells a reader nothing; underneath it
-    a progress bar was fixed at 66% in the stylesheet, so it showed the same
-    two-thirds whether nothing or everything had been captured. What matters
-    during setup is whether a connected machine is actually archiving.
-  */
+  // Setup progress is the share of connected machines that have actually
+  // archived something.
   const capturing = machines.filter((machine) => machine.sources.some((source) => source.sessionCount > 0)).length;
   const setupProgress = machines.length === 0 ? 0 : Math.round((capturing / machines.length) * 100);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -109,7 +102,7 @@ export function Shell({ view, user, machines, children, onNavigate }: {
       <aside className={cn('sidebar', menuOpen && 'sidebar-open')} aria-label="Primary navigation">
         <div className="brand-row">
           <button className="brand" type="button" onClick={() => navigate('timeline')} aria-label="Memoar home">
-            <span className="brand-mark" aria-hidden="true"><Boxes size={17} /></span>
+            <span className="brand-mark" aria-hidden="true"><MemoarMark size={17} /></span>
             <span>memoar</span>
           </button>
           <IconButton className="sidebar-close" label="Close navigation" onClick={() => setMenuOpen(false)}>

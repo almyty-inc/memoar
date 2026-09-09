@@ -56,6 +56,26 @@ describe("what production refuses to start with", () => {
       .toThrow(/MEMOAR_TOKEN_SECRET.*MEMOAR_APP_DB_PASSWORD.*S3_SECRET_KEY/su);
   });
 
+  it("refuses the credential key that ships in the compose file", () => {
+    // Sixty-four hex characters look exactly like a key somebody generated,
+    // which is what makes this one dangerous: it passes inspection by eye and
+    // it is in the repository. Everything sealed with it — every tenant's
+    // provider API key — is readable by anyone who has cloned this, and that
+    // becomes anyone at all the day the repository is public.
+    const published = "6b1f3c7d9a2e4f508192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8";
+    expect(productionCredentialProblems({ ...STRONG, MEMOAR_CREDENTIAL_KEY: published })[0])
+      .toEqual({ name: "MEMOAR_CREDENTIAL_KEY", reason: "is a value published in this repository" });
+
+    // Short is refused too: a key that looks like encryption and is not is
+    // worse than no key, because no key refuses to store the credential.
+    expect(productionCredentialProblems({ ...STRONG, MEMOAR_CREDENTIAL_KEY: "too-short-to-be-a-key" })[0]!.reason)
+      .toContain("shorter than 44");
+
+    // Absent is fine — the deployment simply cannot hold provider credentials.
+    expect(productionCredentialProblems(STRONG)).toEqual([]);
+    expect(productionCredentialProblems({ ...STRONG, MEMOAR_CREDENTIAL_KEY: "b".repeat(64) })).toEqual([]);
+  });
+
   it("refuses production with the development conveniences switched on", () => {
     // MEMOAR_DEV_AUTH accepts an X-Memoar-Tenant header naming any tenant on
     // earth. It is not a weak credential, it is the absence of one.

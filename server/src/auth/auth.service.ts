@@ -29,8 +29,8 @@ export class AuthService {
   ) {
     // Without a database there is nowhere to keep accounts, so the one the
     // operator named in the environment lives in memory for as long as the
-    // process does. No account is invented: absent those variables, nobody can
-    // sign in, which is the right answer for a server with no store behind it.
+    // process does. Absent those variables nobody can sign in, which is the
+    // right answer for a server with no store behind it.
     const account = bootstrapAccount();
     if (!dataSource && account) {
       this.devUsers.set(account.email, {
