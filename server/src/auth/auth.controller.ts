@@ -5,7 +5,7 @@ import type { TenantContext } from "../archive-store.js";
 import { Public, Tenant } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
-import { CreateApiKeyDto, EmailLoginDto, IssueMachineTokenDto } from "./auth.dto.js";
+import { CreateApiKeyDto, EmailLoginDto, EmailRegisterDto, IssueMachineTokenDto } from "./auth.dto.js";
 import { CREDENTIAL_LIMIT, Throttle } from "../rate-limit.js";
 
 @Controller("auth")
@@ -20,6 +20,25 @@ export class AuthController {
   @Throttle(CREDENTIAL_LIMIT)
   login(@Body() body: EmailLoginDto): Promise<Record<string, unknown>> {
     return this.auth.login(body.email, body.password);
+  }
+
+  @Public()
+  @Post("register")
+  // The same budget as login: without it this is a way to mint accounts in bulk
+  // and to learn which addresses already have one.
+  @Throttle(CREDENTIAL_LIMIT)
+  register(@Body() body: EmailRegisterDto): Promise<Record<string, unknown>> {
+    return this.auth.register(body.email, body.password, body.displayName);
+  }
+
+  /**
+   * What this deployment accepts, so a client offers only what works rather
+   * than a provider the server has no credentials for.
+   */
+  @Public()
+  @Get("methods")
+  methods(): { password: boolean; signup: string; oauth: string[] } {
+    return this.auth.authMethods();
   }
 
   /**

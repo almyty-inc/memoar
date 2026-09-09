@@ -37,6 +37,17 @@ export function bootstrapAccount(environment: NodeJS.ProcessEnv = process.env): 
   };
 }
 
+/**
+ * Whether strangers may create accounts here.
+ *
+ * Closed unless the operator says otherwise. An archive holds other people's
+ * source code and conversations, so a self-hoster who exposes one must decide
+ * to let anybody in — the absence of a setting is not that decision.
+ */
+export function signupOpen(environment: NodeJS.ProcessEnv = process.env): boolean {
+  return environment.MEMOAR_SIGNUP === "open";
+}
+
 /** The scopes a person signing in with a password holds. */
 export const PASSWORD_SCOPES = [
   "archive:read", "archive:write", "sharing:write",

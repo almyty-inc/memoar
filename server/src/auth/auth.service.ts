@@ -1,4 +1,4 @@
-import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 
 import { createHash, randomBytes } from "node:crypto";
 
@@ -6,7 +6,7 @@ import { DataSource, IsNull, type EntityManager } from "typeorm";
 
 import type { ArchiveStore, TenantContext } from "../archive-store.js";
 
-import { bootstrapAccount, PASSWORD_SCOPES } from "../bootstrap-account.js";
+import { bootstrapAccount, PASSWORD_SCOPES, signupOpen } from "../bootstrap-account.js";
 
 import { ApiKeyEntity, AuthIdentityEntity, MachineTokenEntity, UserEntity } from "../entities.js";
 
@@ -67,6 +67,99 @@ export class AuthService {
       type: "browser",
     }, 3600);
     return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  }
+
+  /**
+   * What this deployment accepts, so the client offers only what works.
+   *
+   * A page that shows "Continue with GitHub" on a server holding no GitHub
+   * credentials is a button that fails when pressed, and it is the only way in
+   * that page offers.
+   */
+  authMethods(): { password: boolean; signup: "open" | "closed"; oauth: string[] } {
+    const oauth: string[] = [];
+    if (process.env.GITHUB_CLIENT_ID) oauth.push("github");
+    if (process.env.GOOGLE_CLIENT_ID) oauth.push("google");
+    return { password: true, signup: signupOpen() ? "open" : "closed", oauth };
+  }
+
+  /**
+   * Creates an account, its tenant and its password identity.
+   *
+   * One tenant per account: an archive is somebody's own, and joining an
+   * existing one is what sharing and teams are for.
+   *
+   * The three rows are written in one transaction, because a user with no
+   * identity cannot sign in and an identity with no user is a token subject
+   * that resolves to nothing — either half alone is an account that looks
+   * created and is not.
+   */
+  async register(email: string, password: string, displayName?: string): Promise<{ accessToken: string; expiresAt: string; user: { id: string; email: string; displayName: string } }> {
+    if (!signupOpen()) {
+      throw new ForbiddenException({
+        type: "https://memoar.dev/problems/registration-closed",
+        title: "This archive is not accepting new accounts",
+        status: 403,
+        code: "registration_closed",
+      });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const name = displayName?.trim() || normalizedEmail.split("@")[0] || normalizedEmail;
+    const userId = uuidV7();
+    const tenantId = uuidV7();
+
+    // Without a database, accounts live in memory for as long as the process
+    // does. Refusing here instead would leave anyone running locally at the
+    // same dead end this endpoint exists to remove.
+    if (!this.dataSource) {
+      if (this.devUsers.has(normalizedEmail)) {
+        throw new ConflictException({
+          type: "https://memoar.dev/problems/account-exists",
+          title: "An account with that address already exists",
+          status: 409,
+          code: "account_exists",
+        });
+      }
+      this.devUsers.set(normalizedEmail, {
+        id: userId, tenantId, email: normalizedEmail, passwordHash: hashSecret(password), displayName: name,
+      });
+      const local = this.tokens.issue({ sub: userId, tenantId, scopes: PASSWORD_SCOPES, type: "browser" }, 3600);
+      return { accessToken: local.token, expiresAt: local.expiresAt, user: { id: userId, email: normalizedEmail, displayName: name } };
+    }
+
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        await manager.getRepository(UserEntity).insert({
+          id: userId, email: normalizedEmail, displayName: name, passwordHash: hashSecret(password),
+        });
+        await manager.getRepository(AuthIdentityEntity).insert({
+          id: uuidV7(),
+          kind: "password",
+          lookupKey: normalizedEmail,
+          tenantId,
+          userId,
+          secretHash: hashSecret(password),
+          scopes: PASSWORD_SCOPES,
+          machineId: null, expiresAt: null, revokedAt: null, lastUsedAt: null,
+        });
+      });
+    } catch (error) {
+      // Uniqueness is enforced by the database rather than by looking first:
+      // two registrations for one address arriving together would both find
+      // nothing and both insert.
+      if ((error as { code?: string }).code === "23505") {
+        throw new ConflictException({
+          type: "https://memoar.dev/problems/account-exists",
+          title: "An account with that address already exists",
+          status: 409,
+          code: "account_exists",
+        });
+      }
+      throw error;
+    }
+
+    const issued = this.tokens.issue({ sub: userId, tenantId, scopes: PASSWORD_SCOPES, type: "browser" }, 3600);
+    return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: userId, email: normalizedEmail, displayName: name } };
   }
 
   /**

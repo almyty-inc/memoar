@@ -1042,3 +1042,9 @@ code, pre, samp { font-family: var(--mono); }
 .session-layout > aside pre, .session-layout > aside code { overflow-wrap: anywhere; }
 
 .tile-scope { margin: 2px 0 8px; color: var(--quiet); font-family: var(--mono); font-size: 10px; }
+
+.link-button { padding: 0; color: var(--acid); background: none; border: 0; font: inherit; font-weight: 560; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link-button:hover { color: var(--text); }
+.auth-aside-points { margin: 20px 0 0; padding: 0; display: grid; gap: 9px; list-style: none; color: var(--muted); font-size: 14px; }
+.auth-aside-points li { padding-left: 18px; position: relative; }
+.auth-aside-points li::before { content: ""; position: absolute; top: 8px; left: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--acid); }

@@ -31,6 +31,40 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AuthSessionResponse' }
         '401': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerWithEmail
+      security: []
+      description: >-
+        Creates an account, its tenant and a password identity. Available only
+        where the operator has opened registration: an archive holds other
+        people's source code, so a deployment must say that strangers may create
+        accounts in it rather than allowing it by default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailRegisterRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/AuthSessionResponse' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/methods:
+    get:
+      tags: [Auth]
+      operationId: getAuthMethods
+      security: []
+      description: >-
+        What this deployment actually accepts. Without it a client offers
+        buttons for providers the server has no credentials for, which fail with
+        401 when somebody presses them.
+      responses:
+        '200':
+          description: The sign-in methods available here
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthMethods' }
   /auth/me:
     get:
       tags: [Auth]
@@ -1086,6 +1120,27 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 10 }
+    EmailRegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10 }
+        displayName: { type: string, maxLength: 120 }
+    AuthMethods:
+      type: object
+      required: [password, signup, oauth]
+      properties:
+        password: { type: boolean }
+        signup:
+          type: string
+          enum: [open, closed]
+          description: Whether this deployment accepts new accounts.
+        oauth:
+          type: array
+          items: { type: string, enum: [github, google] }
+          description: Only providers this deployment has credentials for.
     AuthSession:
       type: object
       required: [accessToken, expiresAt, user]

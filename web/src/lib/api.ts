@@ -179,6 +179,13 @@ export interface DistillationSettings {
   budgetWindowStartedAt: string;
 }
 
+/** What the deployment accepts. `oauth` lists only configured providers. */
+export interface AuthMethods {
+  password: boolean;
+  signup: 'open' | 'closed';
+  oauth: Array<'github' | 'google'>;
+}
+
 export interface RawArtifactStatus {
   sha256: string;
   status: 'stored' | 'queued' | 'parsed' | 'unknown_format' | 'failed';
@@ -448,6 +455,21 @@ export class MemoarApiClient {
       if (response.status === 204) return undefined as T;
       return (await response.json()) as T;
     }
+  }
+
+  /** What this deployment accepts, so the page offers only what works. */
+  async authMethods(): Promise<AuthMethods> {
+    return this.request<AuthMethods>('/auth/methods');
+  }
+
+  /** Creates the account and signs it in: one form, not two. */
+  async register(email: string, password: string): Promise<CurrentUser> {
+    const result = await this.request<{ accessToken: string; expiresAt: string; user: CurrentUser }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    this.setAccessToken(result.accessToken, result.expiresAt);
+    return result.user;
   }
 
   async login(email: string, password: string): Promise<CurrentUser> {

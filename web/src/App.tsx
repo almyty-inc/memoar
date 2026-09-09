@@ -144,7 +144,15 @@ export function App() {
     navigate('timeline');
   };
 
-  if (view === 'signin') return <SignInView onSignIn={signIn} onOAuth={(provider) => memoarApi.beginOAuth(provider)} />;
+  const createAccount = async (email: string, password: string) => {
+    if (memoarApi.configured) setUser(await memoarApi.register(email, password));
+    await loadDashboard();
+    navigate('timeline');
+  };
+
+  if (view === 'signin') {
+    return <SignInView onSignIn={signIn} onCreateAccount={createAccount} onOAuth={(provider) => memoarApi.beginOAuth(provider)} />;
+  }
 
   let content;
   if (connectionError) {

@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsEmail, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsEmail, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 /**
  * These mirror the auth request schemas in contracts/openapi.yaml. Every body
@@ -18,6 +18,24 @@ export class EmailLoginDto {
   @MinLength(10)
   @MaxLength(1024)
   password!: string;
+}
+
+export class EmailRegisterDto {
+  @IsEmail()
+  @MaxLength(320)
+  email!: string;
+
+  // Ten is the floor the sign-in form and the contract both state. Length only:
+  // composition rules push people toward one predictable pattern.
+  @IsString()
+  @MinLength(10)
+  @MaxLength(1024)
+  password!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  displayName?: string;
 }
 
 export class CreateApiKeyDto {
