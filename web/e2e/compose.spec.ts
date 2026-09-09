@@ -171,10 +171,13 @@ test.describe('Memoar live Compose browser acceptance', () => {
     test.setTimeout(120_000);
     await ensureFixtureArchive(request);
   });
-  test('authenticates, exposes OAuth entry points, and never falls back to demo data', async ({ page }) => {
+  test('authenticates, offers only the providers this deployment has, and never falls back to demo data', async ({ page }) => {
     await page.goto('/#/signin');
-    await expect(page.getByRole('button', { name: 'Continue with GitHub' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // The compose stack configures no OAuth, so neither button belongs here. A
+    // provider button on a server with no credentials for it answers 401 when
+    // somebody presses it, and on this page it would be the only way in.
+    await expect(page.getByRole('button', { name: 'Continue with GitHub' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toHaveCount(0);
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     const loginResponse = page.waitForResponse((response) => response.url().endsWith('/v1/auth/login') && response.request().method() === 'POST');
@@ -182,6 +185,27 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await expect((await loginResponse).status()).toBe(200);
     await expect(page.getByText('Connected', { exact: true })).toBeVisible();
     await expect(page.getByText('Demo archive', { exact: true })).toHaveCount(0);
+  });
+
+  test('lets somebody who has no account create one', async ({ page }) => {
+    // Until recently this was impossible: the only sign-up affordances were the
+    // two provider buttons, which fail on a deployment without OAuth, and no
+    // email registration existed at all.
+    await page.goto('/#/signin');
+    await page.getByRole('button', { name: 'Create an archive' }).click();
+    await expect(page.getByRole('heading', { name: 'Start your archive.' })).toBeVisible();
+
+    const address = `e2e-${Date.now()}@memoar.test`;
+    await page.getByLabel('Email').fill(address);
+    await page.getByLabel('Password').fill('a-password-of-real-length');
+    const registered = page.waitForResponse((response) => response.url().endsWith('/v1/auth/register') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: /^Create archive/ }).click();
+    expect((await registered).status()).toBe(201);
+
+    // Signed straight in, and into an archive of their own rather than the one
+    // the fixture account owns.
+    await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+    await expect(page.getByText(address)).toBeVisible();
   });
 
   test('covers onboarding, fixture visibility, filters, and a second timeline page', async ({ page }) => {

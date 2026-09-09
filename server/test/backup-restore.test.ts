@@ -157,12 +157,24 @@ suite("backing up and restoring the archive", () => {
       `mkdir -p ${scheduled} && MEMOAR_BACKUP_URL='${URL_IN_CONTAINER}' MEMOAR_BACKUP_DIR=${scheduled}` +
       ` MEMOAR_BACKUP_INTERVAL_SECONDS=1 MEMOAR_BACKUP_KEEP=3 nohup sh /backup-cron.sh > ${scheduled}/log 2>&1 &`,
     );
-    await new Promise((done) => setTimeout(done, 12_000));
+    // Polled rather than slept for. A fixed wait is a guess about how fast a
+    // container dumps a database, and the guess is wrong on a machine that is
+    // busy running the rest of this suite.
+    const count = (): number => Number(shellInContainer(`ls -1 ${scheduled}/memoar-*.dump 2>/dev/null | wc -l`).trim());
+    const deadline = Date.now() + 90_000;
+    while (count() < 2 && Date.now() < deadline) {
+      await new Promise((done) => setTimeout(done, 1000));
+    }
+    // Two more intervals past the limit, so pruning has something to prune.
+    const pruneDeadline = Date.now() + 30_000;
+    while (count() <= 3 && Date.now() < pruneDeadline) {
+      await new Promise((done) => setTimeout(done, 1000));
+    }
     shellInContainer("pkill -f backup-cron.sh || true");
 
-    const dumps = shellInContainer(`ls -1 ${scheduled}/memoar-*.dump | wc -l`).trim();
-    expect(Number(dumps), "the loop never produced a backup").toBeGreaterThan(1);
-    expect(Number(dumps), "old dumps must be pruned or the disk fills quietly").toBeLessThanOrEqual(3);
+    const dumps = count();
+    expect(dumps, "the loop never produced a second backup").toBeGreaterThan(1);
+    expect(dumps, "old dumps must be pruned or the disk fills quietly").toBeLessThanOrEqual(3);
 
     const log = shellInContainer(`cat ${scheduled}/log`);
     expect(log, "failures have to be loud, or a stopped schedule is invisible").not.toContain('"level":"error"');

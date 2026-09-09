@@ -42,16 +42,6 @@ const ACKNOWLEDGED = [
     until: "2026-12-01",
     reason: "Flagged only for depending on multer, above.",
   },
-  {
-    package: "vitest",
-    until: "2026-12-01",
-    reason:
-      "Development dependency, in the test runner. Not shipped in either image and "
-      + "not reachable by a request. The fix is vitest 5, a major upgrade that is "
-      + "worth doing deliberately rather than under an audit failure.",
-  },
-  { package: "@vitest/mocker", until: "2026-12-01", reason: "Part of vitest, above." },
-  { package: "@vitest/coverage-v8", until: "2026-12-01", reason: "Part of vitest, above." },
 ];
 
 const SEVERITIES = ["moderate", "high", "critical"];

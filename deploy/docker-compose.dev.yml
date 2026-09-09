@@ -120,6 +120,9 @@ services:
       # archive starts empty and fills up with what the agent captures.
       MEMOAR_BOOTSTRAP_EMAIL: ${MEMOAR_BOOTSTRAP_EMAIL:-owner@memoar.local}
       MEMOAR_BOOTSTRAP_PASSWORD: ${MEMOAR_BOOTSTRAP_PASSWORD:-local-stack-password-change-me}
+      # Open here so the browser acceptance can create an account the way a
+      # newcomer does. Closed is the default everywhere it is not stated.
+      MEMOAR_SIGNUP: "open"
       # /v1/metrics exists only while this is set, and always requires it.
       MEMOAR_METRICS_TOKEN: ${MEMOAR_METRICS_TOKEN:-local-stack-metrics-token}
       # Encrypts the provider credentials accounts bring for distillation.
