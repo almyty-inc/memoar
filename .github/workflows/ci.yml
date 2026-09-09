@@ -28,13 +28,13 @@ jobs:
       - run: make contracts-check
       - run: node scripts/check-version-pins.mjs
       - run: npm run lint
-      # Advisories are found when somebody remembers to look, which is to say
-      # not found. Two were sitting here — one high — until a check was run by
-      # hand. Moderate and above fails the build; anything lower is reported and
-      # left, because a build that fails on an unfixable low advisory teaches
-      # people to ignore this step.
+      # Fails on any advisory at moderate or above that nobody has looked at.
+      # One that has been read and decided about can be acknowledged in writing,
+      # with a reason and a date it must be reviewed again — because the
+      # alternative, when an advisory lands with no upstream fix, is that
+      # somebody deletes the gate and every future advisory goes with it.
       - name: Known vulnerabilities in npm dependencies
-        run: npm audit --audit-level=moderate
+        run: node scripts/audit-check.mjs
       # npm test enforces server coverage thresholds and runs the ArchiveStore
       # contract suite against a throwaway pgvector container (Docker required).
       - run: npm test
