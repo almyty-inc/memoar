@@ -28,7 +28,11 @@
 /* The width is set from the measured value; a literal percentage here made it a picture. */
 .mini-progress span { display: block; width: 0; height: 100%; background: var(--acid); transition: width 200ms ease; }
 
-.user-switcher { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-3); padding: var(--sp-2); background: transparent; border: 0; border-radius: var(--r-lg); cursor: pointer; text-align: left; }
+/* minmax(0, 1fr), not 1fr: a grid track's automatic minimum is min-content, and
+   an email address has no break opportunity — so a long one widened the column
+   and pushed the chevron out through the sidebar's edge. */
+.user-switcher { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); padding: var(--sp-2); background: transparent; border: 0; border-radius: var(--r-lg); cursor: pointer; text-align: left; }
+.user-switcher > span:nth-child(2) { min-width: 0; }
 .user-switcher:hover { background: var(--panel-hover); }
 .avatar { width: var(--tile-md); height: var(--tile-md); display: inline-flex; align-items: center; justify-content: center; color: var(--acid-ink); background: var(--violet); border-radius: var(--r-md); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
 .avatar.large { width: var(--tile-lg); height: var(--tile-lg); border-radius: var(--r-lg); font-size: var(--fs-base); }

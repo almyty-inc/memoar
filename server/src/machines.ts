@@ -7,6 +7,30 @@ import { uuidV7 } from "./ids.js";
 import { ARCHIVE_STORE } from "./tokens.js";
 
 /**
+ * One name per operating system.
+ *
+ * The field is whatever the client sent, and different clients spell the same
+ * system differently: the Rust agent reports Rust's `std::env::consts::OS`
+ * ("macos"), anything written against Node reports `process.platform`
+ * ("darwin"). One account ended up listing two machines as `macos` and `darwin`
+ * — the same OS, looking like two.
+ */
+const PLATFORM_ALIASES: Readonly<Record<string, string>> = {
+  darwin: "macos",
+  "mac os x": "macos",
+  macosx: "macos",
+  osx: "macos",
+  win32: "windows",
+  win: "windows",
+  linux2: "linux",
+};
+
+export function normalizePlatform(platform: string): string {
+  const trimmed = platform.trim();
+  return PLATFORM_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+}
+
+/**
  * @param captured sessions archived per machine and source, keyed "machine:tool".
  */
 function machineResponse(machine: MachineRecord, captured: Map<string, number>): Record<string, unknown> {
@@ -43,7 +67,7 @@ export class MachinesService {
       id: uuidV7(),
       tenantId: context.tenantId,
       name: body.name.trim(),
-      platform: body.platform.trim(),
+      platform: normalizePlatform(body.platform),
       agentVersion: body.agentVersion ?? null,
       sourceSettings: {},
       lastSeenAt: null,

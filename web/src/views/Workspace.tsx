@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { TileGrid, clampTile, type TileDefinition, type TileLayout } from '../components/TileGrid';
 import { Badge, SourceBadge, formatRelative } from '../components/ui';
 import type { Collection, Machine, SessionSummary, ShareGrant, Transfer } from '../lib/types';
+import { machineStatusLabel } from '../lib/source-labels';
 
 const STORAGE_KEY = 'memoar.workspace.layout';
 
@@ -82,7 +83,7 @@ export function WorkspaceView({ sessions, archived, machines, collections, grant
                 <strong>{machine.name}</strong>
                 <small>{machine.platform} · {machine.sources.length} sources</small>
               </span>
-              <Badge className={machine.status === 'online' ? 'status-active' : undefined}>{machine.status}</Badge>
+              <Badge className={machine.status === 'online' ? 'status-active' : undefined}>{machineStatusLabel(machine.status)}</Badge>
             </div>
           ))}
         </div>

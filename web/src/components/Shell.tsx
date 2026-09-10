@@ -150,7 +150,13 @@ export function Shell({ view, user, machines, children, onNavigate }: {
           </button>
           <button className="user-switcher" type="button" onClick={() => navigate('signin')}>
             <span className="avatar">{user ? accountInitials(user.displayName) : '·'}</span>
-            <span><strong>{user?.displayName ?? 'Account'}</strong><small>{user?.email ?? 'Not signed in'}</small></span>
+            {/* An account whose display name is its email printed the address
+                twice, one above the other. */}
+            <span>
+              <strong>{user?.displayName ?? 'Account'}</strong>
+              {user && user.email !== user.displayName ? <small>{user.email}</small> : null}
+              {user ? null : <small>Not signed in</small>}
+            </span>
             <ChevronsUpDown size={14} />
           </button>
         </div>
