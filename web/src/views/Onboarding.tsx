@@ -30,12 +30,15 @@ function authMessage(reason: unknown, creating: boolean): string {
   return creating ? 'The archive could not be created.' : 'Sign-in failed.';
 }
 
-export function SignInView({ onSignIn, onCreateAccount, onOAuth }: {
+export function SignInView({ onSignIn, onCreateAccount, onOAuth, creating: startCreating = false, onModeChange }: {
   onSignIn: (email: string, password: string) => Promise<void>;
   onCreateAccount: (email: string, password: string) => Promise<void>;
   onOAuth: (provider: 'github' | 'google') => void;
+  /** /signup opens straight on the create form, so it can be linked to. */
+  creating?: boolean;
+  onModeChange?: (creating: boolean) => void;
 }) {
-  const [mode, setMode] = useState<Mode>('signIn');
+  const [mode, setMode] = useState<Mode>(startCreating ? 'createAccount' : 'signIn');
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -84,6 +87,8 @@ export function SignInView({ onSignIn, onCreateAccount, onOAuth }: {
     setPassword('');
     setError(null);
     passwordField.current?.focus();
+    // The address follows the form, so /signup is somewhere you can be sent.
+    onModeChange?.(!creating);
   };
 
   return (

@@ -4,6 +4,7 @@ import { Shell } from './components/Shell';
 import { Button } from './components/ui';
 import { memoarApi } from './lib/api';
 import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
+import { pathForLegacyHash, pathForRoute, routeForPath, type Route } from './lib/routes';
 import { CollectionsView } from './views/Collections';
 import { MemoryView } from './views/Memory';
 import { ImportView } from './views/Import';
@@ -17,8 +18,6 @@ import { SharingView } from './views/Sharing';
 import { TimelineView } from './views/Timeline';
 import { WorkspaceView } from './views/Workspace';
 
-const supportedViews: ViewId[] = ['workspace', 'timeline', 'search', 'collections', 'import', 'sharing', 'machines', 'settings', 'onboarding', 'signin', 'session'];
-
 const emptyConnectedDashboard: DashboardState = {
   timeline: [],
   archivedSessions: 0,
@@ -29,18 +28,42 @@ const emptyConnectedDashboard: DashboardState = {
   apiKeys: [],
 };
 
-function viewFromHash(): ViewId {
-  const candidate = window.location.hash.replace(/^#\/?/, '').split('/')[0];
-  return supportedViews.includes(candidate as ViewId) ? candidate as ViewId : 'timeline';
+/**
+ * The route in the address bar.
+ *
+ * A `#/…` link left over from before paths is rewritten once, here, so nothing
+ * anyone bookmarked stops working.
+ */
+function routeFromLocation(): Route {
+  const legacy = pathForLegacyHash(window.location.hash);
+  if (legacy) {
+    window.history.replaceState(null, '', legacy);
+    return routeForPath(legacy) ?? { view: 'timeline' };
+  }
+  return routeForPath(window.location.pathname) ?? { view: 'timeline' };
 }
 
 export function App() {
-  const [view, setView] = useState<ViewId>(() => memoarApi.configured && !memoarApi.authenticated ? 'signin' : viewFromHash());
+  const [route, setRoute] = useState<Route>(() => {
+    const current = routeFromLocation();
+    if (!memoarApi.configured || memoarApi.authenticated) return current;
+    return current.creating ? { view: 'signin', creating: true } : { view: 'signin' };
+  });
+  const view = route.view;
+  /*
+    Where they were going before being asked to sign in. Following a link to a
+    session while signed out otherwise dropped you on the timeline afterwards,
+    with the thing you were sent still one search away.
+  */
+  const [intended] = useState<Route | null>(() => {
+    if (!memoarApi.configured || memoarApi.authenticated) return null;
+    const current = routeFromLocation();
+    return current.view === 'signin' ? null : current;
+  });
   const [dashboard, setDashboard] = useState<DashboardState>(emptyConnectedDashboard);
   const [loading, setLoading] = useState(() => !memoarApi.configured || memoarApi.authenticated);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [selected, setSelected] = useState<SessionSummary | null>(null);
   const [detail, setDetail] = useState<SessionDetailData | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   // Stamped when the archive loads so views can do time maths without reading
@@ -84,34 +107,57 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const onHashChange = () => setView(memoarApi.configured && !memoarApi.authenticated ? 'signin' : viewFromHash());
     const onUnauthorized = () => {
-      setView('signin');
-      window.history.replaceState(null, '', '#/signin');
+      setRoute({ view: 'signin' });
+      window.history.replaceState(null, '', pathForRoute({ view: 'signin' }));
     };
-    window.addEventListener('hashchange', onHashChange);
     window.addEventListener('memoar:unauthorized', onUnauthorized);
     return () => {
-      window.removeEventListener('hashchange', onHashChange);
       window.removeEventListener('memoar:unauthorized', onUnauthorized);
     };
   }, []);
 
-  const navigate = useCallback((next: ViewId) => {
-    setView(next);
-    const nextHash = `#/${next}`;
-    if (window.location.hash !== nextHash) window.history.pushState(null, '', nextHash);
+  const go = useCallback((next: Route) => {
+    setRoute(next);
+    const path = pathForRoute(next);
+    if (window.location.pathname !== path) window.history.pushState(null, '', path);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  const navigate = useCallback((next: ViewId) => { go({ view: next }); }, [go]);
+
+  // Back and forward move between screens, which is what those buttons are for.
+  useEffect(() => {
+    const onPopState = () => { setRoute(routeForPath(window.location.pathname) ?? { view: 'timeline' }); };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   const openSession = useCallback((session: SessionSummary) => {
-    setSelected(session);
-    setDetail(null);
-    navigate('session');
-    void memoarApi.getSession(session).then(setDetail).catch((error: unknown) => {
-      setConnectionError(error instanceof Error ? error.message : 'Session could not be loaded');
-    });
-  }, [navigate]);
+    go({ view: 'session', sessionId: session.id });
+  }, [go]);
+
+  /*
+    The address says which session is open, and that is the only thing that
+    fetches one — whether you clicked a row, followed a link somebody sent, or
+    reloaded the page. There is no summary to start from in the last two cases.
+  */
+  const routeSessionId = route.view === 'session' ? route.sessionId : undefined;
+  useEffect(() => {
+    if (!routeSessionId || !memoarApi.authenticated) return undefined;
+    let active = true;
+    void memoarApi.getSession({ id: routeSessionId })
+      .then((loaded) => { if (active) setDetail(loaded); })
+      .catch((error: unknown) => {
+        if (active) setConnectionError(error instanceof Error ? error.message : 'Session could not be loaded');
+      });
+    return () => { active = false; };
+  }, [routeSessionId]);
+
+  // Whatever is loaded is only shown when it is the session the address names,
+  // so moving between sessions never renders the previous one under the new
+  // heading.
+  const openDetail = detail && detail.session.id === routeSessionId ? detail : null;
 
   const allSessions = useMemo(() => dashboard.timeline.flatMap((group) => group.sessions), [dashboard.timeline]);
 
@@ -141,17 +187,26 @@ export function App() {
   const signIn = async (email: string, password: string) => {
     if (memoarApi.configured) setUser(await memoarApi.login(email, password));
     await loadDashboard();
-    navigate('timeline');
+    go(intended ?? { view: 'timeline' });
   };
 
   const createAccount = async (email: string, password: string) => {
     if (memoarApi.configured) setUser(await memoarApi.register(email, password));
     await loadDashboard();
+    // A new archive has nothing to return to, so it starts where it starts.
     navigate('timeline');
   };
 
   if (view === 'signin') {
-    return <SignInView onSignIn={signIn} onCreateAccount={createAccount} onOAuth={(provider) => memoarApi.beginOAuth(provider)} />;
+    return (
+      <SignInView
+        onSignIn={signIn}
+        onCreateAccount={createAccount}
+        onOAuth={(provider) => memoarApi.beginOAuth(provider)}
+        creating={route.creating ?? false}
+        onModeChange={(creating) => { go(creating ? { view: 'signin', creating: true } : { view: 'signin' }); }}
+      />
+    );
   }
 
   let content;
@@ -214,19 +269,18 @@ export function App() {
     }} />;
   } else if (view === 'onboarding') {
     content = <OnboardingView machines={dashboard.machines} onComplete={() => navigate('timeline')} onRefresh={loadDashboard} />;
-  } else if (view === 'session' && selected) {
-    content = detail ? (
+  } else if (view === 'session') {
+    content = openDetail ? (
       <SessionDetailView
-        detail={detail}
+        detail={openDetail}
         collections={dashboard.collections}
         machines={dashboard.machines}
         onArchiveChanged={() => void loadDashboard()}
         onBack={() => navigate('timeline')}
         onBuildPack={(query, budget, freshness) => memoarApi.buildPack(query, budget, freshness)}
-        onConvert={(target) => memoarApi.requestConversion(detail.session.id, target)}
+        onConvert={(target) => memoarApi.requestConversion(openDetail.session.id, target)}
         onConversionStatus={(jobId) => memoarApi.getConversion(jobId)}
         onDeleted={() => {
-          setSelected(null);
           setDetail(null);
           void loadDashboard();
           navigate('timeline');

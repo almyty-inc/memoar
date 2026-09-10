@@ -610,7 +610,8 @@ export class MemoarApiClient {
     };
   }
 
-  async getSession(session: SessionSummary): Promise<SessionDetailData> {
+  /** By id: a session opened from its own URL has no summary to start from. */
+  async getSession(session: Pick<SessionSummary, 'id'>): Promise<SessionDetailData> {
     this.requireArchive();
     const chunks: WireSessionChunk[] = [];
     let cursor: string | null = null;
