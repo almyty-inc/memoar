@@ -1,0 +1,136 @@
+/*
+  The scales. Nothing outside this file invents a number.
+
+  Every size in the application comes from one of the ladders below. A value
+  that is not on a ladder is a value somebody nudged until it looked right on
+  one screen, and the screen next to it then disagrees by a pixel or two — which
+  is what the stylesheet this replaces was made of: seventeen font sizes, forty
+  spacing values, fifteen border radii, twelve font weights.
+*/
+:root {
+  color-scheme: light;
+
+  /*
+    Paper, ink, and one accent.
+
+    A terminal is legible because it commits to very few surfaces and lets rules
+    and alignment do the rest. The layers here are nearly the same colour on
+    purpose: a panel separates from the page by a hairline rather than by a step
+    in brightness, so nothing needs a shadow to look raised.
+  */
+  --bg: #f7f6f3;
+  --sidebar: #f2f1ed;
+  --panel: #fffefc;
+  --panel-raised: #ffffff;
+  --panel-hover: #f4f3ef;
+  --line: #dedcd5;
+  --line-soft: #e8e6e0;
+  --text: #17191b;
+  --muted: #5f6265;
+  --quiet: #86898c;
+
+  /* The one saturated colour, kept from the dark theme and darkened until it is
+     legible on paper rather than glowing on top of it. */
+  --acid: #3d7a1f;
+  --acid-strong: #2f6415;
+  --acid-ink: #f2fbe2;
+  --cyan: #1f6f96;
+  --pink: #a13a6b;
+  --violet: #5a46b8;
+  --warning: #8a5d00;
+  --danger: #b3261e;
+  --surface-cyan: #d7e4ea;
+  --surface-warning: #ece6d5;
+  --surface-danger: #e9d8d8;
+  --line-warning: #dfd8c5;
+  --line-danger: #d6b2b2;
+
+  /* Spacing: a 4px grid. Steps are far enough apart to read as deliberate. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /*
+    Type: 14px is the body. Nothing that carries meaning is set below 12px, and
+    11px exists only for uppercase mono labels, where the caps height makes it
+    read a size larger than it is.
+  */
+  --fs-label: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+  --fs-4xl: 38px;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-normal: 1.5;
+  --lh-prose: 1.65;
+
+  /* Four weights. Inter can render anything between 100 and 900, which is how a
+     stylesheet ends up with 560, 620, 670 and 720 in it. */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* Boxes, not pills: a small radius everywhere reads as structure. */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-full: 999px;
+
+  /* Control heights, so a button, a select and an input in one row line up. */
+  --h-sm: 32px;
+  --h-md: 36px;
+  --h-lg: 44px;
+
+  /* Square tiles behind icons. Three sizes, not the ten this replaces. */
+  --tile-sm: 28px;
+  --tile-md: 32px;
+  --tile-lg: 40px;
+
+  /* Layout. The topbar shares the page gutter so the breadcrumb sits directly
+     above the heading rather than eight pixels to the left of it. */
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
+  --gutter: var(--sp-8);
+  --content-max: 1200px;
+  /* Prose stops at a readable measure instead of running the width of a 27" display. */
+  --measure: 68ch;
+
+  /* Depth comes from the hairline, so the shadow is barely there. */
+  --shadow: 0 1px 2px rgb(23 25 27 / 6%), 0 8px 24px rgb(23 25 27 / 5%);
+  --scroll-thumb: #d9d7d0;
+  --scroll-thumb-active: #b4b1a8;
+  --scroll-thumb-hover: #c6c3bb;
+
+  /* Paths, hashes, counts, labels: what a terminal would align. */
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--fs-base);
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+@media (max-width: 860px) {
+  :root { --gutter: var(--sp-6); }
+}
+
+@media (max-width: 620px) {
+  :root { --gutter: var(--sp-4); --topbar-h: 56px; }
+}

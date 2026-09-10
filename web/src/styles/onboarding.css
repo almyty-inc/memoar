@@ -1,0 +1,79 @@
+/* Signing in, and the first-run setup guide. */
+
+.auth-page { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); }
+.auth-card { width: min(400px, calc(100% - var(--sp-10))); align-self: center; justify-self: center; padding: var(--sp-12) 0; }
+.auth-brand { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-8); font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: -.03em; }
+.auth-copy h1 { margin: 0 0 var(--sp-2); font-size: var(--fs-3xl); letter-spacing: -.035em; }
+.auth-copy p { max-width: var(--measure); margin: 0 0 var(--sp-6); color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-normal); }
+
+.oauth-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.oauth-buttons .button { min-height: var(--h-lg); }
+.google-mark { font-weight: var(--fw-bold); color: var(--cyan); }
+.or-divider { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-5) 0; color: var(--quiet); font-family: var(--mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .1em; }
+.or-divider span { flex: 1; height: 1px; background: var(--line-soft); }
+
+/* One rhythm down the form: every gap between a field, the button and the two
+   lines under it is a step on the same ladder. */
+.auth-form { display: grid; gap: var(--sp-4); }
+.auth-form > label { display: grid; gap: var(--sp-2); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.auth-form > label input { min-height: var(--h-lg); padding: 0 var(--sp-3); color: var(--text); background: var(--panel-hover); border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--fs-base); font-weight: var(--fw-normal); }
+.auth-form > label input::placeholder { color: var(--quiet); }
+.auth-form > .button { width: 100%; min-height: var(--h-lg); margin-top: var(--sp-1); }
+.auth-signup { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
+.auth-signup button { color: var(--acid); background: transparent; border: 0; cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.auth-trust { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-6); padding-top: var(--sp-5); color: var(--quiet); border-top: 1px solid var(--line-soft); font-size: var(--fs-sm); }
+
+/*
+  The right half is supporting copy, so it is set below the heading it sits
+  beside. Two headlines the same size on one screen compete and neither wins.
+*/
+.auth-aside { display: grid; place-items: center; padding: var(--sp-12); background: var(--sidebar); border-left: 1px solid var(--line-soft); }
+.auth-aside > div { max-width: 46ch; }
+.auth-aside-lede { margin: 0 0 var(--sp-5); font-size: var(--fs-2xl); line-height: var(--lh-snug); letter-spacing: -.03em; color: var(--text); }
+.auth-aside > div > p:not(.auth-aside-lede) { margin: 0; color: var(--muted); font-size: var(--fs-md); line-height: var(--lh-prose); }
+.auth-aside-points { margin: var(--sp-6) 0 0; padding: 0; display: grid; gap: var(--sp-3); list-style: none; color: var(--muted); font-size: var(--fs-base); }
+.auth-aside-points li { padding-left: var(--sp-5); position: relative; line-height: var(--lh-normal); }
+.auth-aside-points li::before { content: ""; position: absolute; top: 8px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--acid); }
+
+.onboarding-page { position: relative; min-height: calc(100vh - var(--topbar-h)); overflow: hidden; padding: var(--sp-10) var(--gutter) var(--sp-12); }
+.onboarding-head { position: relative; max-width: 62ch; margin: 0 auto var(--sp-10); text-align: center; }
+.onboarding-head .eyebrow { justify-content: center; }
+.onboarding-head h1 { margin: var(--sp-3) 0; font-size: clamp(28px, 3.4vw, 38px); letter-spacing: -.035em; }
+.onboarding-head p { max-width: var(--measure); margin: 0 auto; color: var(--muted); font-size: var(--fs-md); line-height: var(--lh-prose); }
+.onboarding-layout { position: relative; max-width: var(--content-max); display: grid; grid-template-columns: 200px minmax(340px, 1fr) minmax(300px, .8fr); gap: var(--sp-5); margin: 0 auto; }
+
+.setup-steps { display: grid; align-content: start; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.setup-steps li { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-3); padding: var(--sp-3); color: var(--muted); }
+.setup-steps li > span { width: var(--tile-sm); height: var(--tile-sm); display: inline-flex; align-items: center; justify-content: center; background: var(--sidebar); border: 1px solid var(--line); border-radius: 50%; font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.setup-steps strong, .setup-steps p { display: block; }
+.setup-steps strong { font-size: var(--fs-sm); }
+.setup-steps p { margin: var(--sp-1) 0 0; font-size: var(--fs-xs); line-height: var(--lh-normal); }
+.setup-steps li.done > span { color: var(--acid-ink); background: var(--acid); border-color: var(--acid); }
+.setup-steps li.active { color: var(--text); background: var(--sidebar); border-radius: var(--r-md); }
+.setup-steps li.active > span { color: var(--acid); border-color: var(--acid); }
+
+.install-card, .sync-card { overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.install-card > header, .sync-card > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-3); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
+.install-card > header > span { width: var(--tile-lg); height: var(--tile-lg); display: inline-flex; align-items: center; justify-content: center; color: var(--acid); background: var(--panel-hover); border-radius: var(--r-md); }
+.install-card h2, .sync-card h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-md); }
+.install-card header p, .sync-card header p { margin: 0; color: var(--quiet); font-size: var(--fs-sm); }
+.install-command { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-2); margin: var(--sp-4); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); background: var(--panel-hover); border: 1px solid var(--line); border-radius: var(--r-md); }
+.install-command > span { color: var(--acid); font-family: var(--mono); font-size: var(--fs-sm); }
+.install-command code { overflow-x: auto; color: var(--text); font-family: var(--mono); font-size: var(--fs-sm); }
+.install-explainer { display: grid; gap: var(--sp-1); padding: 0 var(--sp-4) var(--sp-4); }
+.install-explainer > div { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2); }
+.install-explainer > div > span { width: var(--tile-sm); height: var(--tile-sm); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); background: var(--panel-hover); border-radius: var(--r-md); }
+.install-explainer p { margin: 0; }
+.install-explainer strong, .install-explainer small { display: block; }
+.install-explainer strong { font-size: var(--fs-sm); }
+.install-explainer small { margin-top: 2px; color: var(--quiet); font-size: var(--fs-xs); line-height: var(--lh-normal); }
+
+.sync-card { opacity: .68; }
+.sync-card.sync-active { opacity: 1; border-color: var(--acid); }
+.discovery-machine { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-3); margin: var(--sp-4); padding: var(--sp-3); background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.discovery-machine > span { width: var(--tile-md); height: var(--tile-md); display: inline-flex; align-items: center; justify-content: center; color: var(--acid); background: var(--sidebar); border-radius: var(--r-md); }
+.discovery-machine strong, .discovery-machine p { display: block; }
+.discovery-machine strong { font-size: var(--fs-sm); }
+.discovery-machine p { margin: var(--sp-1) 0 0; color: var(--quiet); font-size: var(--fs-xs); }
+.sync-card > .button { width: calc(100% - var(--sp-8)); margin: 0 var(--sp-4) var(--sp-4); }
+.onboarding-security { position: relative; display: flex; align-items: center; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-8); color: var(--muted); font-size: var(--fs-sm); }

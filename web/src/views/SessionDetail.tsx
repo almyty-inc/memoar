@@ -288,9 +288,9 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
             <h2>Session overview</h2>
             <div className="metric-grid">
               <div><MessageSquare size={15} /><strong>{session.turnCount}</strong><span>turns</span></div>
-              <TerminalSquare size={15} /><div><strong>{toolCalls}</strong><span>tool calls</span></div>
-              <Clock3 size={15} /><div><strong>{session.durationMinutes === undefined ? '—' : `${session.durationMinutes}m`}</strong><span>duration</span></div>
-              <WandSparkles size={15} /><div><strong>{formatNumber(session.tokenCount)}</strong><span>tokens</span></div>
+              <div><TerminalSquare size={15} /><strong>{toolCalls}</strong><span>tool calls</span></div>
+              <div><Clock3 size={15} /><strong>{session.durationMinutes === undefined ? '—' : `${session.durationMinutes}m`}</strong><span>duration</span></div>
+              <div><WandSparkles size={15} /><strong>{formatNumber(session.tokenCount)}</strong><span>tokens</span></div>
             </div>
             {/*
               Bars drawn from the numbers beside them. They were fixed at 62%

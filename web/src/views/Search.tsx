@@ -195,7 +195,7 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
                   <div className="result-content">
                     <div className="result-topline">
                       <SourceBadge source={session.source} label={session.sourceLabel} />
-                      <span>{session.workspace}</span>
+                      <span className="session-path">{session.workspace}</span>
                       <span>·</span>
                       <span>{formatRelative(session.updatedAt)}</span>
                     </div>

@@ -56,7 +56,7 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
         {/* Only what the session actually has: no placeholder standing in for a
             measurement nobody took. */}
         <div className="session-meta">
-          <span><GitBranch size={13} /> {session.workspace}</span>
+          <span><GitBranch size={13} /> <span className="session-path">{session.workspace}</span></span>
           {session.branch ? <span className="branch-name">{session.branch}</span> : null}
           <span><MessageSquare size={13} /> {session.turnCount}</span>
           {session.durationMinutes ? <span><Clock3 size={13} /> {session.durationMinutes}m</span> : null}

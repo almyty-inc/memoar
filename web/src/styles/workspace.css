@@ -1,0 +1,79 @@
+/* The arrangeable overview tiles, and the agent-memory screen. */
+
+.tile-surface-wrap { display: flex; flex-direction: column; gap: var(--sp-4); }
+.tile-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+.tile-toolbar p { margin: 0; color: var(--quiet); font-size: var(--fs-sm); }
+.tile-reset { flex: 0 0 auto; min-height: var(--h-sm); padding: 0 var(--sp-3); color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-medium); cursor: pointer; }
+.tile-reset:hover { color: var(--text); background: var(--panel-hover); }
+
+.tile-surface { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--sp-4); align-content: start; }
+/* While dragging, text selection turns every move into a highlight sweep. */
+.tile-surface.dragging { user-select: none; cursor: grabbing; }
+
+.tile { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.tile:focus-visible { outline: 2px solid var(--acid); outline-offset: 2px; }
+.tile-active { z-index: 5; border-color: var(--acid); box-shadow: var(--shadow); }
+.tile-head { display: flex; align-items: center; gap: var(--sp-2); flex: 0 0 auto; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line-soft); background: var(--panel-raised); }
+.tile-head h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-size: var(--fs-base); font-weight: var(--fw-semibold); letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
+.tile-size { color: var(--quiet); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.tile-grip { display: inline-flex; padding: var(--sp-1); color: var(--quiet); background: transparent; border: 0; border-radius: var(--r-sm); cursor: grab; touch-action: none; }
+.tile-grip:hover { color: var(--text); background: var(--panel-hover); }
+.tile-grip:active { cursor: grabbing; }
+.tile-body { position: relative; z-index: 1; flex: 1; min-height: 0; overflow: auto; padding: var(--sp-4); }
+
+/* The resize affordance is a corner target rather than an edge, so it never
+   competes with the tile's own scrollbar for the same few pixels. */
+.tile-resize { position: absolute; right: 0; bottom: 0; z-index: 2; width: var(--sp-6); height: var(--sp-6); padding: 0; background: transparent; border: 0; cursor: nwse-resize; touch-action: none; }
+.tile-resize::after { content: ''; position: absolute; right: 5px; bottom: 5px; width: 8px; height: 8px; border-right: 2px solid var(--line); border-bottom: 2px solid var(--line); border-radius: 0 0 3px 0; }
+.tile-resize:hover::after { border-color: var(--acid); }
+
+.tile-list { display: flex; flex-direction: column; gap: 2px; }
+.tile-row { display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-height: var(--h-md); padding: var(--sp-2); color: inherit; text-align: left; background: transparent; border: 0; border-radius: var(--r-md); cursor: pointer; }
+.tile-row.static { cursor: default; }
+.tile-row:not(.static):hover { background: var(--panel-hover); }
+/* The badge holds a column so the titles beside it start at one left edge
+   instead of stepping in and out with the length of each agent's name. */
+.tile-row > .source-badge { flex: 0 0 auto; min-width: 112px; justify-content: flex-start; }
+.tile-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.tile-row-main strong { overflow: hidden; font-size: var(--fs-sm); font-weight: var(--fw-semibold); text-overflow: ellipsis; white-space: nowrap; }
+.tile-row-main small { overflow: hidden; color: var(--quiet); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.tile-row-meta { flex: 0 0 auto; color: var(--quiet); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+
+.tile-stats { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
+.tile-stats div { display: flex; flex-direction: column; gap: var(--sp-1); }
+.tile-stats strong { font-size: var(--fs-2xl); font-weight: var(--fw-bold); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.tile-stats span { color: var(--quiet); font-size: var(--fs-sm); }
+.tile-scope { margin: 0 0 var(--sp-3); color: var(--quiet); font-family: var(--mono); font-size: var(--fs-xs); }
+
+.tile-bars { display: flex; flex-direction: column; gap: var(--sp-2); }
+.tile-bar { display: grid; grid-template-columns: minmax(80px, 1fr) 2fr auto; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); }
+.tile-bar > span:first-child { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.tile-bar-track { height: 6px; background: var(--line-soft); border-radius: var(--r-full); overflow: hidden; }
+.tile-bar-track > span { display: block; height: 100%; background: var(--acid); border-radius: var(--r-full); }
+.tile-bar-count { color: var(--quiet); font-variant-numeric: tabular-nums; }
+
+/* Agent memory: the standing instructions, and their history. */
+.memory-filter { height: var(--h-md); display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-md); }
+.memory-filter svg { color: var(--quiet); }
+.memory-filter input { width: 200px; color: var(--text); background: transparent; border: 0; outline: 0; font-size: var(--fs-sm); }
+.memory-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--sp-5); align-items: start; }
+.memory-layout:has(.memory-list:only-child) { grid-template-columns: minmax(0, 1fr); }
+.memory-list section { margin-bottom: var(--sp-6); }
+.memory-list h2 { margin: 0 0 var(--sp-3); color: var(--muted); overflow-wrap: anywhere; }
+.memory-entry { padding: var(--sp-4); margin-bottom: var(--sp-2); background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
+.memory-entry.selected { border-color: var(--acid); }
+.memory-entry > button { display: flex; align-items: center; gap: var(--sp-3); width: 100%; padding: 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; }
+.memory-entry-title { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.memory-entry-path { flex: 1; min-width: 0; color: var(--quiet); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.memory-entry-readers { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: var(--sp-3) 0 var(--sp-2); }
+.memory-entry footer { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); color: var(--quiet); font-size: var(--fs-xs); }
+
+.memory-detail { position: sticky; top: var(--sp-4); padding: var(--sp-5); background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
+.memory-detail header h2 { margin: 0; font-size: var(--fs-lg); }
+.memory-detail header p { margin: var(--sp-1) 0 var(--sp-4); color: var(--quiet); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.memory-revisions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.memory-revisions h3 { display: flex; align-items: center; gap: var(--sp-1); margin: 0 var(--sp-2) 0 0; color: var(--muted); font-size: var(--fs-sm); }
+.memory-revisions button { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2) var(--sp-3); background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); color: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.memory-revisions button.selected { border-color: var(--acid); }
+.memory-revisions button span { color: var(--quiet); font-size: var(--fs-xs); }
+.memory-text { max-height: 60vh; margin: 0; padding: var(--sp-4); overflow: auto; background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); font: var(--fs-xs)/var(--lh-normal) var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }

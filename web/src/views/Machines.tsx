@@ -74,7 +74,9 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
               </header>
               {isExpanded ? (
                 <div className="source-list">
-                  <div className="source-list-head"><span>Source</span><span>Archive</span><span>Last sync</span><span>Status</span><span /></div>
+                  {machine.sources.length > 0 ? (
+                    <div className="source-list-head"><span>Source</span><span>Archive</span><span>Last sync</span><span>Status</span><span /></div>
+                  ) : null}
                   {machine.sources.map((source) => <SourceRow key={source.id} source={source} />)}
                   <button className="add-source-row" type="button" onClick={onConnect}><Plus size={14} /> Discover another source on {machine.name}</button>
                 </div>

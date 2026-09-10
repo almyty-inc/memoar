@@ -1,0 +1,81 @@
+/* Element defaults and the few utilities that are not part of a component. */
+
+* { box-sizing: border-box; }
+html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--bg); color: var(--text); font-size: var(--fs-base); line-height: var(--lh-normal); }
+
+h1, h2, h3, h4 { line-height: var(--lh-tight); font-weight: var(--fw-semibold); }
+p { line-height: var(--lh-normal); }
+
+button, input, select, textarea { font: inherit; }
+button { color: inherit; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 2px;
+}
+::selection { color: var(--text); background: #dcf0b6; }
+
+/*
+  Scrollbars: thin, quiet, and only assertive while the region is actually being
+  used. A grey slab at full contrast on every scrollable panel at once is a lot
+  of furniture for something you interact with rarely.
+*/
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 3px solid transparent;
+  border-radius: var(--r-full);
+  background-clip: padding-box;
+  transition: background 140ms ease;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+:hover::-webkit-scrollbar-thumb { background: var(--scroll-thumb-active); }
+::-webkit-scrollbar-thumb:active { background: var(--acid); }
+
+.sr-only, .skip-link:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.skip-link:focus { position: fixed; z-index: 200; top: var(--sp-3); left: var(--sp-3); padding: var(--sp-3) var(--sp-4); color: var(--acid-ink); background: var(--acid); border-radius: var(--r-md); font-weight: var(--fw-bold); }
+
+.subtle-text { color: var(--muted); }
+.success-icon { color: var(--acid); }
+.muted-small { margin: var(--sp-2) 0; color: var(--quiet); font-size: var(--fs-xs); }
+
+/*
+  Monospace where a terminal would align things.
+
+  Paths, hashes, timestamps, counts and column labels are data, not prose. Set
+  in the text face they wander; set in mono they line up, which is most of what
+  makes a dense screen readable at a glance.
+*/
+.memory-entry-path, .memory-filter input, .memory-revisions button span,
+.session-path, .tile-size, .crumb, .command-search span,
+code, pre, samp { font-family: var(--mono); }
+
+/* The uppercase mono label: the one place 11px is allowed, because caps at 11
+   read larger than lowercase at 12 and these are labels, not sentences. */
+.eyebrow, .nav-label, .archive-stats span, .memory-list h2 {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* Hairlines do the separating, so panels do not also need to be a different
+   colour from the page. */
+.panel, .tile, .collection-card, .memory-entry, .memory-detail,
+.install-card, .sync-card { box-shadow: none; }
+
+.link-button { padding: 0; color: var(--acid); background: none; border: 0; font: inherit; font-weight: var(--fw-medium); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link-button:hover { color: var(--text); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
