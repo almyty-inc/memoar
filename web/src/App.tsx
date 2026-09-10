@@ -234,7 +234,7 @@ export function App() {
       />
     ) : <div className="session-loading"><LoaderCircle size={24} /><p>Loading canonical session…</p></div>;
   } else {
-    content = <TimelineView groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} onOpen={openSession} onSearch={() => navigate('search')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />;
+    content = <TimelineView groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} onOpen={openSession} onSearch={() => navigate('search')} onConnect={() => navigate('onboarding')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />;
   }
 
   return (

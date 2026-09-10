@@ -139,12 +139,55 @@ interface ListResponse<T> {
 
 export class MemoarApiError extends Error {
   readonly status: number;
+  /** The machine-readable code from the problem document, for callers that
+      want to say something specific about one kind of failure. */
+  readonly code: string | undefined;
+  /** Correlates with the server log. Worth showing when nothing else helps. */
+  readonly requestId: string | undefined;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, details?: { code?: string | undefined; requestId?: string | undefined }) {
     super(message);
     this.name = 'MemoarApiError';
     this.status = status;
+    this.code = details?.code;
+    this.requestId = details?.requestId;
   }
+}
+
+/** What to say when the server sends a status and nothing worth reading. */
+function statusSentence(status: number): string {
+  if (status === 401) return 'You are not signed in.';
+  if (status === 403) return 'You do not have access to that.';
+  if (status === 404) return 'That does not exist, or is not yours.';
+  if (status === 409) return 'That conflicts with something that already exists.';
+  if (status === 413) return 'That file is larger than the archive accepts.';
+  if (status === 429) return 'Too many requests. Wait a moment and try again.';
+  if (status >= 500) return 'The archive is having trouble. Try again shortly.';
+  return `The request failed (${status}).`;
+}
+
+/**
+ * The server speaks RFC 9457 problem documents. Read them.
+ *
+ * Printing the raw body put `{"type":"https://memoar.dev/problems/unauthorized",
+ * "title":"Unauthorized","status":401,...}` on screen every time somebody
+ * mistyped a password — as the error message, in every view that shows one.
+ */
+async function problemError(response: Response): Promise<MemoarApiError> {
+  const body = await response.text().catch(() => '');
+  let problem: { title?: unknown; detail?: unknown; code?: unknown; requestId?: unknown } = {};
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === 'object') problem = parsed;
+  } catch {
+    // Not a problem document: a proxy error page, or an empty body.
+  }
+  const detail = typeof problem.detail === 'string' ? problem.detail : undefined;
+  const title = typeof problem.title === 'string' ? problem.title : undefined;
+  return new MemoarApiError(response.status, detail ?? title ?? statusSentence(response.status), {
+    code: typeof problem.code === 'string' ? problem.code : undefined,
+    requestId: typeof problem.requestId === 'string' ? problem.requestId : undefined,
+  });
 }
 
 export type ImportSource = 'canonical' | 'cass' | 'claude-code' | 'codex' | 'antigravity-cli' | 'cursor' | 'chatgpt-export';
@@ -448,10 +491,7 @@ export class MemoarApiClient {
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     {
       const response = await this.fetchWithAuth(path, init);
-      if (!response.ok) {
-        const body = await response.text();
-        throw new MemoarApiError(response.status, body || `Memoar API returned ${response.status}`);
-      }
+      if (!response.ok) throw await problemError(response);
       if (response.status === 204) return undefined as T;
       return (await response.json()) as T;
     }
@@ -660,7 +700,7 @@ export class MemoarApiClient {
    */
   async exportSession(sessionId: string, format: 'canonical' | 'markdown' = 'canonical'): Promise<{ filename: string; body: string; contentType: string }> {
     const response = await this.fetchWithAuth(`/sessions/${sessionId}/export?format=${format}`);
-    if (!response.ok) throw new MemoarApiError(response.status, `Export failed with HTTP ${response.status}`);
+    if (!response.ok) throw await problemError(response);
     const disposition = response.headers.get('content-disposition') ?? '';
     const match = /filename="([^"]+)"/.exec(disposition);
     return {

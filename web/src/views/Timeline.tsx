@@ -1,5 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
+  Archive,
   ArrowRight,
   CalendarDays,
   ChevronDown,
@@ -85,7 +86,7 @@ function withinRange(updatedAt: string, cutoff: number | null): boolean {
   return Number.isFinite(at) && at >= cutoff;
 }
 
-export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearch, hasMore, loadingMore, onLoadMore }: {
+export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearch, onConnect, hasMore, loadingMore, onLoadMore }: {
   groups: TimelineGroup[];
   machines: Machine[];
   /** Sessions in the archive, counted by the server rather than by this page. */
@@ -94,6 +95,7 @@ export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearc
   asOf: number;
   onOpen: (session: SessionSummary) => void;
   onSearch: () => void;
+  onConnect: () => void;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => Promise<void>;
@@ -178,6 +180,9 @@ export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearc
         </div>
       </section>
 
+      {/* Filters over an empty archive are three controls with one option each,
+          beside a search of nothing. */}
+      {sessions.length === 0 ? null : (
       <section className="toolbar" aria-label="Timeline filters">
         <div className="toolbar-left">
           <Button className="mobile-filter-button" size="sm" onClick={() => setFiltersOpen(!filtersOpen)}>
@@ -218,6 +223,7 @@ export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearc
         </div>
         <Button size="sm" variant="ghost" onClick={onSearch}>Search archive <span className="shortcut-hint">⌘K</span></Button>
       </section>
+      )}
 
       <div className="timeline-scroll" ref={scrollRef} role="feed" aria-label="Archived sessions">
         {items.length ? (
@@ -244,18 +250,34 @@ export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearc
               );
             })}
           </div>
+        ) : sessions.length === 0 ? (
+          /*
+            An archive with nothing in it is not an archive with the wrong
+            filters on. Somebody who has just signed up was being told to clear
+            filters they never set, next to a button that would do nothing.
+          */
+          <div className="empty-state">
+            <Archive size={28} />
+            <h3>Nothing archived yet</h3>
+            <p>Connect a machine and Memoar preserves the sessions your coding agents already write to disk.</p>
+            <Button variant="primary" onClick={onConnect}>Connect a machine <ArrowRight size={14} /></Button>
+          </div>
         ) : (
           <div className="no-filter-results">
             <h3>No sessions match these filters</h3>
             <p>Clear a filter to return to the full archive.</p>
-            <Button onClick={() => { setSource('all'); setWorkspace('all'); }}>Clear filters</Button>
+            <Button onClick={() => { setSource('all'); setWorkspace('all'); chooseRange('all'); }}>Clear filters</Button>
           </div>
         )}
-        <div className="infinite-marker" aria-label={hasMore ? 'More archive history is available' : 'Archive history is fully loaded'}>
-          <span />
-          {hasMore ? <Button size="sm" variant="ghost" disabled={loadingMore} onClick={() => void onLoadMore()}>{loadingMore ? 'Loading older sessions…' : 'Load older sessions'}</Button> : <p>All available sessions loaded</p>}
-          <span />
-        </div>
+        {/* "All available sessions loaded" under an empty archive is a report
+            about nothing. */}
+        {sessions.length > 0 ? (
+          <div className="infinite-marker" aria-label={hasMore ? 'More archive history is available' : 'Archive history is fully loaded'}>
+            <span />
+            {hasMore ? <Button size="sm" variant="ghost" disabled={loadingMore} onClick={() => void onLoadMore()}>{loadingMore ? 'Loading older sessions…' : 'Load older sessions'}</Button> : <p>All available sessions loaded</p>}
+            <span />
+          </div>
+        ) : null}
       </div>
     </div>
   );

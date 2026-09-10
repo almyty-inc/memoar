@@ -4,7 +4,10 @@
 .auth-card { width: min(400px, calc(100% - var(--sp-10))); align-self: center; justify-self: center; padding: var(--sp-12) 0; }
 .auth-brand { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-8); font-size: var(--fs-xl); font-weight: var(--fw-bold); letter-spacing: -.03em; }
 .auth-copy h1 { margin: 0 0 var(--sp-2); font-size: var(--fs-3xl); letter-spacing: -.035em; }
-.auth-copy p { max-width: var(--measure); margin: 0 0 var(--sp-6); color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-normal); }
+/* Two lines are reserved whether this mode needs them or not, so switching
+   between sign-in and create does not resize a vertically centred card and
+   slide the fields out from under the pointer. */
+.auth-copy p { min-height: calc(2 * var(--lh-normal) * var(--fs-base)); margin: 0 0 var(--sp-6); color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-normal); }
 
 .oauth-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
 .oauth-buttons .button { min-height: var(--h-lg); }
@@ -19,9 +22,17 @@
 .auth-form > label input { min-height: var(--h-lg); padding: 0 var(--sp-3); color: var(--text); background: var(--panel-hover); border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--fs-base); font-weight: var(--fw-normal); }
 .auth-form > label input::placeholder { color: var(--quiet); }
 .auth-form > .button { width: 100%; min-height: var(--h-lg); margin-top: var(--sp-1); }
+
+/* An inline failure: bounded by the card, wrapping anywhere, so no server
+   message can ever run out past the panel. */
+.auth-error { display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; padding: var(--sp-3); color: var(--danger); background: var(--surface-danger); border: 1px solid var(--line-danger); border-radius: var(--r-md); font-size: var(--fs-sm); line-height: var(--lh-normal); overflow-wrap: anywhere; }
+.auth-error svg { flex: 0 0 auto; margin-top: 1px; }
+
+/* Changing your mind is a separate decision from filling the form in, and is
+   spaced like one. */
+.auth-foot { display: grid; gap: var(--sp-4); margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--line-soft); }
 .auth-signup { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
-.auth-signup button { color: var(--acid); background: transparent; border: 0; cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.auth-trust { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-6); padding-top: var(--sp-5); color: var(--quiet); border-top: 1px solid var(--line-soft); font-size: var(--fs-sm); }
+.auth-trust { display: flex; align-items: center; gap: var(--sp-2); margin: 0; color: var(--quiet); font-size: var(--fs-sm); }
 
 /*
   The right half is supporting copy, so it is set below the heading it sits
