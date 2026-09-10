@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { Machine, MachineSource } from '../lib/types';
-import { Badge, Button, CopyButton, IconButton, StatusDot, cn, formatRelative } from '../components/ui';
+import { Badge, Button, IconButton, StatusDot, cn, formatRelative } from '../components/ui';
 import { machineStatusLabel } from '../lib/source-labels';
 
 const stateCopy: Record<MachineSource['state'], string> = {
@@ -108,7 +108,11 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
       ) : null}
 
       <section className="install-inline">
-        <span><CircleDot size={18} /></span><div><strong>Connect another computer</strong><p>The install command registers a machine-specific token and starts source discovery.</p></div><code>npx memoar connect</code><CopyButton value="npx memoar connect" label="Copy" /><Button size="sm" variant="ghost" onClick={onConnect}>Setup guide</Button>
+        {/* `npx memoar connect` is not one of the CLI's commands and nothing is
+            published to run it with. The setup guide carries the real ones. */}
+        <span><CircleDot size={18} /></span>
+        <div><strong>Connect another computer</strong><p>Signing the agent in registers the machine and starts source discovery.</p></div>
+        <Button size="sm" variant="primary" onClick={onConnect}>Setup guide</Button>
       </section>
     </div>
   );

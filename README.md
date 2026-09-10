@@ -1,6 +1,31 @@
 # Memoar
 
-Memoar is a vendor-neutral cloud archive for AI coding sessions. It captures native session files, preserves their raw bytes, normalizes them into one branch-aware schema, and makes the archive available to people through a web app and to agents through MCP and a CLI.
+Memoar is a vendor-neutral archive for AI coding sessions. Your agents already
+write every session to disk; Memoar captures those files, preserves their raw
+bytes, normalizes them into one branch-aware schema, and makes the result
+searchable by you through a web app and by agents through MCP and a CLI.
+
+Because the sessions are one shape, you can search across every tool at once,
+convert a session from one agent into another agent's native format, and share
+one with somebody after reviewing exactly what leaves your archive.
+
+## Start here
+
+- **[Getting started](docs/getting-started.md)** — run the archive, build the
+  capture agent, archive what is already on your machine.
+- **[Using Memoar](docs/using-memoar.md)** — what each screen is for, and what
+  the archive can do.
+- [Supported sources](docs/sources.md) — every tool with a tested parser.
+  Anything not listed is not supported.
+- [Sharing, transfer, conversion](docs/sharing-and-convert.md) ·
+  [MCP](docs/mcp.md) · [Deploying](docs/install.md) ·
+  [Backups](docs/backup.md) · [Observability](docs/observability.md) ·
+  [Architecture](docs/architecture.md)
+
+There is no hosted Memoar and no published CLI: you run the service, and the
+agent is built from this repository. See getting started.
+
+## Contributing
 
 This repository is a contracts-first monorepo:
 

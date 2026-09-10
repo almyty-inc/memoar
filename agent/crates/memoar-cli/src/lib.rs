@@ -1233,13 +1233,44 @@ impl ApiClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().unwrap_or_default();
-            return Err(AppError::network(format!("HTTP {status}: {body}")));
+            return Err(AppError::network(problem_message(status.as_u16(), &body)));
         }
         Ok(response)
     }
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.endpoint, path)
+    }
+}
+
+/// What to say when the archive refuses a request.
+///
+/// The server answers with an RFC 9457 problem document, and this printed the
+/// document: a stale credential produced `HTTP 401 Unauthorized:
+/// {"type":"https://memoar.dev/problems/unauthorized","title":"Unauthorized",
+/// "status":401,...}` on the terminal. The web client had the same defect.
+fn problem_message(status: u16, body: &str) -> String {
+    let described = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|problem| {
+            let field = |name: &str| problem.get(name).and_then(Value::as_str).map(str::to_owned);
+            field("detail").or_else(|| field("title"))
+        })
+        .unwrap_or_else(|| status_sentence(status));
+    format!("{described} (HTTP {status})")
+}
+
+/// The fallback when the body says nothing worth reading.
+fn status_sentence(status: u16) -> String {
+    match status {
+        401 => "This machine is not signed in. Run `memoar login`.".to_owned(),
+        403 => "These credentials do not allow that.".to_owned(),
+        404 => "The archive has no such thing.".to_owned(),
+        409 => "That conflicts with something already in the archive.".to_owned(),
+        413 => "That is larger than the archive accepts.".to_owned(),
+        429 => "Too many requests. Wait a moment and retry.".to_owned(),
+        500..=599 => "The archive is having trouble. Retry shortly.".to_owned(),
+        _ => "The request failed.".to_owned(),
     }
 }
 
@@ -1352,6 +1383,44 @@ pub fn introspect_value() -> Value {
 
 #[cfg(test)]
 mod tests {
+    use super::{problem_message, status_sentence};
+
+    /// A rejected request used to print the whole problem document at the
+    /// terminal, wire format and all.
+    #[test]
+    fn a_refusal_reads_as_a_sentence() {
+        let body = r#"{"type":"https://memoar.dev/problems/unauthorized","title":"Unauthorized","status":401,"code":"unauthorized","detail":"Valid bearer, machine, or API-key credentials are required","requestId":"fd492b99"}"#;
+
+        let message = problem_message(401, body);
+
+        assert_eq!(
+            message,
+            "Valid bearer, machine, or API-key credentials are required (HTTP 401)"
+        );
+        assert!(!message.contains('{'), "no wire format reaches the reader");
+        assert!(!message.contains("memoar.dev/problems"));
+    }
+
+    #[test]
+    fn a_title_stands_in_when_there_is_no_detail() {
+        let message = problem_message(409, r#"{"title":"Email already registered","status":409}"#);
+        assert_eq!(message, "Email already registered (HTTP 409)");
+    }
+
+    #[test]
+    fn a_body_that_is_not_a_problem_document_says_something_useful() {
+        // A proxy answering instead of the archive: an HTML error page dumped
+        // on the terminal is worse than a sentence about the status.
+        let message = problem_message(502, "<html><body>502 Bad Gateway</body></html>");
+        assert_eq!(message, "The archive is having trouble. Retry shortly. (HTTP 502)");
+        assert!(!message.contains("<html>"));
+    }
+
+    #[test]
+    fn an_unsigned_machine_is_told_what_to_run() {
+        assert!(status_sentence(401).contains("memoar login"));
+    }
+
     #[test]
     fn sse_decoder_yields_complete_events_only() {
         let mut decoder = SseDecoder::new();

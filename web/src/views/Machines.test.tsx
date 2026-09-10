@@ -17,6 +17,23 @@ function machine(overrides: Partial<Machine> = {}): Machine {
 }
 
 describe('machines overview', () => {
+  it('offers no install command that does not exist', () => {
+    // This page told you to run `npx memoar connect`. That is not one of the
+    // CLI's commands, and nothing is published to run it with — so the one
+    // instruction the product gave you failed on the first line.
+    render(<MachinesView machines={[machine()]} onConnect={vi.fn()} />);
+
+    expect(screen.queryByText(/npx memoar connect/u)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Setup guide/u }).length).toBeGreaterThan(0);
+  });
+
+  it('names a connection state in words rather than printing the enum', () => {
+    render(<MachinesView machines={[machine({ status: 'never_connected', lastSeenAt: null })]} onConnect={vi.fn()} />);
+
+    expect(screen.getByText('Never connected')).toBeInTheDocument();
+    expect(screen.queryByText('never_connected')).not.toBeInTheDocument();
+  });
+
   it('says which machines have not reported instead of reassuring', () => {
     // This tile read "Capture healthy — raw mirror is up to date" whatever the
     // machines were doing, on the page you would open precisely because you

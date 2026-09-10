@@ -98,7 +98,7 @@
 .source-diagnostic > div > span, .install-inline > span { width: var(--tile-md); height: var(--tile-md); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--warning); background: var(--panel-hover); border-radius: var(--r-md); }
 .source-diagnostic strong, .install-inline strong { display: block; font-size: var(--fs-base); }
 .source-diagnostic p, .install-inline p { margin: var(--sp-1) 0 0; color: var(--muted); font-size: var(--fs-sm); }
-.install-inline { grid-template-columns: auto minmax(200px, 1fr) auto auto auto; background: var(--sidebar); border-color: var(--line-soft); }
+.install-inline { grid-template-columns: auto minmax(200px, 1fr) auto; background: var(--sidebar); border-color: var(--line-soft); }
 .install-inline > span { color: var(--acid); background: var(--panel-hover); }
 .install-inline p { color: var(--quiet); }
 .install-inline code { color: var(--muted); font-size: var(--fs-sm); }
