@@ -1412,7 +1412,10 @@ mod tests {
         // A proxy answering instead of the archive: an HTML error page dumped
         // on the terminal is worse than a sentence about the status.
         let message = problem_message(502, "<html><body>502 Bad Gateway</body></html>");
-        assert_eq!(message, "The archive is having trouble. Retry shortly. (HTTP 502)");
+        assert_eq!(
+            message,
+            "The archive is having trouble. Retry shortly. (HTTP 502)"
+        );
         assert!(!message.contains("<html>"));
     }
 

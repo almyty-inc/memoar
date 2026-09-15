@@ -174,3 +174,21 @@ test("concurrent callers share one locked download", async () => {
   assert.equal(release.requests(), 2, "one checksum and one binary request expected");
   await release.close();
 });
+
+test("asks for the version of the agent that is actually released", () => {
+  /*
+    The launcher downloads `/v${its own version}/`, so its version is not
+    cosmetic: it selects which release it installs. It sat at 0.2.0 while the
+    agent was 0.3.0, which would have 404'd every install the moment the
+    package was published — the failure arriving after `npx` had already
+    fetched the launcher, which is a worse place to find out.
+  */
+  const manifest = fs.readFileSync(path.resolve(__dirname, "../../../agent/Cargo.toml"), "utf8");
+  const workspaceVersion = manifest.match(/^\s*version\s*=\s*"([^"]+)"/m);
+  assert.ok(workspaceVersion, "agent/Cargo.toml must declare a workspace version");
+  assert.equal(
+    require("../package.json").version,
+    workspaceVersion[1],
+    "the launcher's version selects the release it downloads, so it must be the agent's"
+  );
+});
