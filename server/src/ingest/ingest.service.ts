@@ -135,7 +135,8 @@ export class DefaultPipelineSeedFactory implements PipelineSeedFactory {
       title: `${format.source} imported session`,
       models: [],
       tokenTotals: { input: 0, output: 0 },
-      provenance: [{ kind: "native", sourceId: artifact.sha256, capturedAt: now, parserVersion: "0.1.0" }],
+      // Replaced with the parser that actually ran, once one has been chosen.
+      provenance: [{ kind: "native", sourceId: artifact.sha256, capturedAt: now, parserVersion: "pending" }],
       visibility: { scope: "private", ownerId: context.userId },
       ext: { rawArtifactId: artifact.id },
     };
@@ -172,7 +173,24 @@ export class IngestPipeline {
         sourceVersion: parsedSession.source.version,
         nativeSessionId: parsedSession.source.nativeSessionId ?? `${fallbackNativeSessionId(context, artifact)}:${index}`,
       }, artifact.sessionIds[index] ?? parsedSession.id);
-      const session = { ...parsedSession, id: canonicalSessionId, redactionStatus: findings.length ? "findings" as const : "clear" as const };
+      /*
+        The parser that actually ran, by name and version.
+
+        The seed stamps a placeholder because the parser is not known until the
+        format is detected and dispatched; leaving it there recorded every
+        session in the archive as `0.1.0` whatever had parsed it — the Claude
+        Code parser calls itself `claude-code:v1:0.2.0`. Reprocessing exists to
+        replay a parser improvement over what earlier versions produced, and it
+        cannot find those sessions if provenance says they were all the same.
+      */
+      const session = {
+        ...parsedSession,
+        id: canonicalSessionId,
+        provenance: parsedSession.provenance.map((entry) => (
+          entry.kind === "native" ? { ...entry, parserVersion: result.parser } : entry
+        )),
+        redactionStatus: findings.length ? "findings" as const : "clear" as const,
+      };
       await this.store.saveSession(context, session);
       // Every finding at once. Written one by one, a transcript that leaked a
       // credential on a hundred lines cost a hundred round trips to store.
