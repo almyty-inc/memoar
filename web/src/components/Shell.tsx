@@ -67,17 +67,27 @@ const titles: Partial<Record<ViewId, string>> = {
   session: 'Session',
 };
 
-export function Shell({ view, user, machines, children, onNavigate }: {
+export function Shell({ view, user, machines, reachable, children, onNavigate }: {
   view: ViewId;
   user: CurrentUser | null;
   machines: Machine[];
+  /** Whether the last exchange with the archive succeeded. */
+  reachable: boolean;
   children: ReactNode;
   onNavigate: (view: ViewId) => void;
 }) {
-  // Setup progress is the share of connected machines that have actually
-  // archived something.
-  const capturing = machines.filter((machine) => machine.sources.some((source) => source.sessionCount > 0)).length;
-  const setupProgress = machines.length === 0 ? 0 : Math.round((capturing / machines.length) * 100);
+  /*
+    Setup is three steps, and the bar measures those: signed in, a machine that
+    has actually reported, something captured.
+
+    It used to be the share of registered machines that had archived anything —
+    a ratio presented as progress. Every machine archiving is not a goal, and a
+    registration that never connected held the bar below full for good.
+  */
+  const reporting = machines.filter((machine) => machine.status !== 'never_connected');
+  const capturing = reporting.filter((machine) => machine.sources.some((source) => source.sessionCount > 0));
+  const setupSteps = 1 + Number(reporting.length > 0) + Number(capturing.length > 0);
+  const setupProgress = Math.round((setupSteps / 3) * 100);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -142,9 +152,11 @@ export function Shell({ view, user, machines, children, onNavigate }: {
           <button className="help-card" type="button" onClick={() => navigate('onboarding')}>
             <span><CircleHelp size={16} /> Setup guide</span>
             <small>
-              {machines.length === 0
-                ? 'No machine connected yet'
-                : `${capturing} of ${machines.length} ${machines.length === 1 ? 'machine is' : 'machines are'} archiving`}
+              {reporting.length === 0
+                ? 'No machine has connected yet'
+                : capturing.length === 0
+                  ? 'Connected — nothing captured yet'
+                  : `Archiving from ${capturing.length} ${capturing.length === 1 ? 'machine' : 'machines'}`}
             </small>
             <span className="mini-progress"><span style={{ width: `${setupProgress}%` }} /></span>
           </button>
@@ -180,7 +192,10 @@ export function Shell({ view, user, machines, children, onNavigate }: {
               <span>Search your archive</span>
               <kbd><Command size={11} /> K</kbd>
             </button>
-            <Badge className="live-badge">Connected</Badge>
+            {/* This was the literal string "Connected", rendered unconditionally
+                — including while the archive was unreachable. It reports the
+                last exchange with the archive or it says nothing. */}
+            {reachable ? <Badge className="live-badge"><span className="status-dot status-online" />Connected</Badge> : null}
             <IconButton label="API keys" onClick={() => navigate('settings')}><KeyRound size={17} /></IconButton>
           </div>
         </header>

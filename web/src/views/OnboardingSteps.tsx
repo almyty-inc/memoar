@@ -29,12 +29,32 @@ export function OnboardingView({ machines, onComplete, onRefresh }: {
     return () => window.clearInterval(timer);
   }, [machines.length, onRefresh]);
 
-  const connected = machines.length > 0;
-  const archiving = machines.some((machine) => machine.sources.some((source) => source.sessionCount > 0));
+  /*
+    A machine that has never checked in is a registration, not a connection.
+    Counting rows in the table let a dead registration tick "Agent signed in on
+    a machine" and report itself as connected.
+  */
+  const reporting = machines.filter((machine) => machine.status !== 'never_connected');
+  const connected = reporting.length > 0;
+  const captured = machines.reduce(
+    (total, machine) => total + machine.sources.reduce((count, source) => count + source.sessionCount, 0),
+    0,
+  );
   const steps = [
     { label: 'Account ready', hint: 'You are signed in to this archive.', done: true },
-    { label: 'Agent signed in on a machine', hint: connected ? `${machines.length} connected` : 'Waiting for the first one', done: connected },
-    { label: 'First sync', hint: archiving ? 'Sessions are arriving' : 'Nothing captured yet', done: archiving },
+    {
+      label: 'Agent signed in on a machine',
+      hint: connected ? `${reporting.length} of ${machines.length} registered ${machines.length === 1 ? 'machine has' : 'machines have'} checked in` : 'Waiting for the first one',
+      done: connected,
+    },
+    {
+      // Past tense, because it is a count of what was captured. "Sessions are
+      // arriving" was present tense over an archive whose last capture could
+      // have been a week ago.
+      label: 'First sync',
+      hint: captured > 0 ? `${captured} ${captured === 1 ? 'session' : 'sessions'} captured` : 'Nothing captured yet',
+      done: captured > 0,
+    },
   ];
 
   return (
@@ -103,7 +123,7 @@ export function OnboardingView({ machines, onComplete, onRefresh }: {
           )}
 
           <Button disabled={!connected} variant="primary" onClick={onComplete}>
-            {archiving ? 'Browse the archive' : 'Open the timeline'}
+            {captured > 0 ? 'Browse the archive' : 'Open the timeline'}
           </Button>
         </section>
       </div>

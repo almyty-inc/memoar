@@ -7,10 +7,10 @@ const USER: CurrentUser = { id: 'u-1', email: 'ada@example.test', displayName: '
 
 let machineCount = 0;
 
-function machine(sources: Array<{ enabled: boolean; sessionCount?: number }>): Machine {
+function machine(sources: Array<{ enabled: boolean; sessionCount?: number }>, status: Machine['status'] = 'online'): Machine {
   machineCount += 1;
   return {
-    id: `m-${machineCount}`, name: 'workstation', platform: 'darwin', status: 'online', lastSeenAt: null, agentVersion: '0.2.0',
+    id: `m-${machineCount}`, name: 'workstation', platform: 'darwin', status, lastSeenAt: null, agentVersion: '0.2.0',
     sources: sources.map((source, index) => ({
       id: `s-${index}`, label: `source-${index}`, enabled: source.enabled,
       state: source.enabled ? 'synced' : 'disabled', sessionCount: source.sessionCount ?? 0, lastSyncAt: null,
@@ -18,8 +18,8 @@ function machine(sources: Array<{ enabled: boolean; sessionCount?: number }>): M
   };
 }
 
-function renderShell(onNavigate = vi.fn(), user: CurrentUser | null = USER, machines: Machine[] = []) {
-  return render(<Shell view="timeline" user={user} machines={machines} onNavigate={onNavigate}>content</Shell>);
+function renderShell(onNavigate = vi.fn(), user: CurrentUser | null = USER, machines: Machine[] = [], reachable = true) {
+  return render(<Shell view="timeline" user={user} machines={machines} reachable={reachable} onNavigate={onNavigate}>content</Shell>);
 }
 
 describe('Shell navigation', () => {
@@ -66,14 +66,41 @@ describe('Shell navigation', () => {
       machine([{ enabled: true, sessionCount: 0 }]),
     ]);
 
-    expect(screen.getByText('1 of 2 machines are archiving')).toBeDefined();
-    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '50%' });
+    // Setup is three steps — signed in, a machine checked in, something
+    // captured — and the bar measures those. It used to be the share of
+    // registered machines that had archived anything, which is a ratio, not
+    // progress: a registration that never connected held it below full for good
+    // and "every machine archiving" was never the goal.
+    expect(screen.getByText('Archiving from 1 machine')).toBeDefined();
+    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '100%' });
+  });
+
+  it('does not count a registration that never checked in as a connection', () => {
+    renderShell(vi.fn(), USER, [machine([{ enabled: true, sessionCount: 0 }], 'never_connected')]);
+
+    expect(screen.getByText('No machine has connected yet')).toBeDefined();
+    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '33%' });
+  });
+
+  it('distinguishes a machine that connected from one that has captured', () => {
+    renderShell(vi.fn(), USER, [machine([{ enabled: true, sessionCount: 0 }])]);
+
+    expect(screen.getByText('Connected — nothing captured yet')).toBeDefined();
+    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '67%' });
+  });
+
+  it('claims a connection only while the archive is answering', () => {
+    // This was the literal string "Connected", rendered unconditionally — it
+    // said so while the archive was unreachable.
+    renderShell(vi.fn(), USER, [], false);
+    expect(screen.queryByText('Connected')).toBeNull();
   });
 
   it('says so plainly when nothing is connected yet', () => {
     renderShell(vi.fn(), USER, []);
-    expect(screen.getByText('No machine connected yet')).toBeDefined();
-    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '0%' });
+    expect(screen.getByText('No machine has connected yet')).toBeDefined();
+    // One of the three steps — being signed in — is genuinely done.
+    expect(document.querySelector('.mini-progress span')).toHaveStyle({ width: '33%' });
   });
 
   it('navigates to the view behind each destination', () => {

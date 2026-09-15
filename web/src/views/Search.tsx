@@ -47,8 +47,14 @@ const MODE_EXPLANATIONS: Record<SearchResponse['meta']['realizedMode'], string> 
   semantic: 'Ranked by meaning alone.',
 };
 
-export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => void }) {
-  const [query, setQuery] = useState('parser');
+export function SearchView({ onOpen, workspaces = [] }: {
+  onOpen: (session: SessionSummary) => void;
+  /** The account's own workspaces, for starting points that are not invented. */
+  workspaces?: string[];
+}) {
+  // Empty. This opened with `parser` already typed and executed, so the page
+  // presented a developer's test query and its results as if you had searched.
+  const [query, setQuery] = useState('');
   const [response, setResponse] = useState<SearchResponse>(emptyResponse);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<string | null>(null);
@@ -115,12 +121,18 @@ export function SearchView({ onOpen }: { onOpen: (session: SessionSummary) => vo
           {query ? <button type="button" onClick={clearQuery} aria-label="Clear search"><X size={17} /></button> : null}
           <kbd><Command size={11} /> K</kbd>
         </div>
-        <div className="search-suggestions">
-          <span>Try</span>
-          {['redaction review', 'parent reference', 'pack freshness'].map((suggestion) => (
-            <button key={suggestion} type="button" onClick={() => setQuery(suggestion)}>{suggestion}</button>
-          ))}
-        </div>
+        {/* The three suggestions here — "redaction review", "parent reference",
+            "pack freshness" — were fixed strings from a developer's test corpus,
+            offered as if they had come from your archive. Your own workspaces
+            are real, and they are what you would actually search within. */}
+        {workspaces.length > 0 ? (
+          <div className="search-suggestions">
+            <span>In</span>
+            {workspaces.slice(0, 4).map((workspace) => (
+              <button key={workspace} type="button" onClick={() => setQuery(workspace)}>{workspace}</button>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <div className="search-layout">

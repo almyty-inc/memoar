@@ -231,7 +231,7 @@ export function App() {
       />
     );
   } else if (view === 'search') {
-    content = <SearchView onOpen={openSession} />;
+    content = <SearchView onOpen={openSession} workspaces={[...new Set(allSessions.map((session) => session.workspace))]} />;
   } else if (view === 'collections') {
     content = <CollectionsView collections={dashboard.collections} onOpen={openSession} onCreate={createCollection} />;
   } else if (view === 'memory') {
@@ -292,7 +292,7 @@ export function App() {
   }
 
   return (
-    <Shell view={view} user={user} machines={dashboard.machines} onNavigate={navigate}>
+    <Shell view={view} user={user} machines={dashboard.machines} reachable={connectionError === null && !loading} onNavigate={navigate}>
       {loading ? <div className="connection-toast" role="status" aria-label="Connection status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
       {content}
     </Shell>

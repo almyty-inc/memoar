@@ -216,14 +216,32 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat('en', { notation: value > 9999 ? 'compact' : 'standard' }).format(value);
 }
 
-export function formatRelative(iso: string | null): string {
+/**
+ * How long ago, against the actual clock.
+ *
+ * This measured from `new Date('2026-08-17T16:20:00.000Z')` — a literal, frozen
+ * in the source. Everything captured after that instant produced a negative
+ * difference, which the `Math.max(1, …)` clamped to one, so every session,
+ * machine and key in the archive reported "1m ago" for as long as the build
+ * lived. A session from six days back sat under a date heading that said so and
+ * a timestamp that said it had just happened.
+ *
+ * `now` is a parameter so tests can fix it without freezing it for everybody.
+ */
+export function formatRelative(iso: string | null, now: number = Date.now()): string {
   if (!iso) return 'Never';
-  const difference = new Date('2026-08-17T16:20:00.000Z').getTime() - new Date(iso).getTime();
-  const minutes = Math.max(1, Math.round(difference / 60_000));
+  const at = new Date(iso).getTime();
+  if (!Number.isFinite(at)) return 'Unknown';
+  const difference = now - at;
+  // A clock a little ahead of ours is not six decades of history.
+  if (difference < 60_000) return 'just now';
+  const minutes = Math.round(difference / 60_000);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return formatDate(iso);
 }
 
 export function formatDate(iso: string): string {
