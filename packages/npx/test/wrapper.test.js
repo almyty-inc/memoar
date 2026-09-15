@@ -12,6 +12,7 @@ const {
   cachePath,
   cachedCandidate,
   downloadBinary,
+  downloadUrl,
   ensureBinary,
   parseChecksum,
   targetFor,
@@ -29,14 +30,16 @@ test("maps every supported Node platform and architecture", () => {
   assert.equal(assetName("win32", "x64"), "memoar-x86_64-pc-windows-msvc.exe");
 });
 
-test("requires an explicitly approved release channel", async () => {
+test("has a release channel to download from without being told one", () => {
+  // There was no default at all, so `npx memoar` could install nothing: it
+  // demanded an environment variable naming a channel that did not exist. That
+  // is the whole reason the published instruction failed on its first line.
   const previous = process.env.MEMOAR_DOWNLOAD_BASE;
   delete process.env.MEMOAR_DOWNLOAD_BASE;
   try {
-    await assert.rejects(
-      downloadBinary({ platform: "linux", architecture: "x64" }),
-      /MEMOAR_DOWNLOAD_BASE is required/
-    );
+    const url = downloadUrl({ platform: "linux", architecture: "x64", version: "0.3.0" });
+    assert.match(url, /^https:\/\//);
+    assert.equal(url, "https://github.com/almyty-inc/memoar/releases/download/v0.3.0/memoar-x86_64-unknown-linux-gnu");
   } finally {
     if (previous === undefined) {
       delete process.env.MEMOAR_DOWNLOAD_BASE;
@@ -44,6 +47,21 @@ test("requires an explicitly approved release channel", async () => {
       process.env.MEMOAR_DOWNLOAD_BASE = previous;
     }
   }
+});
+
+test("an explicit base still wins, for a mirror or a private bucket", () => {
+  assert.equal(
+    downloadUrl({ downloadBase: "https://downloads.example/memoar/", platform: "darwin", architecture: "arm64", version: "1.2.3" }),
+    "https://downloads.example/memoar/v1.2.3/memoar-aarch64-apple-darwin"
+  );
+});
+
+test("asks for the exact asset name the release workflow writes", () => {
+  // The workflow builds `memoar-<target>` from the same target table. If these
+  // drift, every install 404s and no test would have said so.
+  assert.equal(assetName("linux", "x64"), "memoar-x86_64-unknown-linux-gnu");
+  assert.equal(assetName("darwin", "arm64"), "memoar-aarch64-apple-darwin");
+  assert.equal(assetName("win32", "x64"), "memoar-x86_64-pc-windows-msvc.exe");
 });
 
 test("uses an explicit local binary without downloading", async () => {

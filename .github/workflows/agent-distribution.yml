@@ -59,5 +59,9 @@ jobs:
         run: npm run check --workspaces=false
       - name: Platform, checksum, cache, lock, and installer tests
         run: npm test --workspaces=false
-      - name: Prove package remains non-publishing
+      # Publishing happens in release.yml, behind an explicit dispatch input and
+      # an NPM_TOKEN. This guard keeps the package from going out as a side
+      # effect of anything else; clearing `private` is the deliberate act that
+      # opts the launcher into the registry.
+      - name: Prove the package does not publish as a side effect
         run: node -e 'const p=require("./package.json"); if (p.private !== true) process.exit(1)'

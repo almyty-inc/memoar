@@ -7,6 +7,19 @@ const http = require("node:http");
 const https = require("node:https");
 const crypto = require("node:crypto");
 
+/**
+ * Where release binaries live.
+ *
+ * The launcher asks for `${base}/v${version}/${asset}`, which is the layout a
+ * GitHub Release produces. Point MEMOAR_DOWNLOAD_BASE somewhere else to install
+ * from a mirror or from a bucket of your own.
+ *
+ * Until a release exists at this address the download fails and the launcher
+ * falls back to a locally built binary, which is what it did before there was
+ * any default at all.
+ */
+const DEFAULT_DOWNLOAD_BASE = "https://github.com/almyty-inc/memoar/releases/download";
+
 const TARGETS = Object.freeze({
   "darwin-arm64": "aarch64-apple-darwin",
   "darwin-x64": "x86_64-apple-darwin",
@@ -42,6 +55,24 @@ function cachePath(options = {}) {
 
 function checksumPath(binary) {
   return `${binary}.sha256`;
+}
+
+/** Where to fetch from: an explicit option, the environment, or the release channel. */
+function downloadBase(options = {}) {
+  const base = options.downloadBase || process.env.MEMOAR_DOWNLOAD_BASE || DEFAULT_DOWNLOAD_BASE;
+  return base.replace(/\/$/, "");
+}
+
+/**
+ * The exact address of one platform's binary.
+ *
+ * The release workflow names its assets with `assetName`, so the two cannot
+ * drift without a test noticing.
+ */
+function downloadUrl(options = {}) {
+  const version = options.version || "0.1.1";
+  const asset = assetName(options.platform || process.platform, options.architecture || process.arch);
+  return `${downloadBase(options)}/v${version}/${asset}`;
 }
 
 function isExecutable(candidate, platform = process.platform) {
@@ -166,11 +197,7 @@ async function downloadBinary(options = {}) {
   const platform = options.platform || process.platform;
   const architecture = options.architecture || process.arch;
   const asset = assetName(platform, architecture);
-  const base = options.downloadBase || process.env.MEMOAR_DOWNLOAD_BASE;
-  if (!base) {
-    throw new Error("MEMOAR_DOWNLOAD_BASE is required until a release channel is approved");
-  }
-  const url = `${base.replace(/\/$/, "")}/v${version}/${asset}`;
+  const url = downloadUrl({ ...options, version, platform, architecture });
   const destination = cachePath({ ...options, version, platform, architecture });
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   const lock = await acquireLock(`${destination}.lock`, options.lockTimeoutMs || 30000);
@@ -317,11 +344,14 @@ function verifySha256(file, expected) {
 }
 
 module.exports = {
+  DEFAULT_DOWNLOAD_BASE,
   TARGETS,
   assetName,
   cachePath,
   cachedCandidate,
+  downloadBase,
   downloadBinary,
+  downloadUrl,
   ensureBinary,
   executableName,
   localCandidate,

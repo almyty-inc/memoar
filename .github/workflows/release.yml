@@ -1,0 +1,197 @@
+name: release
+
+# Builds the capture agent for every platform the launcher knows about, and —
+# only when asked — publishes them where `npx memoar` can find them.
+#
+# Nothing here publishes by accident. A tag builds and attaches assets to a
+# GitHub Release; the npm package goes out only on an explicit dispatch with
+# `publish_npm: true` and only if NPM_TOKEN exists. Both are one-way doors: a
+# release tag is public the moment the repository is, and an npm version cannot
+# be replaced once it is out.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (without the leading v)
+        required: true
+        type: string
+      publish_release:
+        description: Attach the binaries to a GitHub Release
+        type: boolean
+        default: false
+      publish_npm:
+        description: Publish the launcher to npm (irreversible)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  # The launcher asks for ${base}/v${version}/${asset}, so the asset names here
+  # are the ones `lib/platform.js` computes. They are not free-form.
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            linker: aarch64-linux-gnu-gcc
+            apt: gcc-aarch64-linux-gnu
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cross-compilation linker
+        if: matrix.apt != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+
+      - name: Build
+        working-directory: agent
+        shell: bash
+        env:
+          # Cargo needs to be told which linker to hand an object file from a
+          # different architecture.
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
+        run: cargo build --release -p memoar-cli --target ${{ matrix.target }}
+
+      - name: Name the asset and record its digest
+        id: asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            *windows*) suffix=".exe" ;;
+            *)         suffix="" ;;
+          esac
+          asset="memoar-${{ matrix.target }}${suffix}"
+          mkdir -p dist
+          cp "agent/target/${{ matrix.target }}/release/memoar${suffix}" "dist/${asset}"
+          cd dist
+          # The launcher reads the first field of this file and refuses the
+          # download when it does not match what it fetched.
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${asset}" > "${asset}.sha256"
+          else
+            shasum -a 256 "${asset}" > "${asset}.sha256"
+          fi
+          cat "${asset}.sha256"
+          echo "name=${asset}" >> "$GITHUB_OUTPUT"
+
+      - name: The binary must run on the machine that built it
+        if: "!contains(matrix.target, 'aarch64-unknown-linux')"
+        shell: bash
+        run: ./dist/${{ steps.asset.outputs.name }} --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  verify:
+    name: The launcher resolves what was built
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+
+      # Serving the assets the way a release does, and resolving through the
+      # real launcher, is the only way to know the names, the layout and the
+      # checksums agree before anyone runs `npx memoar`.
+      - name: Download, verify and execute through the launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ github.event.inputs.version || github.ref_name }}"
+          version="${version#v}"
+          mkdir -p "serve/v${version}"
+          find assets -type f -exec cp {} "serve/v${version}/" \;
+          ls -l "serve/v${version}"
+          npx --yes http-server serve -p 8799 --silent &
+          for _ in $(seq 1 30); do
+            curl -sf "http://127.0.0.1:8799/v${version}/" >/dev/null && break
+            sleep 1
+          done
+          MEMOAR_DOWNLOAD_BASE=http://127.0.0.1:8799 \
+          XDG_CACHE_HOME="$PWD/cache" \
+          node -e '
+            const { ensureBinary } = require("./packages/npx/lib/platform");
+            const { execFileSync } = require("node:child_process");
+            ensureBinary({ version: process.env.VERSION, localCandidates: [] })
+              .then((binary) => {
+                console.log("resolved", binary);
+                console.log(execFileSync(binary, ["--version"]).toString().trim());
+              })
+              .catch((error) => { console.error(error.message); process.exit(1); });
+          '
+        env:
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+  release:
+    name: GitHub Release
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+      - name: Flatten
+        run: mkdir -p dist && find assets -type f -exec cp {} dist/ \;
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
+
+  npm:
+    name: npm
+    needs: release
+    if: github.event.inputs.publish_npm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Refuse to publish without a token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: test -n "$NPM_TOKEN" || { echo "NPM_TOKEN is not set"; exit 1; }
+      - name: The launcher's own checks
+        working-directory: packages/npx
+        run: npm run check --workspaces=false && npm test --workspaces=false
+      - name: Publish
+        working-directory: packages/npx
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
