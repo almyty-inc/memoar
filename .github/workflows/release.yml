@@ -5,9 +5,9 @@ name: release
 #
 # Nothing here publishes by accident. A tag builds and attaches assets to a
 # GitHub Release; the npm package goes out only on an explicit dispatch with
-# `publish_npm: true` and only if NPM_TOKEN exists. Both are one-way doors: a
-# release tag is public the moment the repository is, and an npm version cannot
-# be replaced once it is out.
+# `publish_npm: true`. Both are one-way doors: a release tag is public the
+# moment the repository is, and an npm version cannot be replaced once it is
+# out.
 
 on:
   push:
@@ -29,6 +29,10 @@ on:
 
 permissions:
   contents: write
+  # npm authenticates this workflow by its GitHub Actions identity rather than
+  # by a stored token — the same trusted-publishing setup almyty uses. There is
+  # no NPM_TOKEN to create, rotate, or leak into a transcript.
+  id-token: write
 
 env:
   # The launcher asks for ${base}/v${version}/${asset}, so the asset names here
@@ -177,21 +181,42 @@ jobs:
     needs: release
     if: github.event.inputs.publish_npm == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Refuse to publish without a token
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: test -n "$NPM_TOKEN" || { echo "NPM_TOKEN is not set"; exit 1; }
+
       - name: The launcher's own checks
         working-directory: packages/npx
         run: npm run check --workspaces=false && npm test --workspaces=false
+
+      # The version in package.json selects which release the launcher
+      # downloads, so publishing one that does not match the tag would 404 for
+      # every installer. A test already holds it to the agent's version; this
+      # holds it to the thing actually being released.
+      - name: The published version must be the one that was built
+        working-directory: packages/npx
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.version || github.ref_name }}"
+          expected="${tag#v}"
+          actual="$(node -p "require('./package.json').version")"
+          test "$actual" = "$expected" || {
+            echo "packages/npx is $actual but the release is $expected"
+            exit 1
+          }
+
       - name: Publish
         working-directory: packages/npx
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: |
+          # OIDC trusted publishing needs npm 11.5 or newer. Nothing is stored:
+          # npm verifies the workflow's id-token against the trusted publisher
+          # registered for this repository and workflow file on npmjs.com.
+          npm install -g npm@latest
+          npm publish --access public --provenance
