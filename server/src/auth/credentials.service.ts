@@ -96,16 +96,34 @@ export class CredentialsService {
   /**
    * Whether this account still holds an API key that has not been revoked.
    *
-   * Asked of a bearer token that carries mcp:use alone, which is what the MCP
-   * handshake mints out of an API key. Without this, revoking the key left the
-   * token it produced working for the rest of its hour with nothing able to
-   * stop it — a credential derived from a revoked credential.
+   * Asked only of the tokens the MCP handshake minted before it recorded which
+   * key it had exchanged (see `apiKeyCredentialLive`). It answers per account,
+   * which is why an account with two keys could revoke one and keep reading
+   * with the token that key had produced.
    */
   async hasLiveApiKey(tenantId: string, userId: string): Promise<boolean> {
     if (this.dataSource) {
       return this.dataSource.getRepository(AuthIdentityEntity).existsBy({ kind: "api_key", tenantId, userId, revokedAt: IsNull() });
     }
     return [...this.devApiKeys.values()].some((key) => !key.revokedAt && key.tenantId === tenantId && key.userId === userId);
+  }
+
+  /**
+   * Whether one named API key is still live, for the account that claims it.
+   *
+   * The tenant and user are matched rather than read from the token alone, so
+   * a signed token naming a credential from another archive resolves to
+   * nothing however well it is formed.
+   */
+  async apiKeyCredentialLive(tenantId: string, userId: string, credentialId: string): Promise<boolean> {
+    if (this.dataSource) {
+      return this.dataSource.getRepository(AuthIdentityEntity).existsBy({
+        id: credentialId, kind: "api_key", tenantId, userId, revokedAt: IsNull(),
+      });
+    }
+    return [...this.devApiKeys.values()].some(
+      (key) => key.id === credentialId && !key.revokedAt && key.tenantId === tenantId && key.userId === userId,
+    );
   }
 
   async issueMachineToken(context: TenantContext, machineId: string): Promise<{ token: string; expiresAt: string }> {
@@ -142,11 +160,14 @@ export class CredentialsService {
       await this.inTenant({ tenantId: identity.tenantId, userId: identity.userId, scopes: identity.scopes, authType: "api_key" }, async (manager) => {
         await manager.getRepository(ApiKeyEntity).update({ prefix, tenantId: identity.tenantId }, { lastUsedAt: now });
       });
-      return { tenantId: identity.tenantId, userId: identity.userId, scopes: identity.scopes, authType: "api_key" };
+      // The identity row, not the api_keys row: it is what revocation writes to
+      // and what `apiKeyCredentialLive` re-reads. Without a database the two
+      // are one record, so the dev path names that one instead.
+      return { tenantId: identity.tenantId, userId: identity.userId, scopes: identity.scopes, authType: "api_key", credentialId: identity.id };
     }
     const row = this.devApiKeys.get(prefix);
     return row && !row.revokedAt && verifySecret(secret, row.secretHash)
-      ? { tenantId: row.tenantId, userId: row.userId, scopes: row.scopes, authType: "api_key" }
+      ? { tenantId: row.tenantId, userId: row.userId, scopes: row.scopes, authType: "api_key", credentialId: row.id }
       : null;
   }
 

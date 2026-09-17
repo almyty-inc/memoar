@@ -21,6 +21,19 @@ The response carries `accessToken` and `expiresAt` along with the endpoint and
 tool list. The token expires in an hour and opens MCP only: it cannot read the
 archive over REST.
 
+The token records the key it came from, and is refused the moment that key is
+revoked — `DELETE /v1/auth/api-keys/{id}` ends every MCP session minted from
+that key without touching the account's other keys. This is checked on every
+request, not at issue: a token is worth exactly what the credential behind it
+is still worth.
+
+It is also minted with its own token type rather than as a browser session, so
+what a token is comes from the token rather than from the shape of its scope
+list. Tokens issued by an older build — which said `browser` and carried
+`mcp:use` alone — keep working until they expire, within the hour, and are
+checked the way that build checked them: against the account holding any
+unrevoked API key, rather than against one key.
+
 ## Arguments
 
 Tool arguments arrive inside a JSON-RPC body, so the global validation pipe that
@@ -165,7 +178,8 @@ codex mcp add memoar --url https://<memoar-host>/mcp \
 
 Any client that can send `X-Memoar-Key` uses the key directly; any client that
 can send a bearer token uses the handshake. Both paths are exercised by
-`server/test/mcp-handshake.test.ts`.
+`server/test/mcp-handshake.test.ts`, and what a revoked key does to a token
+minted from it by `server/test/browser-token-revocation.test.ts`.
 
 ## Safety
 

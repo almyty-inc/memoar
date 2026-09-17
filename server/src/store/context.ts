@@ -9,7 +9,14 @@ export interface TenantContext {
   teamId?: string;
   machineId?: string;
   scopes: readonly string[];
-  authType: "browser" | "api_key" | "machine" | "dev";
+  authType: "browser" | "api_key" | "machine" | "dev" | "mcp";
+  /**
+   * The `auth_identities` row the caller authenticated with, when the
+   * credential is one that can be revoked on its own — an API key today. The
+   * MCP handshake records it in the token it mints, so revoking that one key
+   * kills that one token.
+   */
+  credentialId?: string;
 }
 
 export interface ArchivedSession extends Session {

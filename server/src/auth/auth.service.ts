@@ -22,10 +22,9 @@ import { BrowserSessionService } from "./browser-sessions.js";
 
 import { callbackUrl, exchangeCodeForProfile, isOAuthProvider, providerCredentials } from "./oauth-provider.js";
 
-import type { TokenClaims } from "./types.js";
+import { sessionTokenLive } from "./token-liveness.js";
 
-/** The scopes the MCP handshake mints, and nothing else mints. */
-const MCP_SESSION_SCOPES = ["mcp:use"];
+import type { TokenClaims } from "./types.js";
 
 @Injectable()
 export class AuthService {
@@ -250,7 +249,7 @@ export class AuthService {
       tenantId: claims.tenantId, userId: claims.sub, scopes: claims.scopes, authType: claims.type,
       ...(claims.machineId ? { machineId: claims.machineId } : {}),
     };
-    if (claims.type === "browser") return await this.browserTokenLive(claims) ? context : null;
+    if (claims.type === "browser" || claims.type === "mcp") return await this.sessionLive(claims) ? context : null;
     if (!claims.machineId) return null;
     if (!await this.credentials.machineTokenLive(token, claims)) return null;
     const machine = await this.store.getMachine(context, claims.machineId);
@@ -260,35 +259,13 @@ export class AuthService {
     return context;
   }
 
-  /**
-   * Whether a browser token still stands for something.
-   *
-   * A browser token used to be trusted on its signature alone: this method did
-   * not exist and `authenticateBearer` returned before any lookup, so a machine
-   * token was re-checked against `auth_identities` on every request while a
-   * browser token — the credential a person actually holds — was checked on
-   * none. Deleting the account, revoking its identity or signing out changed
-   * nothing for the full hour the token had left.
-   *
-   * The credential behind the token decides. A token carrying mcp:use and
-   * nothing else is one the MCP handshake minted out of an API key, so it lives
-   * exactly as long as an unrevoked key of that account's does; anything else
-   * is a sign-in, and lives as long as the sign-in identity does.
-   */
-  private async browserTokenLive(claims: TokenClaims): Promise<boolean> {
-    if (await this.sessions.isRevoked(claims)) return false;
-    const derivedFromApiKey = claims.scopes.length === MCP_SESSION_SCOPES.length
-      && MCP_SESSION_SCOPES.every((scope) => claims.scopes.includes(scope));
-    if (derivedFromApiKey) return this.credentials.hasLiveApiKey(claims.tenantId, claims.sub);
-    if (!this.dataSource) {
-      return [...this.devUsers.values()].some((user) => user.id === claims.sub && user.tenantId === claims.tenantId);
-    }
-    return this.dataSource.getRepository(AuthIdentityEntity).existsBy(
-      // The tenant is re-read from the identity, not taken from the token: a
-      // signed token naming another tenant must still resolve to nothing.
-      (["password", "oauth"] as const).map((kind) => ({
-        kind, tenantId: claims.tenantId, userId: claims.sub, revokedAt: IsNull(),
-      })),
-    );
+  /** Whether the credential behind a session token is still live; see token-liveness.ts. */
+  private sessionLive(claims: TokenClaims): Promise<boolean> {
+    return sessionTokenLive(claims, {
+      sessions: this.sessions,
+      credentials: this.credentials,
+      dataSource: this.dataSource,
+      devUsers: this.devUsers.values(),
+    });
   }
 }

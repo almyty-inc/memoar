@@ -7,9 +7,25 @@ export interface TokenClaims {
   sub: string;
   tenantId: string;
   scopes: string[];
-  type: "browser" | "machine";
+  /**
+   * What minted it: a sign-in, a machine, or the MCP handshake.
+   *
+   * "mcp" exists so the handshake's tokens stop being recognised by the shape
+   * of their scope list. They used to be minted as "browser" and identified by
+   * carrying mcp:use and nothing else — a tell that would have quietly
+   * misfiled every one of them the first time a handshake token was given a
+   * second scope.
+   */
+  type: "browser" | "machine" | "mcp";
   exp: number;
   machineId?: string;
+  /**
+   * The credential this token was derived from, for a token that was derived
+   * from one: the `auth_identities` row of the API key the handshake exchanged.
+   * Revocation is checked against this row, so revoking that key kills this
+   * token even while other keys on the account stay live.
+   */
+  credentialId?: string;
 }
 
 /** The subset of the Express request the guard and decorators read. */
