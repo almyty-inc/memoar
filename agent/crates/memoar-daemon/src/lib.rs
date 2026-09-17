@@ -695,11 +695,46 @@ pub struct HttpTransport {
     machine_token: String,
 }
 
+/// The largest artifact the archive accepts, mirroring `MEMOAR_MAX_ARTIFACT_BYTES`
+/// on the API and `proxy-body-size` on the ingress.
+pub const MAX_ARTIFACT_BYTES: u64 = 256 * 1024 * 1024;
+
+/// The slowest uplink an upload is still expected to finish on: 2 Mbit/s.
+/// Below this the agent is entitled to give up; at or above it, a timeout that
+/// fires is a bug in the timeout, not a slow network.
+pub const SLOWEST_TOLERATED_UPLOAD_BYTES_PER_SEC: u64 = 256 * 1024;
+
+/// How long a single artifact upload may take.
+///
+/// This is not a free parameter: it has to cover `MAX_ARTIFACT_BYTES` at
+/// `SLOWEST_TOLERATED_UPLOAD_BYTES_PER_SEC`, and a test holds it to that. The
+/// reqwest default of 30 seconds did not, so every transcript over roughly
+/// 30 MB failed on a deadline it could never meet and retried forever.
+pub const UPLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// A dead host should not cost a whole upload budget to discover.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+
 impl HttpTransport {
     #[must_use]
     pub fn new(endpoint: impl Into<String>, machine_token: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            // `Client::new()` is a 30-second cap on the whole request, which is
+            // the wrong shape for this: the payload is a transcript, and every
+            // artifact that takes longer than 30 seconds to push fails, retries,
+            // and fails again. Seven sessions between 26 MB and 116 MB retried
+            // twenty times against a deadline none of them could ever meet.
+            //
+            // So: fail fast when the host is unreachable, and then let the body
+            // take as long as a 256 MB ceiling needs on a domestic uplink. The
+            // outer bound still exists so a stalled socket cannot hang a sync
+            // forever.
+            client: Client::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(UPLOAD_TIMEOUT)
+                .tcp_keepalive(Duration::from_secs(30))
+                .build()
+                .expect("static HTTP client configuration must be valid"),
             endpoint: endpoint.into().trim_end_matches('/').to_owned(),
             machine_token: machine_token.into(),
         }
@@ -722,7 +757,7 @@ impl HttpTransport {
             .authorize(self.client.post(format!("{}{path}", self.endpoint)))
             .json(body)
             .send()
-            .map_err(|error| DaemonError::Transport(error.to_string()))?;
+            .map_err(|error| transport_error(&error))?;
         require_success(response)
     }
 }
@@ -733,7 +768,7 @@ impl SyncTransport for HttpTransport {
             .authorize(self.client.post(format!("{}/ingest/delta", self.endpoint)))
             .json(&serde_json::json!({ "machineId": machine_id, "hashes": hashes }))
             .send()
-            .map_err(|error| DaemonError::Transport(error.to_string()))?;
+            .map_err(|error| transport_error(&error))?;
         let response = require_success(response)?;
         #[derive(Deserialize)]
         struct Delta {
@@ -756,7 +791,7 @@ impl SyncTransport for HttpTransport {
             .header("content-type", "application/octet-stream")
             .body(bytes)
             .send()
-            .map_err(|error| DaemonError::Transport(error.to_string()))?;
+            .map_err(|error| transport_error(&error))?;
         require_success(response).map(|_| ())
     }
 
@@ -768,11 +803,31 @@ impl SyncTransport for HttpTransport {
             )
             .json(manifest)
             .send()
-            .map_err(|error| DaemonError::Transport(error.to_string()))?;
+            .map_err(|error| transport_error(&error))?;
         require_success(response)?
             .json::<IngestReceipt>()
             .map_err(|error| DaemonError::Protocol(error.to_string()))
     }
+}
+
+/// A transport failure the operator can act on.
+///
+/// `reqwest::Error` renders as "error sending request for url (...)" and keeps
+/// the reason — connection reset, timed out, TLS — in its source chain. Seven
+/// large transcripts retried twenty times against an error message that never
+/// said why; the queue recorded the URL and nothing else.
+fn transport_error(error: &reqwest::Error) -> DaemonError {
+    let mut message = error.to_string();
+    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(error);
+    while let Some(cause) = source {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    if error.is_timeout() {
+        message.push_str(" (timed out)");
+    }
+    DaemonError::Transport(message)
 }
 
 fn require_success(
@@ -835,12 +890,18 @@ impl<T: SyncTransport> SyncEngine<T> {
         };
         let mut uploaded = 0;
         let mut failed = 0;
+        // Counted, not derived. This was `considered - uploaded`, which quietly
+        // reported every failed upload as a duplicate: a pass that lost seven
+        // large transcripts to a dead connection printed "duplicates: 7" and
+        // looked like a pass with nothing to do.
+        let mut duplicates = 0;
         // Hashes the server does not have and this pass could not give it. The
         // manifest must not name them: it is a claim that these bytes are in
         // the archive, and the server checks.
         let mut absent: HashSet<String> = HashSet::new();
         for artifact in &artifacts {
             if !missing.contains(&artifact.sha256) {
+                duplicates += 1;
                 continue;
             }
             // One artifact the server will not take must not block the rest.
@@ -926,7 +987,7 @@ impl<T: SyncTransport> SyncEngine<T> {
             batch_id: Some(batch_id),
             considered: artifacts.len(),
             uploaded,
-            duplicates: artifacts.len() - uploaded,
+            duplicates,
         })
     }
 }
@@ -1426,6 +1487,111 @@ mod tests {
         assert!(
             !stored.contains(&token_fixture()),
             "the secret reached the queue"
+        );
+    }
+    /// A transport that already holds some hashes and refuses others, which is
+    /// what a real pass looks like once anything is large enough to lose.
+    struct PartialTransport {
+        present: HashSet<String>,
+        refuse: HashSet<String>,
+    }
+
+    impl SyncTransport for PartialTransport {
+        fn missing(
+            &self,
+            _machine_id: &str,
+            hashes: &[String],
+        ) -> Result<HashSet<String>, DaemonError> {
+            Ok(hashes
+                .iter()
+                .filter(|hash| !self.present.contains(*hash))
+                .cloned()
+                .collect())
+        }
+
+        fn upload(&self, artifact: &QueuedArtifact, _bytes: Vec<u8>) -> Result<(), DaemonError> {
+            if self.refuse.contains(&artifact.sha256) {
+                return Err(DaemonError::Transport("connection closed".to_owned()));
+            }
+            Ok(())
+        }
+
+        fn submit_manifest(&self, manifest: &IngestManifest) -> Result<IngestReceipt, DaemonError> {
+            Ok(IngestReceipt {
+                batch_id: manifest.batch_id.clone(),
+                accepted: manifest.artifacts.len() as u64,
+                duplicate: 0,
+                queued_at: Utc::now().to_rfc3339(),
+            })
+        }
+    }
+
+    /// A failed upload is not a duplicate.
+    ///
+    /// `duplicates` was `considered - uploaded`, so a pass that lost an upload
+    /// reported it as bytes the archive already held — the one number that says
+    /// "nothing to do here" standing in for the one that says "this never
+    /// arrived".
+    #[test]
+    fn a_lost_upload_is_not_reported_as_a_duplicate() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("home");
+        let dir = home.join(".claude/projects/-workspace");
+        fs::create_dir_all(&dir).unwrap();
+        for (name, body) in [
+            ("held.jsonl", "already in the archive"),
+            ("lost.jsonl", "never arrives"),
+            ("fresh.jsonl", "new capture"),
+        ] {
+            fs::write(dir.join(name), body).unwrap();
+        }
+        let queue = OfflineQueue::open(&temp.path().join("queue.sqlite3")).unwrap();
+        let enabled = HashSet::from(["claude-code".to_owned()]);
+        assert_eq!(
+            capture_sources(&queue, &home, OperatingSystem::Linux, &enabled).unwrap(),
+            3
+        );
+
+        let hash_of = |body: &str| sha256_bytes(body.as_bytes());
+        let transport = PartialTransport {
+            present: HashSet::from([hash_of("already in the archive")]),
+            refuse: HashSet::from([hash_of("never arrives")]),
+        };
+        let report = SyncEngine::new(transport)
+            .sync(&queue, "00000000-0000-4000-8000-000000000001")
+            .unwrap();
+
+        assert_eq!(report.considered, 3);
+        assert_eq!(report.uploaded, 1, "only the fresh capture went up");
+        assert_eq!(report.failed, 1, "the refused upload is a failure");
+        assert_eq!(
+            report.duplicates, 1,
+            "only the hash the archive already held is a duplicate"
+        );
+        // The one that never arrived stays queued rather than being marked done.
+        assert_eq!(queue.counts().unwrap().synced, 2);
+    }
+    /// The upload deadline has to be reachable for the largest artifact the
+    /// archive will accept.
+    ///
+    /// reqwest's blocking client caps a whole request at 30 seconds by default,
+    /// and `Client::new()` took that default. Every transcript over roughly
+    /// 30 MB therefore failed on a deadline it could not meet, was requeued, and
+    /// failed again — one 116 MB session reached twenty attempts having never
+    /// once had the time to finish. This fails if the timeout drops or the size
+    /// ceiling rises without the other moving too.
+    #[test]
+    fn the_upload_deadline_is_reachable_at_the_size_ceiling() {
+        let needed = MAX_ARTIFACT_BYTES / SLOWEST_TOLERATED_UPLOAD_BYTES_PER_SEC;
+        assert!(
+            UPLOAD_TIMEOUT.as_secs() >= needed,
+            "a {MAX_ARTIFACT_BYTES}-byte artifact needs {needed}s at the slowest \
+             tolerated uplink, but uploads are cut off after {}s",
+            UPLOAD_TIMEOUT.as_secs()
+        );
+        assert!(
+            CONNECT_TIMEOUT < UPLOAD_TIMEOUT,
+            "an unreachable host must fail long before a slow upload does"
         );
     }
 }
