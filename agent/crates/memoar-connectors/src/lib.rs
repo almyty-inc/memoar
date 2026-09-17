@@ -48,6 +48,12 @@ pub struct SourceSpec {
     pub macos_paths: &'static [&'static str],
     pub windows_paths: &'static [&'static str],
     pub environment_override: Option<&'static str>,
+    /// The home-relative directories `environment_override` stands in for.
+    ///
+    /// Without these an override was taken as a bare root, and a bare root
+    /// means everything beneath it — the same sweep the globs above exist to
+    /// prevent, reachable by setting one environment variable.
+    pub environment_roots: &'static [&'static str],
 }
 
 impl SourceSpec {
@@ -87,6 +93,7 @@ pub static SOURCES: &[SourceSpec] = &[
         ],
         windows_paths: NONE,
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "codex",
@@ -99,6 +106,7 @@ pub static SOURCES: &[SourceSpec] = &[
         macos_paths: NONE,
         windows_paths: NONE,
         environment_override: Some("CODEX_HOME"),
+        environment_roots: &[".codex"],
     },
     SourceSpec {
         id: "antigravity-cli",
@@ -115,6 +123,7 @@ pub static SOURCES: &[SourceSpec] = &[
         macos_paths: NONE,
         windows_paths: NONE,
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "cursor",
@@ -136,6 +145,7 @@ pub static SOURCES: &[SourceSpec] = &[
             "AppData/Roaming/Cursor/User/workspaceStorage/*/state.vscdb",
         ],
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "opencode",
@@ -143,17 +153,25 @@ pub static SOURCES: &[SourceSpec] = &[
         tier: 2,
         format: "JSON records or SQLite",
         stability: Stability::Internal,
+        // The stored records, not the directory they sit in. `storage` was a
+        // bare path, and a bare path is a sweep: the same 5,392-file incident
+        // that put globs on Claude Code was waiting under every one of these.
         common_paths: &[
-            ".local/share/opencode/storage",
+            ".local/share/opencode/storage/*/*.json",
+            ".local/share/opencode/storage/*/*/*.json",
+            ".local/share/opencode/storage/*/*/*/*.json",
             ".local/share/opencode/opencode.db",
         ],
         linux_paths: NONE,
         macos_paths: NONE,
         windows_paths: &[
-            "AppData/Roaming/opencode/storage",
+            "AppData/Roaming/opencode/storage/*/*.json",
+            "AppData/Roaming/opencode/storage/*/*/*.json",
+            "AppData/Roaming/opencode/storage/*/*/*/*.json",
             "AppData/Roaming/opencode/opencode.db",
         ],
         environment_override: Some("OPENCODE_DATA_DIR"),
+        environment_roots: &[".local/share/opencode", "AppData/Roaming/opencode"],
     },
     SourceSpec {
         id: "copilot",
@@ -162,8 +180,10 @@ pub static SOURCES: &[SourceSpec] = &[
         format: "VS Code JSON or CLI SQLite",
         stability: Stability::Internal,
         common_paths: &[
-            ".copilot/session-state",
-            ".copilot/history-session-state",
+            ".copilot/session-state/*.json",
+            ".copilot/session-state/*/*.json",
+            ".copilot/history-session-state/*.json",
+            ".copilot/history-session-state/*/*.json",
             ".copilot/session-store.db",
         ],
         linux_paths: &[".config/Code/User/workspaceStorage/*/chatSessions/*.json"],
@@ -172,6 +192,7 @@ pub static SOURCES: &[SourceSpec] = &[
         ],
         windows_paths: &["AppData/Roaming/Code/User/workspaceStorage/*/chatSessions/*.json"],
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "goose",
@@ -179,11 +200,18 @@ pub static SOURCES: &[SourceSpec] = &[
         tier: 2,
         format: "SQLite or legacy JSONL",
         stability: Stability::Internal,
-        common_paths: &[".local/share/goose/sessions/sessions.db"],
+        common_paths: &[
+            ".local/share/goose/sessions/sessions.db",
+            ".local/share/goose/sessions/*.jsonl",
+        ],
         linux_paths: NONE,
         macos_paths: NONE,
-        windows_paths: &["AppData/Roaming/Block/goose/data/sessions"],
+        windows_paths: &[
+            "AppData/Roaming/Block/goose/data/sessions/*.db",
+            "AppData/Roaming/Block/goose/data/sessions/*.jsonl",
+        ],
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "crush",
@@ -196,6 +224,7 @@ pub static SOURCES: &[SourceSpec] = &[
         macos_paths: NONE,
         windows_paths: NONE,
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "roo",
@@ -204,14 +233,17 @@ pub static SOURCES: &[SourceSpec] = &[
         format: "task JSON",
         stability: Stability::Internal,
         common_paths: NONE,
-        linux_paths: &[".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"],
+        // One directory per task, holding that task's JSON. The directory
+        // itself also accumulates whatever the extension caches there.
+        linux_paths: &[".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/*.json"],
         macos_paths: &[
-            "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks",
+            "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/*.json",
         ],
         windows_paths: &[
-            "AppData/Roaming/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks",
+            "AppData/Roaming/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/*.json",
         ],
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "kilo",
@@ -220,12 +252,15 @@ pub static SOURCES: &[SourceSpec] = &[
         format: "Cline-family task JSON",
         stability: Stability::Internal,
         common_paths: NONE,
-        linux_paths: &[".config/Code/User/globalStorage/kilocode.kilo-code/tasks"],
+        linux_paths: &[".config/Code/User/globalStorage/kilocode.kilo-code/tasks/*/*.json"],
         macos_paths: &[
-            "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks",
+            "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks/*/*.json",
         ],
-        windows_paths: &["AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/tasks"],
+        windows_paths: &[
+            "AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/tasks/*/*.json",
+        ],
         environment_override: None,
+        environment_roots: NONE,
     },
     SourceSpec {
         id: "zed",
@@ -234,10 +269,13 @@ pub static SOURCES: &[SourceSpec] = &[
         format: "Zstd-compressed SQLite threads",
         stability: Stability::ReverseEngineered,
         common_paths: NONE,
-        linux_paths: &[".local/share/zed/db"],
-        macos_paths: &["Library/Application Support/Zed/db"],
+        // The thread databases, not the write-ahead logs, lock files and
+        // whatever else lives in a database directory.
+        linux_paths: &[".local/share/zed/db/*/*.sqlite"],
+        macos_paths: &["Library/Application Support/Zed/db/*/*.sqlite"],
         windows_paths: NONE,
         environment_override: None,
+        environment_roots: NONE,
     },
 ];
 
@@ -392,7 +430,31 @@ where
     F: Fn(&str) -> Option<PathBuf>,
 {
     if let Some(root) = spec.environment_override.and_then(environment) {
-        return vec![root];
+        // Re-root the declared patterns, rather than handing back the root
+        // itself. A bare root is read as "everything beneath this", so setting
+        // CODEX_HOME or OPENCODE_DATA_DIR used to switch off every glob the
+        // source declares and offer the uploader the whole directory.
+        let mut candidates: Vec<PathBuf> = spec
+            .paths_for(os)
+            .filter_map(|pattern| {
+                spec.environment_roots.iter().find_map(|prefix| {
+                    pattern
+                        .strip_prefix(prefix)
+                        .and_then(|rest| rest.strip_prefix('/'))
+                        .map(|rest| root.join(rest))
+                })
+            })
+            .collect();
+        if candidates.is_empty() {
+            // A source that declares an override and no root beneath it. The
+            // table test below refuses that, so this is only ever reached if
+            // one is added without the other; capturing nothing would be worse
+            // than the old behaviour.
+            candidates.push(root);
+        }
+        candidates.sort();
+        candidates.dedup();
+        return candidates;
     }
     spec.paths_for(os)
         .map(|pattern| expand_pattern(home, pattern))

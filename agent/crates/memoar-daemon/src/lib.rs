@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, Error)]
 pub enum DaemonError {
@@ -43,6 +43,12 @@ pub enum DaemonError {
     UnsupportedRedaction(PathBuf),
     #[error("ZIP redaction failed for {path}: {message}")]
     Zip { path: PathBuf, message: String },
+    #[error("{path} is {size} bytes, past the {limit}-byte ceiling the archive accepts")]
+    TooLarge {
+        path: PathBuf,
+        size: u64,
+        limit: u64,
+    },
 }
 
 impl DaemonError {
@@ -59,6 +65,18 @@ impl DaemonError {
                 | DaemonError::UnsupportedRedaction(_)
                 | DaemonError::Zip { .. }
         )
+    }
+
+    /// This artifact is not going anywhere, and that must not cost the caller
+    /// every other artifact in the pass.
+    ///
+    /// Redaction is one reason a file stays behind; being larger than the
+    /// archive will accept is another, and the capture loop has to treat them
+    /// alike. Handling only the redaction half is how a Zed write-ahead log
+    /// used to end a whole sweep, and a 500 MB stray file would do it again
+    /// through the other door.
+    pub fn is_skippable(&self) -> bool {
+        self.is_unredactable() || matches!(self, DaemonError::TooLarge { .. })
     }
 }
 
@@ -173,9 +191,38 @@ fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedBytes {
             r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
             "[REDACTED_JWT]",
         );
+        // The key/value shape as people actually write it, rather than as it
+        // appears in a shell one-liner.
+        //
+        // The old pattern anchored the key name with `\b` and excluded quotes
+        // from the value, so it caught `api_key=abc` and almost nothing else on
+        // a real machine: `"api_key": "sk-live-..."` never matched, because the
+        // value group could not start on a quote; `export OPENAI_API_KEY="..."`
+        // and `AWS_SECRET_ACCESS_KEY=...` never matched, because `\b` does not
+        // fire between `_` and a letter. JSONL is the primary format of several
+        // capture sources, so the quoted form is the ordinary one — and the
+        // artifact was then filed as `redacted: false, redaction_count: 0`,
+        // which is the worst available outcome: a secret uploaded under a
+        // receipt saying there was nothing to find.
+        //
+        // So the key name may carry a prefix and a suffix, and the separator
+        // may carry the quote on either side. The value stops before the
+        // closing quote, which is left where it was, so `"k": "v"` comes out as
+        // well-formed JSON.
         apply(
-            r#"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|password|secret)\b([ \t]*[:=][ \t]*)([^\s,;\"']+)"#,
-            "$1$2[REDACTED]",
+            r#"(?i)([A-Za-z0-9_.-]{0,40}(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret)[A-Za-z0-9_.-]{0,40})(["']?[ \t]*[:=][ \t]*["']?)([^\s"',;{}\[\]]+)"#,
+            "${1}${2}[REDACTED]",
+        );
+        // `Authorization: Bearer abcdef123456`, and the header's JSON form.
+        //
+        // Anchored on the header name rather than on the word `Bearer`: a bare
+        // scheme word is ordinary English, and redacting whatever follows
+        // "bearer" or "basic" would eat its way through prose. Anchored the
+        // other way round, the scheme word has to be stepped over explicitly or
+        // the credential survives with only `Bearer` removed.
+        apply(
+            r#"(?i)((?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)((?:bearer|basic|token)[ \t]+)?([^\s"',;{}\[\]]+)"#,
+            "${1}${2}[REDACTED]",
         );
         apply(
             r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{16,}\b",
@@ -332,6 +379,16 @@ fn redact_zip(
                 source,
             })?;
         let redacted = redact_bytes(&entry_bytes, config);
+        if !redacted.scanned && contains_secret_lossy(&entry_bytes, config) {
+            // The same refusal the top level makes, for the same reason. This
+            // branch only looked at `.replacements`, so an entry that could not
+            // be read as text was repacked exactly as found and shipped with
+            // `redacted: false` — a member of an archive was the one place an
+            // unscanned secret could still get out.
+            return Err(DaemonError::UnscannableSecret {
+                path: PathBuf::from(format!("{}::{name}", path.display())),
+            });
+        }
         replacements = replacements.saturating_add(redacted.replacements);
         writer
             .start_file(name, options)
@@ -365,6 +422,30 @@ fn redact_zip(
         replacements,
         scanned: true,
     })
+}
+
+/// How many times one artifact is offered to the server before the queue stops
+/// offering it.
+///
+/// An artifact the server will never accept — the wrong shape, past a limit the
+/// ingress enforces and the agent does not — is not made acceptable by a ninth
+/// try. Counting the attempts was already being done; this is the number that
+/// was missing.
+pub const MAX_ATTEMPTS: u32 = 8;
+
+/// The wait after the first failure, doubled each time up to `MAX_RETRY_BACKOFF`.
+const RETRY_BACKOFF: Duration = Duration::from_secs(60);
+
+/// A ceiling on the doubling: an artifact that fails all day should still be
+/// tried tomorrow morning without waiting a week for it.
+const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(6 * 60 * 60);
+
+/// How long an artifact waits after its `attempts`-th failure.
+fn retry_delay(attempts: u32) -> Duration {
+    let doublings = attempts.saturating_sub(1).min(16);
+    RETRY_BACKOFF
+        .saturating_mul(1_u32 << doublings)
+        .min(MAX_RETRY_BACKOFF)
 }
 
 pub struct OfflineQueue {
@@ -408,9 +489,10 @@ impl OfflineQueue {
                synced_at TEXT,
                redacted INTEGER NOT NULL DEFAULT 0,
                redaction_count INTEGER NOT NULL DEFAULT 0,
+               next_attempt_at TEXT,
                PRIMARY KEY (sha256, source_path)
              );
-             CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status, queued_at);",
+             CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status, attempts, queued_at);",
         )?;
         ensure_column(
             &connection,
@@ -424,6 +506,7 @@ impl OfflineQueue {
             "redaction_count",
             "INTEGER NOT NULL DEFAULT 0",
         )?;
+        ensure_column(&connection, "artifacts", "next_attempt_at", "TEXT")?;
         connection.execute(
             "INSERT INTO metadata(key, value) VALUES ('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -445,11 +528,25 @@ impl OfflineQueue {
         path: &Path,
         redaction: RedactionConfig,
     ) -> Result<QueuedArtifact, DaemonError> {
-        let source_bytes = fs::read(path).map_err(|source| DaemonError::Io {
+        // Stat first, and refuse the file before reading a byte of it.
+        //
+        // `MAX_ARTIFACT_BYTES` was declared and never consulted: this read the
+        // whole file into memory, hashed it, wrote a second copy of it into the
+        // blob directory and queued it for a server that answers 413. A 500 MB
+        // stray file cost half a gigabyte of resident memory and half a
+        // gigabyte of disk to learn something `metadata` already knew.
+        let metadata = fs::metadata(path).map_err(|source| DaemonError::Io {
             path: path.to_path_buf(),
             source,
         })?;
-        let metadata = fs::metadata(path).map_err(|source| DaemonError::Io {
+        if metadata.len() > MAX_ARTIFACT_BYTES {
+            return Err(DaemonError::TooLarge {
+                path: path.to_path_buf(),
+                size: metadata.len(),
+                limit: MAX_ARTIFACT_BYTES,
+            });
+        }
+        let source_bytes = fs::read(path).map_err(|source| DaemonError::Io {
             path: path.to_path_buf(),
             source,
         })?;
@@ -492,16 +589,53 @@ impl OfflineQueue {
     }
 
     pub fn pending(&self, limit: usize) -> Result<Vec<QueuedArtifact>, DaemonError> {
+        self.pending_at(limit, Utc::now())
+    }
+
+    /// What this pass may try, as of a given instant.
+    ///
+    /// Three things were missing here and they composed into one failure.
+    /// `attempts` was incremented and never read, so nothing ever gave up.
+    /// `mark_retry` left `queued_at` alone, so a rejected artifact kept the
+    /// oldest timestamp in the table. And the order was `queued_at ASC` with a
+    /// limit of 256. Two hundred and fifty-six artifacts the server would never
+    /// accept therefore sat at the head of the queue forever, were re-offered
+    /// in full on every single pass, and no session captured afterwards was
+    /// ever looked at again.
+    ///
+    /// So: artifacts past the cap are done being tried, a failed artifact waits
+    /// out its backoff, and what has failed least goes first — a fresh capture
+    /// can never queue behind something that has already been refused.
+    pub fn pending_at(
+        &self,
+        limit: usize,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<QueuedArtifact>, DaemonError> {
         let mut statement = self.connection.prepare(
             "SELECT sha256, size, source, source_path, local_path, modified_at,
                     status, attempts, last_error, redacted, redaction_count
              FROM artifacts
              WHERE status IN ('pending', 'retry')
-             ORDER BY queued_at ASC
+               AND attempts < ?2
+               AND (next_attempt_at IS NULL OR next_attempt_at <= ?3)
+             ORDER BY attempts ASC, queued_at ASC
              LIMIT ?1",
         )?;
-        let rows = statement.query_map([limit as i64], row_to_artifact)?;
+        let rows = statement.query_map(
+            params![limit as i64, MAX_ATTEMPTS, now.to_rfc3339()],
+            row_to_artifact,
+        )?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Artifacts that have used up every attempt they are going to get.
+    pub fn abandoned(&self) -> Result<u64, DaemonError> {
+        let value: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM artifacts WHERE status != 'synced' AND attempts >= ?1",
+            [MAX_ATTEMPTS],
+            |row| row.get(0),
+        )?;
+        Ok(value.max(0) as u64)
     }
 
     pub fn counts(&self) -> Result<QueueCounts, DaemonError> {
@@ -523,20 +657,51 @@ impl OfflineQueue {
         })
     }
 
-    pub fn mark_synced(&self, sha256: &str) -> Result<(), DaemonError> {
+    /// Identified by the whole primary key, never by the hash alone.
+    ///
+    /// The same bytes reached from two places are two rows — the archive wants
+    /// both source paths, because where a transcript was found is part of what
+    /// it is. Keying on `sha256` alone marked every one of those rows synced
+    /// off the back of one upload, and the provenance of the others was never
+    /// sent at all.
+    pub fn mark_synced(&self, sha256: &str, source_path: &str) -> Result<(), DaemonError> {
         self.connection.execute(
-            "UPDATE artifacts SET status = 'synced', synced_at = ?2, last_error = NULL
-             WHERE sha256 = ?1",
-            params![sha256, Utc::now().to_rfc3339()],
+            "UPDATE artifacts SET status = 'synced', synced_at = ?3, last_error = NULL
+             WHERE sha256 = ?1 AND source_path = ?2",
+            params![sha256, source_path, Utc::now().to_rfc3339()],
         )?;
         Ok(())
     }
 
-    pub fn mark_retry(&self, sha256: &str, message: &str) -> Result<(), DaemonError> {
+    pub fn mark_retry(
+        &self,
+        sha256: &str,
+        source_path: &str,
+        message: &str,
+    ) -> Result<(), DaemonError> {
+        let previous: i64 = self
+            .connection
+            .query_row(
+                "SELECT attempts FROM artifacts WHERE sha256 = ?1 AND source_path = ?2",
+                params![sha256, source_path],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        let attempts = (previous.max(0) as u32).saturating_add(1);
+        let delay = chrono::Duration::from_std(retry_delay(attempts))
+            .unwrap_or_else(|_| chrono::Duration::zero());
         self.connection.execute(
-            "UPDATE artifacts SET status = 'retry', attempts = attempts + 1, last_error = ?2
-             WHERE sha256 = ?1",
-            params![sha256, message],
+            "UPDATE artifacts
+             SET status = 'retry', attempts = ?3, last_error = ?4, next_attempt_at = ?5
+             WHERE sha256 = ?1 AND source_path = ?2",
+            params![
+                sha256,
+                source_path,
+                attempts,
+                message,
+                (Utc::now() + delay).to_rfc3339()
+            ],
         )?;
         Ok(())
     }
@@ -547,7 +712,7 @@ impl OfflineQueue {
         message: &str,
     ) -> Result<(), DaemonError> {
         for artifact in artifacts {
-            self.mark_retry(&artifact.sha256, message)?;
+            self.mark_retry(&artifact.sha256, &artifact.source_path, message)?;
         }
         Ok(())
     }
@@ -998,7 +1163,11 @@ impl<T: SyncTransport> SyncEngine<T> {
                         path: artifact.local_path.clone(),
                         source,
                     };
-                    queue.mark_retry(&artifact.sha256, &error.to_string())?;
+                    queue.mark_retry(
+                        &artifact.sha256,
+                        &artifact.source_path,
+                        &error.to_string(),
+                    )?;
                     absent.insert(artifact.sha256.clone());
                     failed += 1;
                     continue;
@@ -1009,13 +1178,13 @@ impl<T: SyncTransport> SyncEngine<T> {
                     "queued blob {} failed SHA-256 verification",
                     artifact.sha256
                 ));
-                queue.mark_retry(&artifact.sha256, &error.to_string())?;
+                queue.mark_retry(&artifact.sha256, &artifact.source_path, &error.to_string())?;
                 absent.insert(artifact.sha256.clone());
                 failed += 1;
                 continue;
             }
             if let Err(error) = self.transport.upload(artifact, bytes) {
-                queue.mark_retry(&artifact.sha256, &error.to_string())?;
+                queue.mark_retry(&artifact.sha256, &artifact.source_path, &error.to_string())?;
                 absent.insert(artifact.sha256.clone());
                 failed += 1;
                 continue;
@@ -1059,9 +1228,14 @@ impl<T: SyncTransport> SyncEngine<T> {
             queue.mark_retry_all(&artifacts, &error.to_string())?;
             return Err(error);
         }
-        // Only what the manifest claimed is synced; the rest stays queued.
-        for hash in hashes.iter().filter(|hash| !absent.contains(*hash)) {
-            queue.mark_synced(hash)?;
+        // Only what the manifest claimed is synced; the rest stays queued. By
+        // the whole primary key, because two rows can carry the same bytes from
+        // two different places and only one of them was in this manifest.
+        for artifact in artifacts
+            .iter()
+            .filter(|artifact| !absent.contains(&artifact.sha256))
+        {
+            queue.mark_synced(&artifact.sha256, &artifact.source_path)?;
         }
         Ok(SyncReport {
             failed,
@@ -1119,7 +1293,7 @@ pub fn capture_sources_with_redaction(
                 Ok(_) => summary.captured += 1,
                 // The file stays on your machine. One of those must not cost
                 // you everything else.
-                Err(error) if error.is_unredactable() => summary.skipped.push(path),
+                Err(error) if error.is_skippable() => summary.skipped.push(path),
                 Err(other) => return Err(other),
             }
         }
@@ -1226,8 +1400,15 @@ impl PollingCapture {
                 if self.changes.observe(path.clone(), fingerprint, now) {
                     match queue.enqueue_with_redaction(spec.id, &path, redaction) {
                         Ok(_) => captured += 1,
-                        Err(DaemonError::UnsupportedRedaction(_))
-                        | Err(DaemonError::Zip { .. }) => {}
+                        // The same set the one-shot pass skips, named the same
+                        // way. This branch listed two of the three refusals by
+                        // hand, so `UnscannableSecret` fell through to the
+                        // `return` below and a single non-UTF-8 file under
+                        // ~/.claude/projects — a Zed write-ahead log, a Cursor
+                        // state file, a transcript truncated mid-write — ended
+                        // continuous capture for every source until the daemon
+                        // was restarted, which would hit it again.
+                        Err(error) if error.is_skippable() => {}
                         Err(other) => return Err(other),
                     }
                 }
@@ -1351,7 +1532,11 @@ mod tests {
         .sync(&queue, "machine")
         .unwrap_err();
         assert!(error.to_string().contains("offline"));
-        let pending = queue.pending(10).unwrap();
+        // Past the backoff a failed artifact now waits out, which is the point
+        // of it being resumable rather than immediately retried.
+        let pending = queue
+            .pending_at(10, Utc::now() + chrono::Duration::hours(12))
+            .unwrap();
         assert_eq!(pending[0].status, QueueStatus::Retry);
         assert_eq!(pending[0].attempts, 1);
     }
@@ -1370,7 +1555,9 @@ mod tests {
         .sync(&queue, "machine")
         .unwrap_err();
         assert!(error.to_string().contains("receipt mismatch"));
-        let pending = queue.pending(10).unwrap();
+        let pending = queue
+            .pending_at(10, Utc::now() + chrono::Duration::hours(12))
+            .unwrap();
         assert_eq!(pending[0].status, QueueStatus::Retry);
         assert_eq!(pending[0].attempts, 1);
     }

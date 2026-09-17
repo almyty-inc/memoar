@@ -13,7 +13,7 @@ use memoar_connectors::memory::{DiscoveredMemory, memory_files};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{DaemonError, HttpTransport};
+use crate::{DaemonError, HttpTransport, RedactionConfig, redact_artifact};
 
 /// One reading of one memory file, as the API expects it.
 ///
@@ -65,10 +65,15 @@ impl MemoryTransport for HttpTransport {
 #[serde(rename_all = "camelCase")]
 pub struct MemoryReport {
     pub found: usize,
-    /// Files whose text differs from the last reading this process uploaded.
+    /// Files the server accepted. This counted attempts, so a sweep with no
+    /// network reported `uploaded: 170, failed: 170` — a hundred and seventy
+    /// files described as having gone up and, in the same breath, as having
+    /// not.
     pub uploaded: usize,
     pub recorded: usize,
     pub failed: usize,
+    /// Files redaction could not be applied to, which therefore stayed here.
+    pub refused: usize,
 }
 
 /// Uploads memory files, skipping the ones that have not changed.
@@ -80,12 +85,33 @@ pub struct MemoryReport {
 #[derive(Debug, Default)]
 pub struct MemorySync {
     uploaded: HashMap<PathBuf, String>,
+    redaction: RedactionConfig,
 }
 
 impl MemorySync {
+    /// A sweep that redacts nothing, for a caller that has no redaction
+    /// configured. Anyone holding a `RedactionConfig` wants `with_redaction`:
+    /// these files are where people write the keys.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The redaction the user switched on, applied to instruction files too.
+    ///
+    /// It was applied to transcripts and to nothing else. Somebody who ran
+    /// `memoar login --redact-secrets --redact-email-addresses
+    /// --redact-home-paths` had their sessions scrubbed and their
+    /// `~/.claude/CLAUDE.md`, every project `AGENTS.md` and every
+    /// `~/.claude/projects/*/memory/*.md` uploaded byte for byte — which are
+    /// exactly the files a connection string gets pasted into, and they had
+    /// been told redaction was on.
+    #[must_use]
+    pub fn with_redaction(redaction: RedactionConfig) -> Self {
+        Self {
+            uploaded: HashMap::new(),
+            redaction,
+        }
     }
 
     pub fn run<T: MemoryTransport>(
@@ -102,22 +128,42 @@ impl MemorySync {
             ..MemoryReport::default()
         };
         for file in discovered {
-            let Ok(text) = fs::read_to_string(&file.path) else {
-                // Not readable as text: something else that happens to share
-                // the name. Not an error, and not ours to report as one.
+            let Ok(bytes) = fs::read(&file.path) else {
+                // Not readable: something else that happens to share the name.
+                // Not an error, and not ours to report as one.
                 continue;
             };
+            // Hash what is on disk, not what gets sent, so "has this file
+            // changed" keeps meaning that whatever the redaction settings are.
+            //
             // sha2 0.11 no longer implements LowerHex on its output array.
-            let digest: String = Sha256::digest(text.as_bytes())
+            let digest: String = Sha256::digest(&bytes)
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect();
             if self.uploaded.get(&file.path) == Some(&digest) {
                 continue;
             }
-            report.uploaded += 1;
+            // The same redaction, and the same fail-closed refusal, that an
+            // artifact gets. A file that cannot be scanned is not sent.
+            let redacted = match redact_artifact(&file.path, &bytes, self.redaction) {
+                Ok(redacted) => redacted,
+                Err(_) => {
+                    report.refused += 1;
+                    continue;
+                }
+            };
+            let Ok(text) = String::from_utf8(redacted.bytes) else {
+                // Not text after all, and nothing in it tripped a pattern.
+                // There is no instruction file here to archive.
+                continue;
+            };
             match transport.capture_memory(&request_for(&file, text, machine_id, captured_at)) {
                 Ok(outcome) => {
+                    // Counted here, after the server took it. Counting the
+                    // attempt instead is how an offline sweep claimed to have
+                    // uploaded everything it had just failed to upload.
+                    report.uploaded += 1;
                     self.uploaded.insert(file.path, digest);
                     if outcome == MemoryOutcome::Recorded {
                         report.recorded += 1;
@@ -252,7 +298,8 @@ mod tests {
             ..Recording::default()
         };
         let failed = sync.run(&offline, &home, &[], "machine", "2026-08-20T00:00:00Z");
-        assert_eq!((failed.uploaded, failed.failed, failed.recorded), (1, 1, 0));
+        // Nothing arrived, so nothing is reported as having arrived.
+        assert_eq!((failed.uploaded, failed.failed, failed.recorded), (0, 1, 0));
 
         let online = Recording::default();
         let recovered = sync.run(&online, &home, &[], "machine", "2026-08-20T01:00:00Z");

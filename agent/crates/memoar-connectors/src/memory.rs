@@ -254,6 +254,15 @@ fn expand(root: &Path, segments: &[&str]) -> Vec<PathBuf> {
                     &entry.file_name().unwrap_or_default().to_string_lossy(),
                 )
             })
+            // Never through a symlink, which is what the literal branch below
+            // and the `**` branch already refuse. Only this one did not, and
+            // `.claude/projects/*/memory/*.md` puts a `*` exactly where another
+            // tool's project directory goes: one link named `escaped` pointing
+            // out of the tree, and `escaped/memory/private.md` was read from
+            // wherever it really lived and uploaded.
+            .filter(|entry| {
+                !fs::symlink_metadata(entry).is_ok_and(|metadata| metadata.file_type().is_symlink())
+            })
             .flat_map(|entry| expand(&entry, rest))
             .collect();
     }
