@@ -181,9 +181,14 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
 
+  # Deliberately not `needs: release`. The launcher and the agent are separate
+  # artifacts with separate versions: fixing a URL or a README in the launcher
+  # must not require cutting an agent release, and the agent's version is the
+  # canonical contract's, which does not move because a Node package needed
+  # republishing. The launcher's tests hold AGENT_VERSION to a release that
+  # exists, which is the constraint that actually matters.
   npm:
     name: npm
-    needs: release
     if: github.event.inputs.publish_npm == 'true'
     runs-on: ubuntu-latest
     permissions:
