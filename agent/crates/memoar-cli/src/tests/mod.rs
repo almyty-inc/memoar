@@ -1,0 +1,9 @@
+mod commands;
+mod contract;
+mod credentials;
+mod download;
+mod login;
+mod messages;
+mod mock;
+mod sync;
+mod watch;

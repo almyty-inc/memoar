@@ -168,6 +168,35 @@ pub fn status(paths: &Paths, state: &State) -> Status {
     }
 }
 
+/// What a first-time sign-in from the window asks for.
+///
+/// Secret masking is on. This is the path somebody who does not use a terminal
+/// takes, and redaction cannot be applied backwards: whatever goes up unmasked
+/// is in the archive, and turning the setting on afterwards does nothing for it.
+/// The two outcomes are not comparable — a stray `[REDACTED]` in an archived
+/// transcript costs a little legibility, a leaked key costs a rotation at best —
+/// so the default is the one whose mistake is cheap.
+///
+/// Email addresses and home paths stay off. Those are ordinarily part of what
+/// makes a transcript readable later, and masking them by default would degrade
+/// every archived session to avert something much rarer than a pasted secret.
+///
+/// This is a default, not a decision: the three toggles are in the window, and
+/// `set_redaction` writes whatever the reader chooses. What changes here is only
+/// what a machine is doing before anybody has visited that screen.
+fn login_args(endpoint: &str, email: &str, password: &str) -> LoginArgs {
+    LoginArgs {
+        endpoint: endpoint.trim().to_owned(),
+        email: Some(email.trim().to_owned()),
+        password: Some(password.to_owned()),
+        token: None,
+        machine_id: None,
+        redact_secrets: true,
+        redact_email_addresses: false,
+        redact_home_paths: false,
+    }
+}
+
 /// # Errors
 /// When the archive refuses the credentials or cannot be reached.
 pub fn sign_in(
@@ -176,21 +205,7 @@ pub fn sign_in(
     email: &str,
     password: &str,
 ) -> Result<Status, String> {
-    let command = Command::Login(LoginArgs {
-        endpoint: endpoint.trim().to_owned(),
-        email: Some(email.trim().to_owned()),
-        password: Some(password.to_owned()),
-        token: None,
-        machine_id: None,
-        // Off by default here as in the CLI: masking before upload is a choice
-        // the archive cannot undo, so it is not made on somebody's behalf. What
-        // has changed is that it is no longer a choice made once and for ever —
-        // `set_redaction` below, and the toggles in the window, can change it
-        // afterwards.
-        redact_secrets: false,
-        redact_email_addresses: false,
-        redact_home_paths: false,
-    });
+    let command = Command::Login(login_args(endpoint, email, password));
     memoar_cli::execute(&base_cli(command), &paths.runtime())
         .map_err(|error| error.message.clone())?;
     Ok(status(paths, &State::default()))
@@ -350,6 +365,35 @@ mod tests {
                 .map(|redaction| redaction.secrets),
             Some(true),
             "the change must survive the process, not just this call"
+        );
+    }
+
+    /// A first sign-in from the window used to ask for no masking at all.
+    ///
+    /// Nothing about that was visible from the window, and redaction does not
+    /// reach backwards: a key pasted into a transcript before anybody found the
+    /// toggles is in the archive for good. This asserts the arguments the app
+    /// actually builds, not the screen, so the default cannot be flipped back by
+    /// an edit that leaves the window looking the same.
+    #[test]
+    fn a_first_sign_in_masks_secrets_and_nothing_else() {
+        let args = login_args(
+            " https://archive.example/v1 ",
+            " person@example.com ",
+            "hunter2",
+        );
+
+        assert!(
+            args.redact_secrets,
+            "a secret uploaded before anybody found the toggles is in the archive for good"
+        );
+        assert!(
+            !args.redact_email_addresses,
+            "an address is usually what makes a transcript legible; it stays opt-in"
+        );
+        assert!(
+            !args.redact_home_paths,
+            "a path is usually what makes a transcript legible; it stays opt-in"
         );
     }
 
