@@ -194,3 +194,20 @@ test("pins the agent release it installs to one that exists", () => {
     "AGENT_VERSION selects the release tag, so it must name a built agent"
   );
 });
+
+test("carries the repository metadata that provenance publishing requires", () => {
+  /*
+    `npm publish --provenance` verifies the sigstore bundle against
+    package.json, and refused the publish with E422 because `repository.url`
+    was empty: "expected to match https://github.com/almyty-inc/memoar from
+    provenance". The failure lands after the tarball is built and the
+    provenance statement has already been written to the transparency log.
+  */
+  const manifest = require("../package.json");
+  assert.equal(
+    manifest.repository && manifest.repository.url,
+    "git+https://github.com/almyty-inc/memoar.git",
+    "provenance compares this against the repository the workflow ran in"
+  );
+  assert.equal(manifest.repository.directory, "packages/npx");
+});

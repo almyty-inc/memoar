@@ -44,26 +44,36 @@ no sample data, and there never will be.
 For a real deployment — Kubernetes, TLS, backups, migrations — see
 [install.md](install.md) and [backup.md](backup.md).
 
-## 2. Build the capture agent
+## 2. Get the capture agent
 
-Nothing is published to a package registry yet, so the agent is built from this
-repository. You need Rust stable.
+```sh
+npx memoar --version
+```
+
+That downloads the binary for your platform from this repository's releases,
+verifies it against the SHA-256 published beside it, and caches it. A binary
+whose digest does not match is refused and nothing is installed.
+
+Every command below works the same with `npx memoar …` in front of it.
+
+<details>
+<summary>Building it yourself instead</summary>
+
+You need Rust stable.
 
 ```sh
 cargo build --release --manifest-path agent/Cargo.toml
 ```
 
-The binary lands at `agent/target/release/memoar`. Put it on your `PATH`, or
-call it by path.
+The binary lands at `agent/target/release/memoar`. Put it on your `PATH`, and
+`npx` will prefer it if you set `MEMOAR_PREFER_LOCAL=1`.
 
-> The web app used to tell you to run `npx memoar connect`. That is not one of
-> the CLI's commands, and nothing is published to run it with. Build from source
-> until a release channel exists.
+</details>
 
 ## 3. Sign the machine in
 
 ```sh
-memoar login --endpoint http://localhost:4000/v1 --email you@example.com --password '...'
+npx memoar login --endpoint http://localhost:4000/v1 --email you@example.com --password '...'
 ```
 
 This registers the computer as a **machine** and stores a token scoped to
@@ -76,14 +86,14 @@ with an API key created in **Settings → API keys**.
 ## 4. See what is on this machine
 
 ```sh
-memoar sources list
+npx memoar sources list
 ```
 
 Every source the agent recognises on this operating system, with the paths it
 will read. Nothing has been uploaded yet — this only looks.
 
 ```sh
-memoar doctor
+npx memoar doctor
 ```
 
 Reports what is configured, what was detected, and anything that will stop a
@@ -92,8 +102,8 @@ sync from working.
 ## 5. Capture
 
 ```sh
-memoar sync              # walk every enabled source once
-memoar sync --watch      # and keep following them as they grow
+npx memoar sync              # walk every enabled source once
+npx memoar sync --watch      # and keep following them as they grow
 ```
 
 `--watch` re-reads files as your agents append to them, so a session you are in
@@ -112,7 +122,7 @@ Redaction is opt-in and applied on your machine, before anything is hashed or
 uploaded:
 
 ```sh
-memoar login --endpoint … --redact-secrets --redact-email-addresses --redact-home-paths
+npx memoar login --endpoint … --redact-secrets --redact-email-addresses --redact-home-paths
 ```
 
 Disable a whole source in **Machines & sources** if you would rather it were
@@ -127,7 +137,7 @@ raw-first path as the agent — the bytes are preserved and then parsed.
 
 ## Adding a second machine
 
-Build the agent there, sign in to the same account, and sync. The archive is
+Run `npx memoar login` there against the same archive, then `npx memoar sync`. The archive is
 shared through the service. Do not copy the local queue between machines; each
 one keeps its own.
 

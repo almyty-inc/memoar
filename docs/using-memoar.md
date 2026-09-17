@@ -126,6 +126,4 @@ Stated plainly, because finding out later is worse:
 
 - **No password reset.** Forget your password and there is no way back into that
   account.
-- **No published CLI.** The agent is built from source; `npx memoar connect`
-  does not exist.
 - **No hosted service.** You run the archive yourself.

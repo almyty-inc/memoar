@@ -3,6 +3,25 @@
   "version": "0.3.1",
   "license": "Apache-2.0",
   "description": "Launcher for the Memoar capture agent and CLI",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "cursor",
+    "ai",
+    "coding-agent",
+    "sessions",
+    "archive",
+    "transcripts"
+  ],
+  "homepage": "https://github.com/almyty-inc/memoar#readme",
+  "bugs": {
+    "url": "https://github.com/almyty-inc/memoar/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/almyty-inc/memoar.git",
+    "directory": "packages/npx"
+  },
   "type": "commonjs",
   "bin": {
     "memoar": "bin/memoar.js"
