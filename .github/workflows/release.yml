@@ -18,6 +18,10 @@ on:
         description: Version to build (without the leading v)
         required: true
         type: string
+      build_binaries:
+        description: Build the five platform binaries (skip for a launcher-only npm publish)
+        type: boolean
+        default: false
       publish_release:
         description: Attach the binaries to a GitHub Release
         type: boolean
@@ -40,8 +44,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Only when binaries are actually wanted.
+  #
+  # This ran unconditionally, so publishing the launcher to npm — which needs
+  # no binary at all — compiled five targets first, two of them on macOS
+  # runners, which bill at ten times the Linux rate. Three npm attempts failed
+  # at the publish step having built all of it for nothing.
   build:
     name: ${{ matrix.target }}
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || github.event.inputs.publish_release == 'true'
+      || github.event.inputs.build_binaries == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -65,6 +79,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      # Without this every run compiles the whole dependency graph from scratch
+      # on five runners, two of them billed at ten times the rate.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+          key: ${{ matrix.target }}
 
       - name: Cross-compilation linker
         if: matrix.apt != ''
