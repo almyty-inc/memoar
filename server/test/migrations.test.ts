@@ -134,9 +134,26 @@ suite("migrations", () => {
       "-p", `${port}:5432`, "pgvector/pgvector:pg16",
     );
     try {
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        try { docker("exec", container, "pg_isready", "-U", "memoar"); break; } catch { await new Promise((done) => setTimeout(done, 1000)); }
+      /*
+        `pg_isready` is not a readiness probe for this.
+
+        The image's entrypoint runs initdb against a temporary server on a unix
+        socket, then stops it and starts the real one. `pg_isready` answers yes
+        during that window, so the very next command raced the restart and the
+        job failed at `CREATE EXTENSION` — intermittently, which is worse than
+        always. A query that has to be served is the thing to wait on.
+      */
+      let ready = false;
+      for (let attempt = 0; attempt < 60 && !ready; attempt += 1) {
+        try {
+          docker("exec", container, "psql", "-U", "memoar", "-d", "memoar", "-tAc", "select 1");
+          ready = true;
+        } catch {
+          await new Promise((done) => setTimeout(done, 1000));
+        }
       }
+      if (!ready) throw new Error(`${container} never accepted a query`);
+
       // The extensions the schema needs. They take a superuser, which is why
       // they are not in a migration: the migration role owns the schema and is
       // deliberately not one.
