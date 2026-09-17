@@ -1,18 +1,19 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Injectable, NotFoundException, Param, Post, Put, Res, UnprocessableEntityException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { createHash } from "node:crypto";
-import type { Response } from "express";
 import type { AnnotationKind } from "../../libs/canonical/src/generated.js";
 import { ParserRegistry, type SessionSeed } from "../../libs/parsers/src/index.js";
 import type { EmbeddingProvider } from "../search.js";
-import type { AnnotationStore, ArtifactStore, RawArtifactRecord, SessionStore, TenantContext } from "../archive-store.js";
-import { Tenant } from "../auth.js";
+import type { AnnotationStore, ArtifactStore, RawArtifactRecord, SessionStore, SettingsStore, TenantContext } from "../archive-store.js";
+import { redactionPatterns } from "../redaction.js";
 import { uuidV5, uuidV7 } from "../ids.js";
 import { artifactsIngested, ingestBytes, sessionsArchived } from "../metrics/metrics.registry.js";
 import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "../tokens.js";
 import { type JobQueue, type QueueJob } from "./queues.js";
 import type { ObjectStorage } from "./object-storage.js";
 import { FormatDetector, SecretScanner } from "./detection.js";
-import { DeltaDto, ManifestDto } from "./ingest.dto.js";
+
+/** Names the rows the secret scanner owns, so re-scanning replaces only its own. */
+export const SCANNER_ORIGIN = "secret-scanner";
 
 @Injectable()
 export class IngestService {
@@ -145,7 +146,7 @@ export class DefaultPipelineSeedFactory implements PipelineSeedFactory {
 
 export class IngestPipeline {
   constructor(
-    private readonly store: ArtifactStore & SessionStore & AnnotationStore,
+    private readonly store: ArtifactStore & SessionStore & AnnotationStore & SettingsStore,
     private readonly objects: ObjectStorage,
     private readonly parsers = new ParserRegistry(),
     private readonly detector = new FormatDetector(),
@@ -164,7 +165,10 @@ export class IngestPipeline {
       await this.store.updateRawArtifact(context, { ...artifact, status: "unknown_format", diagnostic: result.diagnostic });
       return { status: "unknown_format", sessionIds: [] };
     }
-    const findings = this.scanner.scan(bytes);
+    // The tenant's own patterns, not the four built-in ones: emailScan and the
+    // custom patterns were settings nothing ever read.
+    const settings = await this.store.getTenantSettings(context);
+    const findings = this.scanner.scan(bytes, redactionPatterns(settings.redaction));
     const savedSessionIds: string[] = [];
     try {
     for (const [index, parsedSession] of result.sessions.entries()) {
@@ -194,11 +198,28 @@ export class IngestPipeline {
       await this.store.saveSession(context, session);
       // Every finding at once. Written one by one, a transcript that leaked a
       // credential on a hundred lines cost a hundred round trips to store.
+      /*
+        Scanner findings only.
+
+        This used to replace every redaction_mask on the session, so an agent
+        re-uploading a transcript as it grew deleted the masks the user had
+        placed by hand — the archive quietly undoing somebody's redaction review
+        every few minutes. Naming the producer confines the delete to the rows
+        this scan owns.
+
+        `basis: "artifact"` because these offsets are byte offsets into the
+        upload. They address nothing that is ever served, so the projection
+        ignores them for range-masking and removes these secrets by pattern
+        instead; what they are for is the findings count and the review UI.
+      */
       await this.store.replaceAnnotations(
         context,
         session.id,
         "redaction_mask" satisfies AnnotationKind,
-        findings.map((finding) => ({ kind: finding.kind, start: finding.start, end: finding.end, preview: finding.preview })),
+        findings.map((finding) => ({
+          kind: finding.kind, start: finding.start, end: finding.end, preview: finding.preview, basis: "artifact",
+        })),
+        SCANNER_ORIGIN,
       );
       if (this.embeddings) {
         try {
@@ -233,43 +254,4 @@ export class IngestWorker {
     };
     return this.pipeline.process(context, job.data.sha256);
   }
-}
-
-const SHA256 = /^[a-f0-9]{64}$/;
-
-@Controller("ingest")
-export class IngestController {
-  constructor(@Inject(IngestService) private readonly ingest: IngestService) {}
-
-  @Put("artifacts/:sha256")
-  async put(
-    @Tenant() context: TenantContext,
-    @Param("sha256") sha256: string,
-    @Headers("x-memoar-source") source: string,
-    @Headers("x-memoar-source-path") sourcePath: string,
-    @Body() body: Buffer,
-    @Res({ passthrough: true }) response: Response,
-  ): Promise<Record<string, unknown>> {
-    if (!Buffer.isBuffer(body)) throw new BadRequestException("application/octet-stream body is required");
-    const result = await this.ingest.putRaw(context, sha256, source, sourcePath, body);
-    response.status(result.created ? 201 : 208);
-    return { id: result.artifact.id, status: result.created ? "stored" : "duplicate" };
-  }
-
-  @Get("artifacts/:sha256/status")
-  status(@Tenant() context: TenantContext, @Param("sha256") sha256: string): Promise<Record<string, unknown>> {
-    // The contract pins the digest shape; anything else is a malformed request
-    // rather than a lookup that happens to miss.
-    if (!SHA256.test(sha256)) throw new BadRequestException("sha256 must be a 64 character lowercase hex digest");
-    return this.ingest.status(context, sha256);
-  }
-
-  @Post("manifests")
-  @HttpCode(202)
-  manifest(@Tenant() context: TenantContext, @Body() body: ManifestDto) {
-    return this.ingest.manifest(context, body);
-  }
-
-  @Post("delta")
-  delta(@Tenant() context: TenantContext, @Body() body: DeltaDto) { return this.ingest.delta(context, body.hashes); }
 }

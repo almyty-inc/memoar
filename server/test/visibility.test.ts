@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { SharingService } from "../src/curation.js";
+import { TeamsService } from "../src/teams.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 
 const TEAM_ID = "0191cafe-0000-7000-8000-0000000000e1";
+
+/** A team the fixture account is actually in, which widening to a team requires. */
+async function teamFor(store: DevArchiveStore): Promise<string> {
+  const team = await store.createTeam({ name: "platform" }, {
+    userId: TEST_CONTEXT.userId, tenantId: TEST_CONTEXT.tenantId, email: "owner@example.test",
+  });
+  return team.id;
+}
 
 describe("session visibility PATCH", () => {
   it("rejects widening beyond private without a completed redaction review", async () => {
@@ -25,12 +34,13 @@ describe("session visibility PATCH", () => {
     await store.saveSession(TEST_CONTEXT, TEST_SESSION);
     const sharing = new SharingService(store);
 
+    const teamId = await teamFor(store);
     const review = await sharing.completeReview(TEST_CONTEXT, TEST_SESSION.id);
     const widened = await sharing.updateVisibility(TEST_CONTEXT, TEST_SESSION.id, {
-      visibility: { scope: "team", teamId: TEAM_ID },
+      visibility: { scope: "team", teamId },
       redactionReviewId: review.id,
     });
-    expect(widened.visibility).toEqual({ scope: "team", ownerId: TEST_SESSION.visibility.ownerId, teamId: TEAM_ID });
+    expect(widened.visibility).toEqual({ scope: "team", ownerId: TEST_SESSION.visibility.ownerId, teamId });
     expect((await store.getSession(TEST_CONTEXT, TEST_SESSION.id))!.visibility.scope).toBe("team");
 
     const narrowed = await sharing.updateVisibility(TEST_CONTEXT, TEST_SESSION.id, { visibility: { scope: "private" } });
@@ -49,6 +59,29 @@ describe("session visibility PATCH", () => {
       visibility: { scope: "link" },
       redactionReviewId: review.id,
     })).rejects.toMatchObject({ response: { code: "redaction_review_required" } });
+  });
+
+  it("refuses to widen into a team the caller does not belong to", async () => {
+    // CollectionService has always checked this; this path wrote whatever
+    // teamId it was handed, so naming a stranger's team id was enough to put a
+    // session in front of that team.
+    const store = new DevArchiveStore();
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
+    const teams = new TeamsService(store);
+    const sharing = new SharingService(store);
+    const strangers = await teams.create({
+      tenantId: "0191cafe-0000-7000-8000-0000000000f1",
+      userId: "0191cafe-0000-7000-8000-0000000000f2",
+      scopes: ["*"], authType: "dev",
+    }, { name: "someone else" });
+    const review = await sharing.completeReview(TEST_CONTEXT, TEST_SESSION.id);
+
+    await expect(sharing.updateVisibility(TEST_CONTEXT, TEST_SESSION.id, {
+      visibility: { scope: "team", teamId: strangers.id as string },
+      redactionReviewId: review.id,
+    })).rejects.toThrow("not a member of that team");
+    // And the session stays where it was, rather than half-widened.
+    expect((await store.getSession(TEST_CONTEXT, TEST_SESSION.id))!.visibility.scope).toBe("private");
   });
 
   it("404s for a missing session", async () => {

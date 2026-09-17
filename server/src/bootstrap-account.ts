@@ -10,6 +10,8 @@
  * a second one.
  */
 
+import { ForbiddenException } from "@nestjs/common";
+
 import { uuidV5 } from "./ids.js";
 
 export interface BootstrapAccount {
@@ -46,6 +48,21 @@ export function bootstrapAccount(environment: NodeJS.ProcessEnv = process.env): 
  */
 export function signupOpen(environment: NodeJS.ProcessEnv = process.env): boolean {
   return environment.MEMOAR_SIGNUP === "open";
+}
+
+/**
+ * This archive is not accepting new accounts, whichever door they arrive at.
+ *
+ * Shared by /auth/register and by the provider callback, which used not to ask
+ * at all — so a closed archive with GITHUB_CLIENT_ID set admitted anybody.
+ */
+export function registrationClosed(): ForbiddenException {
+  return new ForbiddenException({
+    type: "https://memoar.dev/problems/registration-closed",
+    title: "This archive is not accepting new accounts",
+    status: 403,
+    code: "registration_closed",
+  });
 }
 
 /** The scopes a person signing in with a password holds. */

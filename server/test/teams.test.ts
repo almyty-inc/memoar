@@ -25,7 +25,7 @@ function seedAccounts(store: DevArchiveStore): void {
 }
 
 describe("team scope", () => {
-  it("creates a team, adds members by email, and gates every read on membership", async () => {
+  it("creates a team, invites members by email, and gates every read on accepted membership", async () => {
     const store = new DevArchiveStore();
     seedAccounts(store);
     const teams = new TeamsService(store);
@@ -36,10 +36,14 @@ describe("team scope", () => {
     expect((await teams.list(alice)).items).toHaveLength(1);
     expect((await teams.list(bob)).items).toHaveLength(0);
 
-    await expect(teams.addMember(bob, teamId, "bob@example.test")).rejects.toThrow("not a member");
-    await teams.addMember(alice, teamId, "bob@example.test");
+    await expect(teams.invite(bob, teamId, "bob@example.test")).rejects.toThrow("not a member");
+    await teams.invite(alice, teamId, "bob@example.test");
+    // An invitation on its own changes nothing about what Bob can see.
+    expect((await teams.list(bob)).items).toHaveLength(0);
+    expect((await teams.listInvitations(bob)).items).toMatchObject([{ teamId, teamName: "platform" }]);
+    await teams.acceptInvitation(bob, teamId);
     expect((await teams.list(bob)).items[0]).toMatchObject({ id: teamId, memberCount: 2 });
-    await expect(teams.addMember(alice, teamId, "nobody@example.test")).rejects.toThrow("No account");
+    await expect(teams.invite(alice, teamId, "nobody@example.test")).rejects.toThrow("No account");
 
     await expect(teams.listSessions(mallory, teamId)).rejects.toThrow("not a member");
     await teams.removeMember(bob, teamId, bob.userId);
@@ -55,7 +59,8 @@ describe("team scope", () => {
 
     const team = await teams.create(alice, { name: "platform" });
     const teamId = team.id as string;
-    await teams.addMember(alice, teamId, "bob@example.test");
+    await teams.invite(alice, teamId, "bob@example.test");
+    await teams.acceptInvitation(bob, teamId);
 
     await store.saveSession(alice, TEST_SESSION);
     const bobSession = structuredClone(TEST_SESSION);

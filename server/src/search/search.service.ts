@@ -5,7 +5,7 @@ import { sessionSummary } from "../sessions.js";
 import { SEARCH_BACKEND, SEMANTIC_SEARCH_PROVIDER } from "../tokens.js";
 import type { SearchBackend, SearchCandidate, SearchFilters } from "./backends.js";
 import type { SemanticSearchProvider } from "./embeddings.js";
-import { BuildPackDto } from "./search.dto.js";
+import { BuildPackDto, SearchQueryDto } from "./search.dto.js";
 
 function rrf(lexical: readonly SearchCandidate[], semantic: readonly SearchCandidate[]): SearchCandidate[] {
   const fused = new Map<string, SearchCandidate & { fused: number }>();
@@ -160,14 +160,13 @@ export class SearchController {
   constructor(private readonly search: SearchService, private readonly packs: PackService) {}
 
   @Get("search")
-  searchSessions(@Tenant() context: TenantContext, @Query() query: Record<string, string | undefined>): Promise<Record<string, unknown>> {
-    const mode = query.mode === "lexical" || query.mode === "semantic" ? query.mode : "hybrid";
-    return this.search.response(context, query.q ?? "", mode, {
+  searchSessions(@Tenant() context: TenantContext, @Query() query: SearchQueryDto): Promise<Record<string, unknown>> {
+    return this.search.response(context, query.q ?? "", query.mode ?? "hybrid", {
       ...(query.agent ? { agent: query.agent } : {}),
       ...(query.workspace ? { workspace: query.workspace } : {}),
       ...(query.from ? { from: new Date(query.from) } : {}),
       ...(query.to ? { to: new Date(query.to) } : {}),
-    }, Math.max(1, Math.min(100, Number.parseInt(query.limit ?? "30", 10))));
+    }, query.limit ?? 30);
   }
 
   // Nest defaults POST to 201, but the contract documents 200: a pack is a

@@ -5,7 +5,7 @@ import type { AnnotationStore, ArchiveStore, MemoryCapture } from "../interfaces
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
-  TeamMember, TeamRecord, TenantSettingsRecord, TransferRecord,
+  TeamInvitation, TeamMember, TeamRecord, TenantSettingsRecord, TransferRecord,
 } from "../records.js";
 import { PostgresAnnotationStore } from "./annotations.js";
 import { PostgresArtifactStore } from "./artifacts.js";
@@ -43,11 +43,13 @@ export class PostgresArchiveStore implements ArchiveStore {
     this.sessions = new PostgresSessionStore(runner);
     this.annotations = new PostgresAnnotationStore(runner, this.sessions);
     this.collections = new PostgresCollectionStore(runner);
-    this.sharing = new PostgresSharingStore(runner, this.sessions);
     this.teams = new PostgresTeamStore(runner, this.sessions, this.collections);
     this.artifacts = new PostgresArtifactStore(runner);
     this.jobs = new PostgresJobStore(runner);
     this.settings = new PostgresSettingsStore(runner);
+    // After settings and annotations: accepting a transfer has to project the
+    // copy through the sender's own redaction settings and masks.
+    this.sharing = new PostgresSharingStore(runner, this.sessions, this.settings, this.annotations);
     this.machines = new PostgresMachineStore(runner);
     this.memoryDocuments = new PostgresMemoryStore(runner);
   }
@@ -65,7 +67,7 @@ export class PostgresArchiveStore implements ArchiveStore {
 
   listAnnotations(context: TenantContext, sessionId?: string): Promise<Annotation[]> { return this.annotations.listAnnotations(context, sessionId); }
   createAnnotation(context: TenantContext, input: Parameters<AnnotationStore["createAnnotation"]>[1]): Promise<Annotation> { return this.annotations.createAnnotation(context, input); }
-  replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[]): Promise<Annotation[]> { return this.annotations.replaceAnnotations(context, sessionId, kind, values); }
+  replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[], origin?: string): Promise<Annotation[]> { return this.annotations.replaceAnnotations(context, sessionId, kind, values, origin); }
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> { return this.annotations.updateAnnotation(context, annotationId, value); }
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean> { return this.annotations.deleteAnnotation(context, annotationId); }
 
@@ -93,7 +95,9 @@ export class PostgresArchiveStore implements ArchiveStore {
   createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord> { return this.teams.createTeam(input, creator); }
   listTeamsForUser(userId: string): Promise<TeamRecord[]> { return this.teams.listTeamsForUser(userId); }
   isTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teams.isTeamMember(teamId, userId); }
-  addTeamMember(teamId: string, member: TeamMember): Promise<void> { return this.teams.addTeamMember(teamId, member); }
+  inviteTeamMember(teamId: string, member: TeamMember): Promise<void> { return this.teams.inviteTeamMember(teamId, member); }
+  listTeamInvitations(userId: string): Promise<TeamInvitation[]> { return this.teams.listTeamInvitations(userId); }
+  acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> { return this.teams.acceptTeamInvitation(teamId, userId); }
   removeTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teams.removeTeamMember(teamId, userId); }
   findAccountByEmail(email: string): Promise<TeamMember | null> { return this.teams.findAccountByEmail(email); }
   getAccountEmail(userId: string): Promise<string | null> { return this.teams.getAccountEmail(userId); }

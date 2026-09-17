@@ -3,6 +3,8 @@ import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "../src/data-source.js";
 import { runMigrations } from "../src/migrate.js";
+import { runtimeRole } from "../src/main.js";
+import { assertTenantIsolationEnforced } from "../src/startup-checks.js";
 import { ENTITIES } from "../src/entities.js";
 import { connectWithRetry, dockerAvailable, queryRows } from "./helpers/postgres.js";
 
@@ -111,6 +113,22 @@ suite("migrations", () => {
       await appRole.query("SELECT set_config('memoar.tenant_id', $1, false)", ["0191cafe-0000-7000-8000-0000000000f2"]);
       const leaked = await queryRows<{ count: number }>(appRole, "SELECT count(*)::int AS count FROM sessions");
       expect(leaked[0]?.count).toBe(0);
+    } finally {
+      await appRole.destroy();
+    }
+  }, 60_000);
+
+  it("refuses to boot against the owner connection and accepts the runtime one", async () => {
+    // The check the API runs at startup, against both real roles. Nothing used
+    // to ask, so an operator who put the owner URL in DATABASE_URL disabled
+    // every tenant policy and the archive behaved exactly as before.
+    await expect(assertTenantIsolationEnforced(() => runtimeRole(owner!)))
+      .rejects.toThrow(/bypasses every FORCE ROW LEVEL SECURITY policy/u);
+
+    const appRole = new DataSource({ type: "postgres", url: APP_URL, entities: [], synchronize: false });
+    await connectWithRetry(appRole, { container: CONTAINER, port: PORT });
+    try {
+      await expect(assertTenantIsolationEnforced(() => runtimeRole(appRole))).resolves.toBeUndefined();
     } finally {
       await appRole.destroy();
     }

@@ -21,6 +21,13 @@ export interface TeamMember {
   email: string;
 }
 
+/** A team somebody has been asked to join but has not yet joined. */
+export interface TeamInvitation {
+  teamId: string;
+  teamName: string;
+  orgId: string;
+}
+
 export interface RedactionMaskSnapshot {
   kind: string;
   start: number;

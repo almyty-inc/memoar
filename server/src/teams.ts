@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
-import type { DirectoryStore, TeamStore, TenantContext } from "./archive-store.js";
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
+import type { DirectoryStore, TeamInvitation, TeamStore, TenantContext } from "./archive-store.js";
 import { Tenant } from "./auth.js";
 import { sessionSummary } from "./sessions.js";
 import { AddTeamMemberDto, CreateTeamDto } from "./teams.dto.js";
@@ -28,11 +28,40 @@ export class TeamsService {
     return { items: (await this.store.listTeamsForUser(context.userId)).map((team) => ({ ...team })) };
   }
 
-  async addMember(context: TenantContext, teamId: string, email: string): Promise<void> {
+  /**
+   * Invites somebody. It takes effect when they accept, and not before.
+   *
+   * This used to add them outright: any member of any team could put any
+   * address into any team, and team membership is how team-scoped sessions and
+   * collections are read. Being added was a change to who could see your work,
+   * made by somebody else, with nothing to agree to and nothing to refuse.
+   */
+  async invite(context: TenantContext, teamId: string, email: string): Promise<void> {
     await this.requireMember(teamId, context.userId);
     const account = await this.store.findAccountByEmail(email);
     if (!account) throw new NotFoundException("No account with that email");
-    await this.store.addTeamMember(teamId, account);
+    await this.store.inviteTeamMember(teamId, account);
+  }
+
+  /** The teams this person has been asked to join. Nobody sees anybody else's. */
+  async listInvitations(context: TenantContext): Promise<{ items: TeamInvitation[] }> {
+    return { items: await this.store.listTeamInvitations(context.userId) };
+  }
+
+  async acceptInvitation(context: TenantContext, teamId: string): Promise<void> {
+    if (!await this.store.acceptTeamInvitation(teamId, context.userId)) {
+      throw new NotFoundException("No pending invitation to that team");
+    }
+  }
+
+  /** Refusing an invitation is removing one's own pending row. */
+  async declineInvitation(context: TenantContext, teamId: string): Promise<void> {
+    if (await this.store.isTeamMember(teamId, context.userId)) {
+      throw new ConflictException("That invitation has already been accepted; leave the team instead");
+    }
+    if (!await this.store.removeTeamMember(teamId, context.userId)) {
+      throw new NotFoundException("No pending invitation to that team");
+    }
   }
 
   async removeMember(context: TenantContext, teamId: string, userId: string): Promise<void> {
@@ -73,25 +102,42 @@ export class TeamsController {
     return this.teams.create(context, body);
   }
 
+  @Get("invitations")
+  listInvitations(@Tenant() context: TenantContext) {
+    return this.teams.listInvitations(context);
+  }
+
+  @Post("invitations/:teamId/accept")
+  @HttpCode(204)
+  acceptInvitation(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string) {
+    return this.teams.acceptInvitation(context, teamId);
+  }
+
+  @Delete("invitations/:teamId")
+  @HttpCode(204)
+  declineInvitation(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string) {
+    return this.teams.declineInvitation(context, teamId);
+  }
+
   @Put(":teamId/members")
   @HttpCode(204)
-  addMember(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string, @Body() body: AddTeamMemberDto) {
-    return this.teams.addMember(context, teamId, body.email);
+  invite(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string, @Body() body: AddTeamMemberDto) {
+    return this.teams.invite(context, teamId, body.email);
   }
 
   @Delete(":teamId/members/:userId")
   @HttpCode(204)
-  removeMember(@Tenant() context: TenantContext, @Param("teamId") teamId: string, @Param("userId") userId: string) {
+  removeMember(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string, @Param("userId", ParseUUIDPipe) userId: string) {
     return this.teams.removeMember(context, teamId, userId);
   }
 
   @Get(":teamId/sessions")
-  listSessions(@Tenant() context: TenantContext, @Param("teamId") teamId: string) {
+  listSessions(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string) {
     return this.teams.listSessions(context, teamId);
   }
 
   @Get(":teamId/collections")
-  listCollections(@Tenant() context: TenantContext, @Param("teamId") teamId: string) {
+  listCollections(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string) {
     return this.teams.listCollections(context, teamId);
   }
 }

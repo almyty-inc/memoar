@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, Patch, Post, Sse, type MessageEvent } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Sse, type MessageEvent } from "@nestjs/common";
 import { Observable } from "rxjs";
 import type { MachineRecord, MachineStore, SessionStore, TenantContext } from "./archive-store.js";
 import { RequireScopes, Tenant } from "./auth.js";
@@ -161,7 +161,7 @@ export class MachinesController {
   @Patch(":machineId")
   update(
     @Tenant() context: TenantContext,
-    @Param("machineId") machineId: string,
+    @Param("machineId", ParseUUIDPipe) machineId: string,
     @Body() body: UpdateMachineDto,
   ): Promise<Record<string, unknown>> {
     return this.machines.update(context, machineId, body);
@@ -169,7 +169,7 @@ export class MachinesController {
 
   @Sse(":machineId/commands/stream")
   @RequireScopes("materialize:read")
-  stream(@Tenant() context: TenantContext, @Param("machineId") machineId: string): Observable<MessageEvent> {
+  stream(@Tenant() context: TenantContext, @Param("machineId", ParseUUIDPipe) machineId: string): Observable<MessageEvent> {
     return this.machines.streamCommands(context, machineId);
   }
 
@@ -178,8 +178,8 @@ export class MachinesController {
   @HttpCode(204)
   ack(
     @Tenant() context: TenantContext,
-    @Param("machineId") machineId: string,
-    @Param("commandId") commandId: string,
+    @Param("machineId", ParseUUIDPipe) machineId: string,
+    @Param("commandId", ParseUUIDPipe) commandId: string,
     @Body() body: AckCommandDto,
   ): Promise<void> {
     return this.machines.ackCommand(context, machineId, commandId, body);

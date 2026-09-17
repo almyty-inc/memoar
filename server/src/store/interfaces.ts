@@ -10,6 +10,7 @@ import type {
   RedactionReviewRecord,
   ShareGrantRecord,
   ShareTokenLookup,
+  TeamInvitation,
   TeamMember,
   TeamRecord,
   TenantSettingsRecord,
@@ -65,12 +66,19 @@ export interface AnnotationStore {
    * how leaky it was rather than with how large it was, and a file that
    * mentioned a credential on every line was the worst case for the database
    * rather than merely for the reader.
+   *
+   * @param origin when given, only rows this producer wrote are replaced, and
+   * every written row is stamped with it. The scanner re-runs on every capture
+   * of a growing transcript, and replacing the whole kind deleted the masks the
+   * user had placed by hand — silently undoing their redaction review each time
+   * the agent uploaded another few lines of the same conversation.
    */
   replaceAnnotations(
     context: TenantContext,
     sessionId: string,
     kind: AnnotationKind,
     values: Record<string, unknown>[],
+    origin?: string,
   ): Promise<Annotation[]>;
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null>;
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean>;
@@ -133,8 +141,13 @@ export interface SharingStore {
 export interface TeamStore {
   createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord>;
   listTeamsForUser(userId: string): Promise<TeamRecord[]>;
+  /** Accepted membership only: an invitation grants no reads until it is taken up. */
   isTeamMember(teamId: string, userId: string): Promise<boolean>;
-  addTeamMember(teamId: string, member: TeamMember): Promise<void>;
+  /** Records an invitation. It becomes a membership only when the invitee accepts. */
+  inviteTeamMember(teamId: string, member: TeamMember): Promise<void>;
+  listTeamInvitations(userId: string): Promise<TeamInvitation[]>;
+  /** @returns false when there is no pending invitation for this person. */
+  acceptTeamInvitation(teamId: string, userId: string): Promise<boolean>;
   removeTeamMember(teamId: string, userId: string): Promise<boolean>;
   listTeamSessions(teamId: string): Promise<ArchivedSession[]>;
   listTeamCollections(teamId: string): Promise<CollectionRecord[]>;

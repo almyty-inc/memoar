@@ -14,10 +14,16 @@ export class RedactionSettingsDto {
   @IsBoolean()
   emailScan?: boolean;
 
+  /**
+   * Each one is compiled and run against every block of every shared session,
+   * so length is bounded as well as count: a pattern nobody could have written
+   * by hand is a way to make one tenant's share link expensive for everyone.
+   */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(64)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   customPatterns?: string[];
 }
 
@@ -84,4 +90,22 @@ export class UpdateDistillationSettingsDto {
   @IsInt()
   @Min(0)
   monthlyBudgetCents?: number;
+}
+
+/**
+ * The workspace a project-memory export is for.
+ *
+ * Taken straight from the query string before, so an absent `workspace` reached
+ * the service as `undefined` and an unknown `format` was whatever text arrived
+ * even though the parameter was typed as a union.
+ */
+export class ExportProjectMemoryQueryDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4_096)
+  workspace!: string;
+
+  @IsOptional()
+  @IsIn(["claude", "agents"])
+  format?: "claude" | "agents";
 }

@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import { ArrayMaxSize, IsArray, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 import type { MemoryScope } from "../../libs/canonical/src/generated.js";
 
 export const MEMORY_SCOPES: readonly MemoryScope[] = ["global", "project"];
@@ -26,8 +26,15 @@ export class CaptureMemoryDto {
   @MaxLength(4096)
   path!: string;
 
+  /**
+   * Which agents read this file. Bounded like every other array ingest takes:
+   * unbounded, one capture could carry as much of the archive's storage as the
+   * agent cared to send.
+   */
   @IsArray()
+  @ArrayMaxSize(64)
   @IsString({ each: true })
+  @MaxLength(200, { each: true })
   readers!: string[];
 
   /**
@@ -40,4 +47,20 @@ export class CaptureMemoryDto {
 
   @IsISO8601()
   capturedAt!: string;
+}
+
+/**
+ * The filters GET /memory accepts.
+ *
+ * `machineId` went to the store as whatever text arrived, where a uuid column
+ * refused it and the caller's typo came back as a 500 with a stack in the log.
+ */
+export class ListMemoryQueryDto {
+  @IsOptional()
+  @IsUUID()
+  machineId?: string;
+
+  @IsOptional()
+  @IsIn(MEMORY_SCOPES)
+  scope?: MemoryScope;
 }

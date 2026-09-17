@@ -1,10 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Inject, Injectable, NotFoundException, Param, Post, Put, Query } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query } from "@nestjs/common";
 import type { AnnotationStore, ArchivedSession, DistillationSettings, JobRecord, JobStore, SessionStore, SettingsStore, TenantContext } from "./archive-store.js";
 import { Tenant } from "./auth.js";
 import { credentialHint, credentialsAvailable, openCredential, sealCredential } from "./credentials.js";
 import { uuidV7 } from "./ids.js";
-import { UpdateDistillationSettingsDto } from "./settings.dto.js";
+import { ExportProjectMemoryQueryDto, UpdateDistillationSettingsDto } from "./settings.dto.js";
 import { ARCHIVE_STORE, DISTILLATION_PROVIDER } from "./tokens.js";
 
 export interface DistilledNoteDraft {
@@ -354,16 +354,14 @@ export class DistillationController {
   }
 
   @Get("jobs/:jobId")
-  getJob(@Tenant() context: TenantContext, @Param("jobId") jobId: string) { return this.distillation.getJob(context, jobId); }
+  getJob(@Tenant() context: TenantContext, @Param("jobId", ParseUUIDPipe) jobId: string) { return this.distillation.getJob(context, jobId); }
 
   @Post("sessions/:sessionId")
   @HttpCode(202)
-  run(@Tenant() context: TenantContext, @Param("sessionId") sessionId: string) { return this.distillation.run(context, sessionId); }
+  run(@Tenant() context: TenantContext, @Param("sessionId", ParseUUIDPipe) sessionId: string) { return this.distillation.run(context, sessionId); }
 
   @Post("projects/export")
-  export(
-    @Tenant() context: TenantContext,
-    @Query("workspace") workspace: string,
-    @Query("format") format: "claude" | "agents" = "agents",
-  ) { return this.distillation.exportProjectMemory(context, workspace, format); }
+  export(@Tenant() context: TenantContext, @Query() query: ExportProjectMemoryQueryDto) {
+    return this.distillation.exportProjectMemory(context, query.workspace, query.format ?? "agents");
+  }
 }

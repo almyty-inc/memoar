@@ -1,6 +1,6 @@
 import { isSqliteBytes } from "../../libs/parsers/src/index.js";
 import { unzipSync } from "fflate";
-import { SECRET_PATTERNS } from "../redaction.js";
+import { SECRET_PATTERNS, type SecretKind, type SecretPattern } from "../redaction.js";
 
 
 /** Native stores whose schema was confirmed against the tool itself. */
@@ -39,7 +39,8 @@ export class FormatDetector {
 }
 
 export interface SecretFinding {
-  kind: "api_key" | "jwt" | "env" | "private_key";
+  kind: SecretKind;
+  /** Byte offset into the raw artifact. Addresses the upload, never a block. */
   start: number;
   end: number;
   preview: string;
@@ -54,15 +55,18 @@ function isZipBytes(bytes: Uint8Array): boolean {
 }
 
 export class SecretScanner {
-  private readonly patterns: readonly { kind: SecretFinding["kind"]; expression: RegExp }[] = SECRET_PATTERNS;
-
-  scan(bytes: Uint8Array): SecretFinding[] {
-    if (isZipBytes(bytes)) return this.scanArchive(bytes);
-    return this.scanText(Buffer.from(bytes).toString("utf8"));
+  /**
+   * @param patterns what this tenant asked to be scanned for. Defaults to the
+   * built-in secret patterns, which is what a tenant that has changed nothing
+   * has switched on.
+   */
+  scan(bytes: Uint8Array, patterns: readonly SecretPattern[] = SECRET_PATTERNS): SecretFinding[] {
+    if (isZipBytes(bytes)) return this.scanArchive(bytes, patterns);
+    return this.scanText(Buffer.from(bytes).toString("utf8"), patterns);
   }
 
-  private scanText(text: string, previewPrefix = ""): SecretFinding[] {
-    return this.patterns.flatMap(({ kind, expression }) => [...text.matchAll(expression)].map((match) => ({
+  private scanText(text: string, patterns: readonly SecretPattern[], previewPrefix = ""): SecretFinding[] {
+    return patterns.flatMap(({ kind, expression }) => [...text.matchAll(expression)].map((match) => ({
       kind,
       start: match.index,
       end: match.index + match[0].length,
@@ -75,7 +79,7 @@ export class SecretScanner {
    * entry names and anything beyond the entry/total budgets are never inflated,
    * so archive expansion attacks cannot exhaust the worker.
    */
-  private scanArchive(bytes: Uint8Array): SecretFinding[] {
+  private scanArchive(bytes: Uint8Array, patterns: readonly SecretPattern[]): SecretFinding[] {
     let entryCount = 0;
     let totalBytes = 0;
     let entries: Record<string, Uint8Array>;
@@ -91,9 +95,9 @@ export class SecretScanner {
         },
       });
     } catch {
-      return this.scanText(Buffer.from(bytes).toString("utf8"));
+      return this.scanText(Buffer.from(bytes).toString("utf8"), patterns);
     }
     return Object.entries(entries).flatMap(([name, data]) =>
-      this.scanText(Buffer.from(data).toString("utf8"), `${name}: `));
+      this.scanText(Buffer.from(data).toString("utf8"), patterns, `${name}: `));
   }
 }

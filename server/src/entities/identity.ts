@@ -37,7 +37,13 @@ export class TeamEntity extends IdentifiedEntity {
   name!: string;
 }
 
-/** Cross-tenant team membership. Deliberately not under RLS (like auth_identities): carries account metadata only, no session content. */
+/**
+ * Cross-tenant team membership. Deliberately not under RLS (like
+ * auth_identities): carries account metadata only, no session content.
+ *
+ * `status` is what makes membership two-sided: an existing member invites, and
+ * only the invited person turns their own row into a membership.
+ */
 @Entity("team_members")
 @Unique(["teamId", "userId"])
 export class TeamMemberEntity extends IdentifiedEntity {
@@ -53,6 +59,9 @@ export class TeamMemberEntity extends IdentifiedEntity {
 
   @Column("citext")
   email!: string;
+
+  @Column("text", { default: "active" })
+  status!: "invited" | "active";
 
   @CreateDateColumn({ type: "timestamptz" })
   addedAt!: Date;
@@ -108,7 +117,7 @@ export class ApiKeyEntity extends TenantEntity {
 @Unique(["kind", "lookupKey"])
 export class AuthIdentityEntity extends IdentifiedEntity {
   @Column("text")
-  kind!: "password" | "api_key" | "machine_token";
+  kind!: "password" | "api_key" | "machine_token" | "oauth";
 
   @Column("citext")
   lookupKey!: string;

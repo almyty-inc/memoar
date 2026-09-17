@@ -249,7 +249,11 @@ for (const implementation of implementations) {
 
       const account = await store.findAccountByEmail("bob@example.test");
       expect(account).toMatchObject({ userId: bob.userId, tenantId: bob.tenantId });
-      await store.addTeamMember(team.id, account!);
+      await store.inviteTeamMember(team.id, account!);
+      // An invitation is not a membership: it grants no reads until taken up.
+      expect(await store.isTeamMember(team.id, bob.userId)).toBe(false);
+      expect((await store.listTeamInvitations(bob.userId)).map((invitation) => invitation.teamId)).toContain(team.id);
+      expect(await store.acceptTeamInvitation(team.id, bob.userId)).toBe(true);
       expect(await store.isTeamMember(team.id, bob.userId)).toBe(true);
 
       const bobSession = structuredClone(TEST_SESSION);

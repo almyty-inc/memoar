@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Qu
 import type { MemoryDocument, MemoryRevision } from "../../libs/canonical/src/generated.js";
 import type { TenantContext } from "../archive-store.js";
 import { RequireScopes, Tenant } from "../auth.js";
-import { CaptureMemoryDto } from "./memory.dto.js";
+import { CaptureMemoryDto, ListMemoryQueryDto } from "./memory.dto.js";
 import { MemoryService } from "./memory.service.js";
 
 @Controller("memory")
@@ -12,10 +12,12 @@ export class MemoryController {
   @Get()
   list(
     @Tenant() context: TenantContext,
-    @Query("machineId") machineId?: string,
-    @Query("scope") scope?: string,
+    @Query() query: ListMemoryQueryDto,
   ): Promise<{ items: MemoryDocument[] }> {
-    return this.memory.list(context, { ...(machineId ? { machineId } : {}), ...(scope ? { scope } : {}) });
+    return this.memory.list(context, {
+      ...(query.machineId ? { machineId: query.machineId } : {}),
+      ...(query.scope ? { scope: query.scope } : {}),
+    });
   }
 
   @Post()

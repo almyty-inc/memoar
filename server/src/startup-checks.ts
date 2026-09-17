@@ -148,6 +148,43 @@ export async function assertNoPublishedAccountPasswords(
   );
 }
 
+/** What the runtime connection's role is allowed to be. */
+export interface RuntimeRole {
+  name: string;
+  superuser: boolean;
+  bypassRls: boolean;
+}
+
+/**
+ * Refuses to start unless row-level security can actually filter.
+ *
+ * Every tenant policy in this schema is FORCE ROW LEVEL SECURITY, and Postgres
+ * applies none of it to a superuser or to a role with BYPASSRLS. Tenant
+ * isolation therefore rests entirely on which role the process connects as —
+ * and nothing checked. An operator who set DATABASE_URL to the bootstrap
+ * superuser (the URL the migration variable is meant to hold, and the one every
+ * local tool prints) turned every policy into a no-op, and the archive looked
+ * and behaved exactly as it had the moment before: one tenant's queries simply
+ * returned another tenant's rows.
+ *
+ * Checked at boot rather than on the first query, because by the time a query
+ * proves it the service has already answered somebody.
+ */
+export async function assertTenantIsolationEnforced(readRole: () => Promise<RuntimeRole | null>): Promise<void> {
+  const role = await readRole();
+  if (!role) {
+    throw new Error("refusing to start: could not determine the database role this process connects as, so it cannot be shown that row-level security applies to it");
+  }
+  const reasons: string[] = [];
+  if (role.superuser) reasons.push("is a superuser");
+  if (role.bypassRls) reasons.push("holds BYPASSRLS");
+  if (reasons.length === 0) return;
+  throw new Error(
+    `refusing to start: the runtime database role "${role.name}" ${reasons.join(" and ")}, which bypasses every FORCE ROW LEVEL SECURITY policy and disables tenant isolation. ` +
+    "Connect as the least-privilege role (memoar_app) and keep the owner connection for MIGRATION_DATABASE_URL.",
+  );
+}
+
 /** Throws unless production is configured with credentials worth having. */
 export function assertProductionCredentials(environment: NodeJS.ProcessEnv = process.env): void {
   if (environment.NODE_ENV !== "production") return;
