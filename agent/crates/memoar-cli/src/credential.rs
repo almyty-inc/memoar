@@ -89,9 +89,14 @@ impl FileCredentialStore {
 
 impl CredentialStore for FileCredentialStore {
     /// An API key wins over an access token when both are present, which is what
-    /// an install written before the key existed looks like after its next
-    /// `login`. The old token is left in place rather than deleted so that
-    /// rolling back to an older agent does not lock the machine out.
+    /// an install written before the key existed looks like between the upgrade
+    /// and its next `login`.
+    ///
+    /// Reading both is the whole of the compatibility story. Writing a key
+    /// replaces the file, so the old token does not survive it — and it was
+    /// never worth keeping: it expires an hour after it was issued, so an agent
+    /// rolled back the next day would find it dead anyway. `login` is the way
+    /// back, not a stale token.
     fn load(&self) -> Result<Option<Credential>, AppError> {
         if !self.path.exists() {
             return Ok(None);

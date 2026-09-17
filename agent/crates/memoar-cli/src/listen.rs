@@ -48,8 +48,14 @@ pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandO
     let mut decoder = SseDecoder::new();
     let mut handled: Vec<Value> = Vec::new();
     let mut chunk = [0_u8; 8192];
-    let idle_deadline = (args.idle_timeout_seconds > 0)
-        .then(|| Instant::now() + Duration::from_secs(args.idle_timeout_seconds));
+    // The window is idle time, not total time. It was computed once before the
+    // loop and never moved, so a machine that kept receiving commands was still
+    // killed at the deadline set when it connected — the opposite of what the
+    // flag says, and worst for the machine doing the most work. Every handled
+    // command pushes it out.
+    let idle_window =
+        (args.idle_timeout_seconds > 0).then(|| Duration::from_secs(args.idle_timeout_seconds));
+    let mut idle_deadline = idle_window.map(|window| Instant::now() + window);
 
     loop {
         if let Some(deadline) = idle_deadline {
@@ -71,6 +77,7 @@ pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandO
             let command: Value = serde_json::from_str(&event.data)
                 .map_err(|error| AppError::network(format!("invalid command payload: {error}")))?;
             handled.push(apply_command(&machine_api, &config, paths, &command)?);
+            idle_deadline = idle_window.map(|window| Instant::now() + window);
             if args.max_commands > 0 && handled.len() >= args.max_commands {
                 return Ok(CommandOutput {
                     command: "listen".to_owned(),
@@ -118,8 +125,20 @@ fn apply_command(
         &ack,
     )?;
 
-    let result = outcome?;
-    Ok(json!({ "id": command_id, "kind": kind, "result": result }))
+    // A command this machine cannot apply is a fact about that command, not a
+    // reason to stop listening. It was acked as failed — which is what tells an
+    // operator why — and then returned as an error, which ended the listener.
+    // One unsupported kind, or one bundle that would not materialize, and the
+    // machine went deaf to every command after it.
+    match outcome {
+        Ok(result) => Ok(json!({ "id": command_id, "kind": kind, "result": result })),
+        Err(error) => Ok(json!({
+            "id": command_id,
+            "kind": kind,
+            "status": "failed",
+            "error": error.message,
+        })),
+    }
 }
 
 /// Downloads the pre-signed bundle named by a materialize command and writes it

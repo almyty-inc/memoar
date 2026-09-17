@@ -2,6 +2,7 @@ mod commands;
 mod contract;
 mod credentials;
 mod download;
+mod listen;
 mod login;
 mod messages;
 mod mock;
