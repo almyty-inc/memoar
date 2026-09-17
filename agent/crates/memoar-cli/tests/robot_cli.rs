@@ -49,3 +49,40 @@ fn compiled_binary_error_envelope_and_exit_are_stable() {
         serde_json::from_str(include_str!("golden/error-not-initialized.json")).unwrap();
     assert_eq!(actual, expected);
 }
+
+/// Asking a program its version is not a mistake.
+///
+/// clap reports `--version` and `--help` as errors, and they were handled as
+/// usage failures: rendered to stderr with exit 2. Anything probing for the
+/// tool — a package manager, a CI step, `memoar --version` in a script — read
+/// that as the tool being broken. The release workflow's own "the binary must
+/// run on the machine that built it" step is what surfaced it, on four of five
+/// platforms at once.
+#[test]
+fn version_and_help_succeed_on_stdout() {
+    for arguments in [["--version"], ["--help"]] {
+        let output = run(&arguments);
+        assert!(
+            output.status.success(),
+            "{arguments:?} exited {:?}",
+            output.status.code()
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "{arguments:?} wrote to stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!output.stdout.is_empty(), "{arguments:?} printed nothing");
+    }
+}
+
+#[test]
+fn a_real_usage_error_still_fails() {
+    // The fix must not turn every parse error into success.
+    let output = run(&["definitely-not-a-command"]);
+    assert_eq!(
+        output.status.code(),
+        Some(memoar_cli::EXIT_USAGE.into()),
+        "an unknown subcommand must still be a usage failure"
+    );
+}
