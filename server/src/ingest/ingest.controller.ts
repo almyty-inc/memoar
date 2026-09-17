@@ -24,7 +24,6 @@ function ingestHeaders(source: string | undefined, sourcePath: string | undefine
     throw new BadRequestException("x-memoar-source must name a capture source, optionally as source@version");
   }
   const path = sourcePath ?? "";
-  // eslint-disable-next-line no-control-regex -- a control character in a stored path is what is being refused
   if (path.length > SOURCE_PATH_MAX || /[\u0000-\u001f]/u.test(path)) {
     throw new BadRequestException(`x-memoar-source-path must be at most ${SOURCE_PATH_MAX} characters and carry no control characters`);
   }

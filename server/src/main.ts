@@ -115,9 +115,9 @@ export function configureApp(app: INestApplication): void {
 
 /** The connection's own role and the two attributes that switch RLS off. */
 export async function runtimeRole(dataSource: DataSource): Promise<RuntimeRole | null> {
-  const rows = await dataSource.query(
+  const rows: { rolname: string; rolsuper: boolean; rolbypassrls: boolean }[] = await dataSource.query(
     "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
-  ) as { rolname: string; rolsuper: boolean; rolbypassrls: boolean }[];
+  );
   const row = rows[0];
   return row ? { name: row.rolname, superuser: row.rolsuper, bypassRls: row.rolbypassrls } : null;
 }
