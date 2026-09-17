@@ -14,8 +14,9 @@ their hash. Everything else is derived from it. This is why a parser fix can be
 replayed over sessions captured months ago.
 
 **Machine** — one computer with an agent signed in. Sessions carry the machine
-they came from; a machine's token is scoped to capture, so losing a laptop means
-revoking one credential rather than your account.
+they came from. Each one holds its own API key, scoped to capture and named
+after the machine, so losing a laptop means revoking one credential rather than
+your account.
 
 **Source** — one tool's native store on one machine (`~/.claude/projects`,
 `~/.codex/sessions`, a Cursor `state.vscdb`). Enabled per machine.

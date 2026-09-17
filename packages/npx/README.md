@@ -50,10 +50,15 @@ npx memoar login --endpoint https://your-archive.example/v1
 npx memoar sync --watch
 ```
 
-`login` registers this computer and stores a token scoped to capture — it can
-upload sessions and nothing else. `sync` uploads what is on disk; `--watch`
-keeps following the files as your agents append to them, so a session you are in
-the middle of stays current.
+`login` registers this computer and stores an **API key** scoped to what the
+agent does: capture, upload, keep its machine record current, and read back what
+it archived. Not what your browser session can do — it cannot share a session,
+mint another credential, or act as an MCP client. The key does not expire, so
+`--watch` keeps running; revoke it for one computer in **Settings → API keys**
+without touching the others.
+
+`sync` uploads what is on disk; `--watch` keeps following the files as your
+agents append to them, so a session you are in the middle of stays current.
 
 ## Commands
 
