@@ -44,6 +44,23 @@ pub enum DaemonError {
     Zip { path: PathBuf, message: String },
 }
 
+impl DaemonError {
+    /// Redaction was asked for and cannot be applied to this artifact.
+    ///
+    /// Three variants mean the same thing to a caller: the file stays on the
+    /// machine. They are named in one place because handling two of the three
+    /// is how a Zed write-ahead log went on aborting the whole capture after
+    /// the other two had been fixed.
+    pub fn is_unredactable(&self) -> bool {
+        matches!(
+            self,
+            DaemonError::UnscannableSecret { .. }
+                | DaemonError::UnsupportedRedaction(_)
+                | DaemonError::Zip { .. }
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum QueueStatus {
@@ -776,6 +793,8 @@ pub struct SyncReport {
     pub considered: usize,
     pub uploaded: usize,
     pub duplicates: usize,
+    /// Artifacts the server would not take. They stay queued for the next run.
+    pub failed: usize,
 }
 
 pub struct SyncEngine<T> {
@@ -799,6 +818,7 @@ impl<T: SyncTransport> SyncEngine<T> {
                 batch_id: None,
                 considered: 0,
                 uploaded: 0,
+                failed: 0,
                 duplicates: 0,
             });
         }
@@ -814,10 +834,21 @@ impl<T: SyncTransport> SyncEngine<T> {
             }
         };
         let mut uploaded = 0;
+        let mut failed = 0;
+        // Hashes the server does not have and this pass could not give it. The
+        // manifest must not name them: it is a claim that these bytes are in
+        // the archive, and the server checks.
+        let mut absent: HashSet<String> = HashSet::new();
         for artifact in &artifacts {
             if !missing.contains(&artifact.sha256) {
                 continue;
             }
+            // One artifact the server will not take must not block the rest.
+            //
+            // Every branch here already recorded the artifact for retry and
+            // then returned, so a single transcript the ingress rejected — a
+            // 110 MB session against a 64 MB body limit — stopped every other
+            // upload in the batch. The queue remembers; the loop carries on.
             let bytes = match fs::read(&artifact.local_path) {
                 Ok(bytes) => bytes,
                 Err(source) => {
@@ -826,7 +857,9 @@ impl<T: SyncTransport> SyncEngine<T> {
                         source,
                     };
                     queue.mark_retry(&artifact.sha256, &error.to_string())?;
-                    return Err(error);
+                    absent.insert(artifact.sha256.clone());
+                    failed += 1;
+                    continue;
                 }
             };
             if sha256_bytes(&bytes) != artifact.sha256 {
@@ -835,11 +868,15 @@ impl<T: SyncTransport> SyncEngine<T> {
                     artifact.sha256
                 ));
                 queue.mark_retry(&artifact.sha256, &error.to_string())?;
-                return Err(error);
+                absent.insert(artifact.sha256.clone());
+                failed += 1;
+                continue;
             }
             if let Err(error) = self.transport.upload(artifact, bytes) {
                 queue.mark_retry(&artifact.sha256, &error.to_string())?;
-                return Err(error);
+                absent.insert(artifact.sha256.clone());
+                failed += 1;
+                continue;
             }
             uploaded += 1;
         }
@@ -849,6 +886,7 @@ impl<T: SyncTransport> SyncEngine<T> {
             batch_id: batch_id.clone(),
             artifacts: artifacts
                 .iter()
+                .filter(|artifact| !absent.contains(&artifact.sha256))
                 .map(|artifact| ManifestArtifact {
                     sha256: artifact.sha256.clone(),
                     size: artifact.size,
@@ -865,28 +903,45 @@ impl<T: SyncTransport> SyncEngine<T> {
                 return Err(error);
             }
         };
+        // Reconcile against what the manifest actually claimed, not against the
+        // whole batch: an artifact the server refused is excluded from the
+        // manifest on purpose, and counting it here turned a partial success
+        // into a protocol error that failed the run.
+        let claimed = manifest.artifacts.len() as u64;
         let receipt_total = receipt.accepted.saturating_add(receipt.duplicate);
-        if receipt.batch_id != batch_id || receipt_total != artifacts.len() as u64 {
+        if receipt.batch_id != batch_id || receipt_total != claimed {
             let error = DaemonError::Protocol(format!(
                 "manifest receipt mismatch: batch {} accepted {} duplicate {} for {} artifacts",
-                receipt.batch_id,
-                receipt.accepted,
-                receipt.duplicate,
-                artifacts.len()
+                receipt.batch_id, receipt.accepted, receipt.duplicate, claimed
             ));
             queue.mark_retry_all(&artifacts, &error.to_string())?;
             return Err(error);
         }
-        for hash in &hashes {
+        // Only what the manifest claimed is synced; the rest stays queued.
+        for hash in hashes.iter().filter(|hash| !absent.contains(*hash)) {
             queue.mark_synced(hash)?;
         }
         Ok(SyncReport {
+            failed,
             batch_id: Some(batch_id),
             considered: artifacts.len(),
             uploaded,
             duplicates: artifacts.len() - uploaded,
         })
     }
+}
+
+/// What a capture pass did, including what it could not take.
+///
+/// A file that cannot be redacted is not uploaded — that is the fail-closed
+/// promise and it holds. But it used to abort the whole pass, so one binary
+/// file under a source directory meant nothing at all was archived, from any
+/// source. It is skipped and counted now, and the count is reported, because a
+/// file quietly dropped is its own kind of dishonesty.
+#[derive(Debug, Default, Clone)]
+pub struct CaptureSummary {
+    pub captured: usize,
+    pub skipped: Vec<PathBuf>,
 }
 
 pub fn capture_sources(
@@ -902,6 +957,7 @@ pub fn capture_sources(
         enabled_sources,
         RedactionConfig::disabled(),
     )
+    .map(|summary| summary.captured)
 }
 
 pub fn capture_sources_with_redaction(
@@ -910,18 +966,23 @@ pub fn capture_sources_with_redaction(
     os: OperatingSystem,
     enabled_sources: &HashSet<String>,
     redaction: RedactionConfig,
-) -> Result<usize, DaemonError> {
-    let mut captured = 0;
+) -> Result<CaptureSummary, DaemonError> {
+    let mut summary = CaptureSummary::default();
     for spec in SOURCES {
         if !enabled_sources.is_empty() && !enabled_sources.contains(spec.id) {
             continue;
         }
         for path in files_for_source(spec, home, os)? {
-            queue.enqueue_with_redaction(spec.id, &path, redaction)?;
-            captured += 1;
+            match queue.enqueue_with_redaction(spec.id, &path, redaction) {
+                Ok(_) => summary.captured += 1,
+                // The file stays on your machine. One of those must not cost
+                // you everything else.
+                Err(error) if error.is_unredactable() => summary.skipped.push(path),
+                Err(other) => return Err(other),
+            }
         }
     }
-    Ok(captured)
+    Ok(summary)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1021,8 +1082,12 @@ impl PollingCapture {
                     modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                 };
                 if self.changes.observe(path.clone(), fingerprint, now) {
-                    queue.enqueue_with_redaction(spec.id, &path, redaction)?;
-                    captured += 1;
+                    match queue.enqueue_with_redaction(spec.id, &path, redaction) {
+                        Ok(_) => captured += 1,
+                        Err(DaemonError::UnsupportedRedaction(_))
+                        | Err(DaemonError::Zip { .. }) => {}
+                        Err(other) => return Err(other),
+                    }
                 }
             }
         }

@@ -75,9 +75,15 @@ pub static SOURCES: &[SourceSpec] = &[
         stability: Stability::Internal,
         common_paths: &[".claude/projects/*/*.jsonl", ".claude/history.jsonl"],
         linux_paths: NONE,
+        // The transcripts, not the trees the sessions built beside them. These
+        // were bare directories, and a bare directory means everything beneath
+        // it: on one machine that was 5,392 files — markdown, TypeScript,
+        // Python, JPEGs and node_modules the agent had written into its own
+        // working directory — offered to the uploader by a source that promises
+        // session stores and nothing else.
         macos_paths: &[
-            "Library/Application Support/Claude/claude-code-sessions",
-            "Library/Application Support/Claude/local-agent-mode-sessions",
+            "Library/Application Support/Claude/claude-code-sessions/*/*/local_*.json",
+            "Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*.json",
         ],
         windows_paths: NONE,
         environment_override: None,
@@ -312,15 +318,68 @@ pub fn files_for_source_with_env<F>(
 where
     F: Fn(&str) -> Option<PathBuf> + Copy,
 {
-    let mut files = Vec::new();
+    let candidates = candidate_paths(spec, home, os, environment);
+    // Walk each distinct root once, then keep only what the declared pattern
+    // actually names.
+    //
+    // `pattern_root` cuts `~/.claude/projects/<project>/<file>.jsonl` down to
+    // `~/.claude/projects`, and the walk below used to return everything
+    // underneath it to twelve levels deep — every file of every type another
+    // tool had put there. The glob was written down and never applied. That is
+    // how a socket and a second tool's SQLite database ended up being offered to
+    // the uploader, and it contradicts what this agent promises: the session
+    // stores these patterns name, and nothing else.
+    //
+    // Several patterns can share a root — Antigravity has three — so the roots
+    // are de-duplicated before walking and a file is kept if any pattern for
+    // this source matches it.
+    let mut roots: Vec<PathBuf> = candidates.iter().map(|path| pattern_root(path)).collect();
+    roots.sort();
+    roots.dedup();
+
+    let mut found = Vec::new();
     let mut visited = HashSet::new();
-    for candidate in candidate_paths(spec, home, os, environment) {
-        let root = pattern_root(&candidate);
-        collect_files(&root, 0, &mut visited, &mut files)?;
+    for root in &roots {
+        collect_files(root, 0, &mut visited, &mut found)?;
     }
+
+    let mut files: Vec<PathBuf> = found
+        .into_iter()
+        .filter(|path| {
+            candidates
+                .iter()
+                .any(|pattern| path_matches_pattern(pattern, path))
+        })
+        .collect();
     files.sort();
     files.dedup();
     Ok(files)
+}
+
+/// Whether one collected path is named by one declared pattern.
+///
+/// A pattern with no `*` is a root or an exact file, and keeps the behaviour it
+/// had: everything at or beneath it. That is what `MEMOAR_CAPTURE_HOME`-style
+/// overrides rely on, and what a plain path like `.claude/history.jsonl` means.
+fn path_matches_pattern(pattern: &Path, path: &Path) -> bool {
+    let pattern_text = pattern.to_string_lossy();
+    if !pattern_text.contains('*') {
+        return path == pattern || path.starts_with(pattern);
+    }
+    let pattern_parts: Vec<_> = pattern.components().collect();
+    let path_parts: Vec<_> = path.components().collect();
+    if pattern_parts.len() != path_parts.len() {
+        return false;
+    }
+    pattern_parts
+        .iter()
+        .zip(path_parts.iter())
+        .all(|(expected, actual)| {
+            crate::memory::matches_segment(
+                &expected.as_os_str().to_string_lossy(),
+                &actual.as_os_str().to_string_lossy(),
+            )
+        })
 }
 
 fn candidate_paths<F>(
@@ -376,14 +435,29 @@ fn collect_files(
         files.push(path.to_path_buf());
         return Ok(());
     }
-    for entry in fs::read_dir(path).map_err(|source| DiscoveryError::Inspect {
-        path: path.to_path_buf(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| DiscoveryError::Inspect {
-            path: path.to_path_buf(),
-            source,
-        })?;
+    /*
+        Anything that is neither a regular file nor a directory — a unix socket,
+        a fifo, a device node — is skipped rather than descended into.
+
+        A socket answers `symlink_metadata` perfectly well and is not a file, so
+        it fell through to `read_dir` and came back ENOTDIR, which aborted the
+        entire walk. One `lsp.sock` left under ~/.claude/projects by another tool
+        meant `memoar sync` captured nothing at all, on every source, with a
+        message about a path the reader never put there.
+    */
+    if !metadata.is_dir() {
+        return Ok(());
+    }
+    /*
+        A directory that cannot be read is skipped too. Losing one subtree is a
+        gap; aborting the walk is an archive that silently stays empty, and the
+        second is what this did.
+    */
+    let Ok(entries) = fs::read_dir(path) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
         collect_files(&entry.path(), depth + 1, visited, files)?;
     }
     Ok(())
@@ -401,6 +475,91 @@ mod tests {
         assert!(SOURCES.iter().any(|source| source.tier == 1));
         assert!(SOURCES.iter().any(|source| source.tier == 2));
         assert!(SOURCES.iter().any(|source| source.tier == 3));
+    }
+
+    /// The declared pattern is what gets read. Nothing else.
+    ///
+    /// `pattern_root` cuts the glob back to its fixed prefix and the walk then
+    /// returned every file beneath it, twelve levels deep — so the Claude Code
+    /// source, whose pattern names `*.jsonl` two levels down, was handing the
+    /// uploader another tool's SQLite database, its logs, and anything else
+    /// living under ~/.claude/projects. Both the docs and the app say only the
+    /// session stores are read; this is that claim, as a test.
+    #[test]
+    fn reads_only_what_the_pattern_names() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join(".claude/projects/-tmp-project");
+        fs::create_dir_all(project.join("memory/.agented")).unwrap();
+        fs::create_dir_all(project.join("subdir")).unwrap();
+
+        fs::write(project.join("session.jsonl"), "{}\n").unwrap();
+        // Everything below is somebody else's, and none of it is a transcript.
+        fs::write(
+            project.join("memory/.agented/state.db"),
+            b"SQLite format 3\0",
+        )
+        .unwrap();
+        fs::write(project.join("memory/notes.md"), "private\n").unwrap();
+        fs::write(project.join("subdir/deeper.jsonl"), "{}\n").unwrap();
+
+        let spec = SOURCES
+            .iter()
+            .find(|source| source.id == "claude-code")
+            .unwrap();
+        let files = files_for_source(spec, temp.path(), OperatingSystem::Linux).unwrap();
+
+        assert!(
+            files.iter().any(|path| path.ends_with("session.jsonl")),
+            "the transcript the pattern names must still be found"
+        );
+        for unwanted in ["state.db", "notes.md", "deeper.jsonl"] {
+            assert!(
+                !files.iter().any(|path| path.ends_with(unwanted)),
+                "{unwanted} is not named by .claude/projects/*/*.jsonl, got {files:?}"
+            );
+        }
+    }
+
+    /// A socket in a source directory must not cost you the whole archive.
+    ///
+    /// `symlink_metadata` answers for a unix socket, and it is not a file, so
+    /// the walk fell through to `read_dir` and got ENOTDIR — which aborted
+    /// discovery for every source. One `lsp.sock` another tool had left under
+    /// ~/.claude/projects meant `memoar sync` captured nothing at all.
+    #[cfg(unix)]
+    #[test]
+    fn a_socket_beside_the_sessions_does_not_stop_discovery() {
+        use std::os::unix::net::UnixListener;
+
+        // A socket path has to fit in sockaddr_un (~104 bytes on macOS), and
+        // the default temp root is nowhere near short enough.
+        let temp = tempfile::Builder::new()
+            .prefix("mc")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let project = temp.path().join(".claude/projects/p");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(project.join("session.jsonl"), "{}\n").unwrap();
+        // Exactly what was on the machine this was found on.
+        let nested = project.join("memory/.agented");
+        fs::create_dir_all(&nested).unwrap();
+        let _socket = UnixListener::bind(nested.join("lsp.sock")).unwrap();
+
+        let spec = SOURCES
+            .iter()
+            .find(|source| source.id == "claude-code")
+            .unwrap();
+        let files = files_for_source(spec, temp.path(), OperatingSystem::Linux)
+            .expect("a socket in the tree must not fail the whole walk");
+
+        assert!(
+            files.iter().any(|path| path.ends_with("session.jsonl")),
+            "expected the transcript beside the socket, got {files:?}"
+        );
+        assert!(
+            !files.iter().any(|path| path.ends_with("lsp.sock")),
+            "a socket is not a transcript"
+        );
     }
 
     #[test]

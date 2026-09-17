@@ -289,7 +289,7 @@ fn directories(root: &Path) -> Vec<PathBuf> {
 }
 
 /// `*` within one segment: `*.md`, `*.instructions.md`.
-fn matches_segment(pattern: &str, name: &str) -> bool {
+pub(crate) fn matches_segment(pattern: &str, name: &str) -> bool {
     let parts: Vec<&str> = pattern.split('*').collect();
     if parts.len() == 1 {
         return pattern == name;

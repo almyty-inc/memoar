@@ -103,7 +103,7 @@ export class ProblemFilter implements ExceptionFilter {
     const request = http.getRequest<Request>();
     const response = http.getResponse<Response>();
     const id = (request as { requestId?: string }).requestId ?? requestId(request);
-    const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+    const status = statusFor(exception);
 
     if (status >= 500) {
       // Grouped as well as logged, and the group's id goes in the line: the log
@@ -160,6 +160,23 @@ function problemBody(exception: unknown, status: number): Record<string, unknown
     status,
     code: "internal_error",
   };
+}
+
+/**
+ * The status an exception deserves.
+ *
+ * body-parser throws a plain Error carrying `status: 413` rather than a Nest
+ * HttpException, so an oversized body came back as a 500 "internal error" —
+ * logged as unhandled, fingerprinted as a server fault, and telling the client
+ * nothing it could act on. A manifest too large to describe is the caller's
+ * problem to fix and must say so.
+ */
+export function statusFor(exception: unknown): number {
+  if (exception instanceof HttpException) return exception.getStatus();
+  const reported = (exception as { status?: unknown; statusCode?: unknown } | null)?.status
+    ?? (exception as { statusCode?: unknown } | null)?.statusCode;
+  if (typeof reported === "number" && reported >= 400 && reported < 600) return reported;
+  return HttpStatus.INTERNAL_SERVER_ERROR;
 }
 
 function slug(status: number): string {

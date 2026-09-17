@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { RequestMethod, ValidationPipe, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { raw, type Express } from "express";
+import { json, raw, type Express } from "express";
 import type { ServerResponse } from "node:http";
 import { DataSource, IsNull } from "typeorm";
 import { AppModule } from "./app.module.js";
@@ -35,6 +35,13 @@ export function configureApp(app: INestApplication): void {
     type: "application/octet-stream",
     limit: Number(process.env.MEMOAR_MAX_ARTIFACT_BYTES ?? 64 * 1024 * 1024),
   }));
+  /*
+    A manifest is metadata, not payload, but a batch of 256 artifacts with real
+    capture paths in it is larger than body-parser's 100kb default — and the
+    failure surfaced as an unhandled 500 "internal error", so a client had no
+    way to learn that its batch was simply too big to describe.
+  */
+  app.use(json({ limit: process.env.MEMOAR_MAX_MANIFEST_BYTES ?? "8mb" }));
   // Request bodies are validated against the DTO declared on each handler.
   // forbidNonWhitelisted keeps unknown fields from silently reaching services.
   app.useGlobalPipes(new ValidationPipe({

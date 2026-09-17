@@ -2,8 +2,8 @@ use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
 use memoar_connectors::{OperatingSystem, SOURCES, discover};
 use memoar_daemon::{
-    DaemonError, HttpTransport, OfflineQueue, PollingCapture, RedactionConfig, SyncEngine,
-    capture_sources_with_redaction, memory::MemorySync,
+    CaptureSummary, DaemonError, HttpTransport, OfflineQueue, PollingCapture, RedactionConfig,
+    SyncEngine, capture_sources_with_redaction, memory::MemorySync,
 };
 use memoar_materializer::{ConversionBundle, MaterializeError, Target, materialize_bundle};
 use reqwest::blocking::{Client, RequestBuilder, Response};
@@ -594,16 +594,19 @@ fn sync(args: &SyncArgs, json_mode: bool, paths: &RuntimePaths) -> Result<Comman
                 last["captured"], last["sync"]["uploaded"]
             );
             thread::sleep(Duration::from_secs(args.interval_seconds.max(1)));
-            let captured = watcher
-                .scan(
-                    &queue,
-                    &paths.home,
-                    OperatingSystem::current(),
-                    &enabled,
-                    config.redaction,
-                    SystemTime::now(),
-                )
-                .map_err(map_capture_error)?;
+            let captured = CaptureSummary {
+                captured: watcher
+                    .scan(
+                        &queue,
+                        &paths.home,
+                        OperatingSystem::current(),
+                        &enabled,
+                        config.redaction,
+                        SystemTime::now(),
+                    )
+                    .map_err(map_capture_error)?,
+                skipped: Vec::new(),
+            };
             last = sync_pending(&queue, &config, &access_token, paths, captured)?;
         }
     }
@@ -626,7 +629,7 @@ fn sync_pending(
     config: &Config,
     access_token: &str,
     paths: &RuntimePaths,
-    captured: usize,
+    captured: CaptureSummary,
 ) -> Result<Value, AppError> {
     let api = ApiClient::new(&config.endpoint, Some(access_token));
     patch_machine_state(&api, config, paths)?;
@@ -645,7 +648,14 @@ fn sync_pending(
         &config.machine_id,
         &Utc::now().to_rfc3339(),
     );
-    Ok(json!({ "captured": captured, "sync": report, "memory": memory }))
+    // `skipped` is named, not just counted: a file redaction could not be
+    // applied to stays on this machine, and you are entitled to know which.
+    Ok(json!({
+        "captured": captured.captured,
+        "skipped": captured.skipped.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+        "sync": report,
+        "memory": memory,
+    }))
 }
 
 /// The project roots this account has archived sessions in.
