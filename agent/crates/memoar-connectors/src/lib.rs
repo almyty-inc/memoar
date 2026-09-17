@@ -157,19 +157,16 @@ pub static SOURCES: &[SourceSpec] = &[
         // bare path, and a bare path is a sweep: the same 5,392-file incident
         // that put globs on Claude Code was waiting under every one of these.
         common_paths: &[
-            ".local/share/opencode/storage/*/*.json",
-            ".local/share/opencode/storage/*/*/*.json",
-            ".local/share/opencode/storage/*/*/*/*.json",
+            // `storage/` is opencode's configuration — `project/global.json` and
+            // a migration marker. The sessions are in the database, which is
+            // also the only thing the parser accepts: it refuses anything that
+            // is not native SQLite. Collecting the JSON uploaded a config file
+            // on every sync and produced an `unknown_format` artifact each time.
             ".local/share/opencode/opencode.db",
         ],
         linux_paths: NONE,
         macos_paths: NONE,
-        windows_paths: &[
-            "AppData/Roaming/opencode/storage/*/*.json",
-            "AppData/Roaming/opencode/storage/*/*/*.json",
-            "AppData/Roaming/opencode/storage/*/*/*/*.json",
-            "AppData/Roaming/opencode/opencode.db",
-        ],
+        windows_paths: &["AppData/Roaming/opencode/opencode.db"],
         environment_override: Some("OPENCODE_DATA_DIR"),
         environment_roots: &[".local/share/opencode", "AppData/Roaming/opencode"],
     },
@@ -271,8 +268,13 @@ pub static SOURCES: &[SourceSpec] = &[
         common_paths: NONE,
         // The thread databases, not the write-ahead logs, lock files and
         // whatever else lives in a database directory.
-        linux_paths: &[".local/share/zed/db/*/*.sqlite"],
-        macos_paths: &["Library/Application Support/Zed/db/*/*.sqlite"],
+        // `db/` is the editor's own state — panes, terminals, breakpoints,
+        // keybindings. The agent threads are a separate database, and the
+        // parser reads exactly one table, `threads`, which only that one has.
+        // Pointed at `db/` this captured the editor's terminal history and
+        // never captured a single session.
+        linux_paths: &[".local/share/zed/threads/threads*.db"],
+        macos_paths: &["Library/Application Support/Zed/threads/threads*.db"],
         windows_paths: NONE,
         environment_override: None,
         environment_roots: NONE,

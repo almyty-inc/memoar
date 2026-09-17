@@ -51,7 +51,23 @@ look, not a verdict.
 | `antigravity-cli` | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | 2026-09-08 |
 | `crush` | `<project>/.crush/crush.db` | 2026-09-08 |
 | `opencode` | `~/.local/share/opencode/opencode.db` | 2026-09-08 |
-| `zed` | `~/Library/Application Support/Zed/**/threads*.db` | 2026-09-08 |
+| `zed` | `~/Library/Application Support/Zed/threads/threads.db` | 2026-09-17 |
+
+The capture patterns are part of this. A parser verified against the right
+store proves nothing if discovery hands it a different file, and twice it did:
+`zed` was pointed at `db/<channel>/db.sqlite`, the editor's own state — panes,
+terminals, breakpoints — which has no `threads` table, so capture took the
+terminal history and never took a conversation. `opencode` collected
+`storage/**/*.json`, which is configuration; its sessions are in the database,
+and its parser refuses anything that is not native SQLite. Both were confirmed
+against the real directories on a machine that runs both tools, and both now
+have a test naming the file to take and the file to leave.
+
+Four sources still point at guessed layouts, and the parsers for two of them
+(`copilot`, `goose`) accept only native SQLite while their patterns also name
+JSON — so whatever those patterns match today is collected, uploaded and
+rejected. Nobody here has run those tools. Verifying them is the same exercise:
+look at what the tool actually wrote, and check the pattern names it.
 
 ## Written from the format, not from a capture
 

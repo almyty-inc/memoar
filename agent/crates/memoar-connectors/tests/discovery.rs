@@ -68,11 +68,18 @@ fn a_wildcard_segment_does_not_follow_a_link_out_of_the_tree() {
 fn a_source_reads_only_the_records_its_pattern_names() {
     let cases: &[(&str, OperatingSystem, &str, &str, &[&str])] = &[
         (
+            // opencode keeps its sessions in the database and its configuration
+            // under `storage/`. The parser refuses anything that is not native
+            // SQLite, so the JSON was collected, uploaded and rejected.
             "opencode",
             OperatingSystem::Linux,
-            ".local/share/opencode/storage/session",
-            "ses_01.json",
-            &["notes.md", "screenshot.png", "state.vscdb"],
+            ".local/share/opencode",
+            "opencode.db",
+            &[
+                "opencode.db-wal",
+                "opencode.db-shm",
+                "storage/project/global.json",
+            ],
         ),
         (
             "copilot",
@@ -96,11 +103,16 @@ fn a_source_reads_only_the_records_its_pattern_names() {
             &["thumbnail.jpg"],
         ),
         (
+            // The real layout on a machine that runs Zed: the agent threads
+            // are `threads/threads.db`, and `db/<channel>/db.sqlite` is the
+            // editor's own state. This case named the editor's database as the
+            // thing to capture, so it passed while capture took the terminal
+            // history and no sessions at all.
             "zed",
             OperatingSystem::Linux,
-            ".local/share/zed/db/0-stable",
-            "db.sqlite",
-            &["db.sqlite-wal", "db.sqlite-shm", "LOCK"],
+            ".local/share/zed/threads",
+            "threads.db",
+            &["threads.db-wal", "threads.db-shm", "LOCK"],
         ),
         (
             "goose",
@@ -201,4 +213,46 @@ fn every_override_declares_a_root_one_of_its_patterns_starts_with() {
             );
         }
     }
+}
+
+/// Zed keeps two SQLite databases and only one of them is a session store.
+///
+/// `threads/threads.db` holds the agent threads — the parser reads a single
+/// table, `threads`, and only that database has it. `db/<channel>/db.sqlite` is
+/// the editor's own state: panes, terminals, breakpoints, keybindings. The
+/// pattern pointed at `db/`, so capture took the editor's terminal history
+/// every time and never took a conversation. Both halves are asserted, because
+/// fixing one without the other just moves the mistake.
+#[test]
+fn zed_captures_the_threads_and_not_the_editors_own_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let threads = home.join("Library/Application Support/Zed/threads");
+    let editor = home.join("Library/Application Support/Zed/db/0-stable");
+    std::fs::create_dir_all(&threads).unwrap();
+    std::fs::create_dir_all(&editor).unwrap();
+    std::fs::write(threads.join("threads.db"), b"threads").unwrap();
+    std::fs::write(editor.join("db.sqlite"), b"panes and terminals").unwrap();
+
+    let found = files_for_source(source("zed").unwrap(), home, OperatingSystem::Macos).unwrap();
+    let names: Vec<_> = found
+        .iter()
+        .map(|path| {
+            path.strip_prefix(home)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+
+    assert!(
+        names
+            .iter()
+            .any(|name| name.ends_with("threads/threads.db")),
+        "the thread store must be captured: {names:?}",
+    );
+    assert!(
+        !names.iter().any(|name| name.contains("/db/")),
+        "the editor's own state is not a session store: {names:?}",
+    );
 }
