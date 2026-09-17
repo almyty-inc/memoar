@@ -4,16 +4,12 @@ import { type CanActivate, type ExecutionContext, type INestApplication, Injecta
 import { APP_GUARD, NestFactory } from "@nestjs/core";
 import { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AnnotationService, CollectionService } from "../src/curation.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { configureApp } from "../src/main.js";
 import { McpController, McpRateLimiter, McpService } from "../src/mcp.js";
-import { McpMemoryTools } from "../src/mcp/memory-tools.js";
-import { MemoryService } from "../src/memory/memory.service.js";
-import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackService, SearchService } from "../src/search.js";
-import { SessionsService } from "../src/sessions.js";
-import { ARCHIVE_STORE, SEARCH_BACKEND, SEMANTIC_SEARCH_PROVIDER } from "../src/tokens.js";
+import { McpToolRegistry } from "../src/mcp/registry.js";
+import { buildRegistry } from "./mcp-fixture.js";
 
 @Injectable()
 class TestAuthGuard implements CanActivate {
@@ -28,16 +24,7 @@ const store = new DevArchiveStore();
 @Module({
   controllers: [McpController],
   providers: [
-    { provide: ARCHIVE_STORE, useValue: store },
-    { provide: SEARCH_BACKEND, useFactory: () => new DeterministicLexicalBackend(store) },
-    { provide: SEMANTIC_SEARCH_PROVIDER, useFactory: () => new DisabledSemanticSearchProvider() },
-    SearchService,
-    { provide: PackService, useFactory: (search: SearchService) => new PackService(search, () => new Date("2026-08-19T00:00:00.000Z")), inject: [SearchService] },
-    { provide: SessionsService, useFactory: () => new SessionsService(store) },
-    { provide: CollectionService, useFactory: () => new CollectionService(store) },
-    { provide: AnnotationService, useFactory: () => new AnnotationService(store) },
-    { provide: MemoryService, useFactory: () => new MemoryService(store) },
-    { provide: McpMemoryTools, useFactory: (memory: MemoryService) => new McpMemoryTools(memory), inject: [MemoryService] },
+    { provide: McpToolRegistry, useFactory: () => buildRegistry(store) },
     McpService,
     // Small, so the 429 test exhausts it quickly; large enough for the tool calls
     // the first test makes through one client.
@@ -75,6 +62,11 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
     const listed = await client.listTools();
     expect(listed.tools.map((tool) => tool.name)).toEqual([
       "search_sessions", "get_excerpt", "pack", "get_session", "list_collections", "get_memory", "save_note",
+      "list_sessions", "list_machines",
+      "list_annotations", "add_annotation",
+      "create_collection", "list_collection_sessions", "add_session_to_collection", "remove_session_from_collection",
+      "list_share_links", "list_transfers",
+      "export_project_memory",
       "list_memory_documents", "get_memory_document",
     ]);
     expect(listed.tools.find((tool) => tool.name === "search_sessions")!.description).toContain("Start here");

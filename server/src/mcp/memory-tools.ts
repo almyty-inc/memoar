@@ -5,6 +5,7 @@ import { MEMORY_SCOPES } from "../memory/memory.dto.js";
 import { MemoryService } from "../memory/memory.service.js";
 import { parseToolArguments } from "./arguments.js";
 import { GetMemoryDocumentDto, ListMemoryDocumentsDto } from "./memory-tools.dto.js";
+import { toolNames, type McpToolGroup } from "./tool-group.js";
 
 const DEFAULT_LIMIT = 25;
 const DEFAULT_MAX_CHARS = 20_000;
@@ -49,17 +50,19 @@ export const MEMORY_TOOLS: readonly Tool[] = [
   },
 ] as const;
 
-const MEMORY_TOOL_NAMES: ReadonlySet<string> = new Set(MEMORY_TOOLS.map((tool) => tool.name));
+const MEMORY_TOOL_NAMES = toolNames(MEMORY_TOOLS);
 
 @Injectable()
-export class McpMemoryTools {
+export class McpMemoryTools implements McpToolGroup {
+  readonly tools = MEMORY_TOOLS;
+
   constructor(@Inject(MemoryService) private readonly memory: MemoryService) {}
 
   handles(name: string): boolean {
     return MEMORY_TOOL_NAMES.has(name);
   }
 
-  call(context: TenantContext, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async call(context: TenantContext, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (name === "list_memory_documents") return this.list(context, args);
     return this.get(context, args);
   }
