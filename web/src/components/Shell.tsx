@@ -65,7 +65,9 @@ const titles: Partial<Record<ViewId, string>> = {
   onboarding: 'Connect a machine',
   signin: 'Account',
   session: 'Session',
+  'not-found': 'Not found',
 };
+
 
 export function Shell({ view, user, machines, reachable, children, onNavigate }: {
   view: ViewId;

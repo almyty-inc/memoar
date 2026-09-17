@@ -1,4 +1,5 @@
-import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, FileQuestion, LoaderCircle, RefreshCw } from 'lucide-react';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Shell } from './components/Shell';
 import { Button } from './components/ui';
@@ -38,10 +39,11 @@ function routeFromLocation(): Route {
   const legacy = pathForLegacyHash(window.location.hash);
   if (legacy) {
     window.history.replaceState(null, '', legacy);
-    return routeForPath(legacy) ?? { view: 'timeline' };
+    return routeForPath(legacy);
   }
-  return routeForPath(window.location.pathname) ?? { view: 'timeline' };
+  return routeForPath(window.location.pathname);
 }
+
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => {
@@ -58,7 +60,9 @@ export function App() {
   const [intended] = useState<Route | null>(() => {
     if (!memoarApi.configured || memoarApi.authenticated) return null;
     const current = routeFromLocation();
-    return current.view === 'signin' ? null : current;
+    // An address with no screen is not somewhere to be returned to afterwards.
+    return current.view === 'signin' || current.view === 'not-found' ? null : current;
+
   });
   const [dashboard, setDashboard] = useState<DashboardState>(emptyConnectedDashboard);
   const [loading, setLoading] = useState(() => !memoarApi.configured || memoarApi.authenticated);
@@ -128,7 +132,8 @@ export function App() {
 
   // Back and forward move between screens, which is what those buttons are for.
   useEffect(() => {
-    const onPopState = () => { setRoute(routeForPath(window.location.pathname) ?? { view: 'timeline' }); };
+    const onPopState = () => { setRoute(routeForPath(window.location.pathname)); };
+
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -267,7 +272,25 @@ export function App() {
       setDashboard((current) => ({ ...current, apiKeys: [created.apiKey, ...current.apiKeys] }));
       return created.secret;
     }} />;
+  } else if (view === 'not-found') {
+    /*
+      A typo'd or since-removed address used to render the timeline, silently,
+      under whatever the reader had typed: a page that says one thing and an
+      address bar that says another. The address is left alone so it can be
+      corrected or reported.
+    */
+    content = (
+      <section className="page not-found-page">
+        <div className="empty-state">
+          <FileQuestion size={24} aria-hidden="true" />
+          <h1>No screen lives at this address</h1>
+          <p><code>{window.location.pathname}</code> is not part of this archive. It may have been mistyped, or it may be a link from a version of Memoar that had it.</p>
+          <Button variant="primary" onClick={() => navigate('timeline')}>Go to the timeline</Button>
+        </div>
+      </section>
+    );
   } else if (view === 'onboarding') {
+
     content = <OnboardingView machines={dashboard.machines} onComplete={() => navigate('timeline')} onRefresh={loadDashboard} />;
   } else if (view === 'session') {
     content = openDetail ? (

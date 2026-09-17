@@ -74,14 +74,16 @@
 .artifact-block, .system-block { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3); color: var(--muted); background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-md); font-size: var(--fs-sm); }
 .system-block.error { color: var(--danger); border-color: var(--line-danger); }
 
-.session-inspector { display: grid; align-content: start; gap: var(--sp-3); position: sticky; top: calc(var(--topbar-h) + 120px); }
+.session-inspector { display: grid; align-content: start; gap: var(--sp-3); position: sticky; top: calc(var(--topbar-h) + var(--session-header-h)); }
+
 .inspector-card { padding: var(--sp-4); background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
 .inspector-card h2 { margin: 0 0 var(--sp-4); color: var(--muted); font-family: var(--mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .1em; }
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; overflow: hidden; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
 /* An odd number of metrics fills the last row rather than leaving a ruled,
    empty half-cell beside the final one. */
 .metric-grid > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.metric-grid > div { min-height: 68px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-content: center; column-gap: var(--sp-2); padding: var(--sp-3); background: var(--sidebar); }
+.metric-grid > div { min-height: var(--h-2xl);
+ display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-content: center; column-gap: var(--sp-2); padding: var(--sp-3); background: var(--sidebar); }
 .metric-grid svg { grid-row: 1 / 3; color: var(--muted); }
 .metric-grid strong { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 .metric-grid span { color: var(--quiet); font-size: var(--fs-xs); }

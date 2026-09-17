@@ -1,4 +1,5 @@
-import { AlertCircle, ArrowRight, CheckCircle2, FileArchive, ShieldCheck, UploadCloud } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, FileArchive, Info, ShieldCheck, UploadCloud } from 'lucide-react';
+
 import { useState, type FormEvent } from 'react';
 import { Badge, Button } from '../components/ui';
 import type { ImportProgress, ImportSource } from '../lib/api';
@@ -63,13 +64,24 @@ export function ImportView({ machines, onImport, onOpen }: {
           <label className="field-label">Format<select value={source} onChange={(event) => setSource(event.target.value as ImportSource)}>{sources.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="field-label">Capture machine<select value={machineId} onChange={(event) => setMachineId(event.target.value)} disabled={!machines.length}><option value="">Select a registered machine</option>{machines.map((machine) => <option key={machine.id} value={machine.id}>{machine.name} · {machine.platform}</option>)}</select></label>
           <label className="field-label import-file">Archive file<input aria-label="Archive file" type="file" accept=".zip,.json,.jsonl,.db,.md,application/zip,application/json" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span><UploadCloud size={18} />{file ? `${file.name} · ${file.size.toLocaleString()} bytes` : 'Select an archive file'}</span></label>
-          {!machines.length ? <p role="alert"><AlertCircle size={14} /> Register a machine before submitting an ingest manifest.</p> : null}
+          {/*
+            A hint beside the control it explains, not an error. This was a
+            red role="alert" rendered on arrival, before the reader had done
+            anything: the page opened by telling them they had made a mistake.
+            Nothing here can fail yet — the submit stays disabled until a
+            machine is chosen — so nothing here is announced as a failure.
+          */}
+          {!machines.length ? <p className="field-hint"><Info size={14} aria-hidden="true" /> Register a machine before importing; the capture agent's sign-in does it.</p> : null}
+
           <Button type="submit" variant="primary" disabled={!file || !machineId || busy}>{busy ? 'Importing…' : 'Import archive'} <ArrowRight size={14} /></Button>
         </form>
       </section>
 
       {progress ? <section className="privacy-banner" role="status" aria-label="Import progress"><span>{progress.stage === 'ready' ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}</span><div><strong>{progress.stage}</strong><p>{progress.detail}</p></div></section> : null}
-      {error ? <section className="privacy-banner" role="alert"><span><AlertCircle size={20} /></span><div><strong>Import failed</strong><p>{error}</p></div></section> : null}
+      {/* A failure wears the failure surface. This was the same neutral chrome
+          as the privacy notice above it, so "Import failed" read as news. */}
+      {error ? <section className="privacy-banner banner-error" role="alert"><span><AlertCircle size={20} /></span><div><strong>Import failed</strong><p>{error}</p></div></section> : null}
+
       {imported ? <section className="settings-section"><header><div><h2>{imported.title}</h2><p>{imported.sourceLabel} · {imported.workspace}</p></div><Button variant="primary" onClick={() => onOpen(imported)}>Open imported session <ArrowRight size={14} /></Button></header></section> : null}
     </div>
   );

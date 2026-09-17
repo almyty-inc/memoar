@@ -44,7 +44,24 @@ describe('connecting a machine', () => {
     expect(screen.queryByText(/284|312|542/)).not.toBeInTheDocument();
   });
 
+  it('does not count connectors it cannot see', () => {
+    /*
+      This said "Eleven agents' session stores" — an English literal in a React
+      file bound to a Rust array in another crate. It was accurate the day it
+      was written, and nothing keeps it so: adding a connector is a change in
+      agent/crates/memoar-connectors with no reason to visit this file, and the
+      archive reports no count for the page to read instead.
+    */
+    render(<OnboardingView machines={[]} onComplete={vi.fn()} onRefresh={() => Promise.resolve()} />);
+
+    const explainer = screen.getByText(/session stores/u);
+    expect(explainer).toHaveTextContent(/session stores/u);
+    expect(explainer.textContent).not.toMatch(/Eleven|eleven|\b\d+\b/u);
+
+  });
+
   it('waits honestly when no machine has signed in', () => {
+
     render(<OnboardingView machines={[]} onComplete={vi.fn()} onRefresh={() => Promise.resolve()} />);
 
     expect(screen.getByText(/No machine has signed in yet/)).toBeInTheDocument();

@@ -27,7 +27,29 @@ describe('machines overview', () => {
     expect(screen.getAllByRole('button', { name: /Setup guide/u }).length).toBeGreaterThan(0);
   });
 
+  it('does not flag a source somebody switched off as a fault', () => {
+    /*
+      The icon was a two-step ternary — synced, syncing, and otherwise the
+      warning triangle — so a source the reader had deliberately disabled sat
+      under a fault icon beside the word "Disabled". Turning something off is
+      not a fault, and the page beside it counts faults ("1 source needs
+      attention") from a different field entirely.
+    */
+    const sources = [
+      { id: 'claude-code', label: 'Claude Code', enabled: false, state: 'disabled' as const, sessionCount: 0, lastSyncAt: null },
+      { id: 'codex', label: 'Codex', enabled: true, state: 'attention' as const, sessionCount: 1, lastSyncAt: null },
+    ];
+    const { container } = render(<MachinesView machines={[machine({ sources })]} onConnect={vi.fn()} />);
+
+    const disabled = container.querySelector('.source-state-disabled svg');
+    const attention = container.querySelector('.source-state-attention svg');
+    expect(disabled?.getAttribute('class')).not.toMatch(/alert/u);
+    expect(attention?.getAttribute('class')).toMatch(/alert/u);
+    expect(screen.getByText('Disabled')).toBeInTheDocument();
+  });
+
   it('names a connection state in words rather than printing the enum', () => {
+
     render(<MachinesView machines={[machine({ status: 'never_connected', lastSeenAt: null })]} onConnect={vi.fn()} />);
 
     expect(screen.getByText('Never connected')).toBeInTheDocument();

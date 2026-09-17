@@ -88,7 +88,16 @@ export function OnboardingView({ machines, onComplete, onRefresh }: {
           <div className="install-command"><span>$</span><code>{sync}</code><CopyButton value={sync} label="Copy sync command" /></div>
           <div className="install-explainer">
             <div><p><strong>Signing in registers the machine</strong><small>The archive learns its name and platform; the agent keeps a token scoped to capture.</small></p></div>
-            <div><p><strong>Sync discovers what is there</strong><small>Eleven agents' session stores, plus the instruction files they read. Nothing else is read.</small></p></div>
+            {/*
+              No count. "Eleven agents' session stores" was an English literal
+              in this file bound to a Rust array in another crate: accurate the
+              day it was written, and nothing keeps it so — adding a connector
+              is a change in agent/crates/memoar-connectors with no reason to
+              visit this line. The archive does not report how many connectors
+              the agent ships, so the sentence stops claiming a number.
+            */}
+            <div><p><strong>Sync discovers what is there</strong><small>The session stores your coding agents already write, plus the instruction files they read. Nothing else is read.</small></p></div>
+
             <div><p><strong>--watch keeps it going</strong><small>Files are re-read as they grow, so an ongoing session stays up to date.</small></p></div>
           </div>
         </section>

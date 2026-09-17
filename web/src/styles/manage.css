@@ -3,7 +3,8 @@
 .collection-overview, .machine-overview { display: flex; align-items: center; margin-bottom: var(--sp-6); padding: var(--sp-4) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 /* A rule between the figures, not after the last one — the trailing border had
    nothing on the other side of it. */
-.collection-overview > div:not(.collection-search) { min-width: 148px; display: grid; gap: var(--sp-1); padding: 0 var(--sp-6); border-left: 1px solid var(--line); }
+.collection-overview > div:not(.collection-search) { min-width: var(--stat-col);
+ display: grid; gap: var(--sp-1); padding: 0 var(--sp-6); border-left: 1px solid var(--line); }
 .collection-overview > div:first-child { padding-left: 0; border-left: 0; }
 .collection-overview strong { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
 .collection-overview span { color: var(--quiet); font-family: var(--mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .1em; }
@@ -12,7 +13,10 @@
 .collection-search input { width: 200px; color: var(--text); background: transparent; border: 0; outline: 0; font-size: var(--fs-sm); }
 
 .collection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
-.collection-card { position: relative; overflow: hidden; padding: var(--sp-5); background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
+/* --sp-4 is the card padding everywhere; --sp-5 is the modal's own, and this
+   was the one card that had taken the modal's. */
+.collection-card { position: relative; overflow: hidden; padding: var(--sp-4); background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
+
 .collection-color { position: absolute; inset: 0 0 auto; height: 2px; }
 .collection-card > header { display: flex; justify-content: space-between; gap: var(--sp-3); }
 .collection-icon { width: var(--tile-lg); height: var(--tile-lg); display: inline-flex; align-items: center; justify-content: center; background: var(--panel-hover); border-radius: var(--r-md); }
@@ -25,14 +29,25 @@
 .collection-count strong { color: var(--text); }
 .collection-count span { margin-inline: var(--sp-1); }
 .collection-card > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-.new-collection-card { min-height: 280px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--sp-6); color: var(--muted); background: var(--panel-hover); border: 1px dashed var(--line); border-radius: var(--r-lg); cursor: pointer; text-align: center; }
+.new-collection-card { min-height: var(--card-min);
+ display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--sp-6); color: var(--muted); background: var(--panel-hover); border: 1px dashed var(--line); border-radius: var(--r-lg); cursor: pointer; text-align: center; }
 .new-collection-card:hover { color: var(--text); border-color: var(--acid); }
 .new-collection-card > span { width: var(--tile-lg); height: var(--tile-lg); display: inline-flex; align-items: center; justify-content: center; margin-bottom: var(--sp-3); color: var(--acid); background: var(--sidebar); border-radius: var(--r-lg); }
 .new-collection-card strong { font-size: var(--fs-base); }
 .new-collection-card p { max-width: 34ch; margin: var(--sp-2) 0 0; color: var(--quiet); font-size: var(--fs-sm); line-height: var(--lh-normal); }
 
 
-.share-row { display: grid; grid-template-columns: auto minmax(240px, 1fr) auto auto auto auto; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
+/* Picking a session or a collection out of a list, in a modal. These were
+   native buttons with no rule of their own at all. */
+.collection-picker { display: grid; gap: var(--sp-2); max-height: 50vh; overflow-y: auto; }
+.collection-choice { display: grid; gap: var(--sp-1); padding: var(--sp-3); color: inherit; background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); cursor: pointer; text-align: left; }
+.collection-choice:hover:not(:disabled) { border-color: var(--acid); }
+.collection-choice:disabled { opacity: var(--opacity-inactive); cursor: not-allowed; }
+.collection-choice strong { font-size: var(--fs-sm); }
+.collection-choice small { color: var(--quiet); font-size: var(--fs-xs); }
+
+.share-row { display: grid;
+ grid-template-columns: auto minmax(240px, 1fr) auto auto auto auto; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
 .share-row:last-child, .transfer-row:last-child { border: 0; }
 .row-icon { width: var(--tile-md); height: var(--tile-md); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--cyan); background: var(--surface-cyan); border-radius: var(--r-md); }
 .row-icon.incoming { color: var(--acid); background: var(--panel-hover); }
@@ -79,7 +94,8 @@
 .source-list { padding: 0 var(--sp-4) var(--sp-4); border-top: 1px solid var(--line-soft); }
 .source-list-head, .source-row { display: grid; grid-template-columns: minmax(200px, 1.4fr) .6fr .7fr .8fr var(--sp-10); align-items: center; gap: var(--sp-3); }
 .source-list-head { min-height: var(--h-lg); color: var(--quiet); font-family: var(--mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .08em; }
-.source-row { min-height: 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); }
+.source-row { min-height: var(--h-xl); border-top: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); }
+
 .source-row > div:first-child { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); }
 .source-row strong, .source-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-row strong { color: var(--text); font-size: var(--fs-sm); }

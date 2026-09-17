@@ -4,7 +4,8 @@
 .search-hero { padding: var(--sp-10) var(--gutter) var(--sp-8); background: none; border-bottom: 1px solid var(--line-soft); }
 .search-hero h1 { margin-bottom: var(--sp-5); }
 .big-search {
-  width: min(720px, 100%); height: 56px; display: flex; align-items: center; gap: var(--sp-3);
+  width: min(720px, 100%); height: var(--h-xl); display: flex;
+ align-items: center; gap: var(--sp-3);
   padding: 0 var(--sp-4); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-lg);
 }
 .big-search:focus-within { border-color: var(--acid); box-shadow: 0 0 0 3px rgb(61 122 31 / 12%); }
@@ -19,7 +20,8 @@
 .search-suggestions button { min-height: var(--h-sm); padding: 0 var(--sp-3); color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--r-full); font-size: var(--fs-sm); cursor: pointer; }
 .search-suggestions button:hover { color: var(--text); background: var(--panel-hover); }
 
-.search-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: calc(100vh - 260px); }
+.search-layout { display: grid; grid-template-columns: var(--facet-w) minmax(0, 1fr); min-height: calc(100vh - var(--search-chrome)); }
+
 .aggregation-sidebar { padding: var(--sp-6) var(--sp-4); background: var(--panel-hover); border-right: 1px solid var(--line-soft); }
 .aggregation-group { margin-bottom: var(--sp-6); }
 .aggregation-group h2 { display: flex; align-items: center; gap: var(--sp-2); margin: 0 var(--sp-2) var(--sp-3); color: var(--muted); font-family: var(--mono); font-size: var(--fs-label); letter-spacing: .1em; text-transform: uppercase; }
@@ -51,15 +53,19 @@
 /* The "best match" marker floats over the top-right corner, so the line beneath
    it keeps clear of that corner and a long capture path ellipsizes rather than
    wrapping three deep and running underneath it. */
-.result-topline { display: flex; align-items: center; gap: var(--sp-2); padding-right: 120px; color: var(--quiet); font-size: var(--fs-xs); }
+.result-topline { display: flex; align-items: center; gap: var(--sp-2); padding-right: var(--marker-reserve); color: var(--quiet); font-size: var(--fs-xs); }
+
 .result-topline > span:not(.session-path) { flex: 0 0 auto; }
 .result-content h2 { max-width: var(--measure); margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-md); line-height: var(--lh-snug); letter-spacing: -.01em; }
 .result-content > p { max-width: var(--measure); margin: 0 0 var(--sp-3); color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); }
-mark { padding: 0 2px; color: var(--acid-ink); background: #3d7a1fd9; border-radius: 2px; }
+mark { padding: 0 var(--sp-05); color: var(--acid-ink); background: #3d7a1fd9; border-radius: var(--r-xs); }
+
 .result-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); color: var(--quiet); font-family: var(--mono); font-size: var(--fs-xs); }
 .result-open { display: inline-flex; align-items: center; gap: var(--sp-1); margin-left: auto; color: var(--text); }
 .best-result-marker { position: absolute; top: var(--sp-3); right: var(--sp-3); display: flex; align-items: center; gap: var(--sp-1); color: var(--acid); font-family: var(--mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .08em; }
-.result-skeleton { height: 148px; overflow: hidden; background: var(--sidebar); background-size: 300% 100%; border: 1px solid var(--line-soft); border-radius: var(--r-md); animation: shimmer 1.4s infinite; }
+.result-skeleton { height: 148px;
+
+ overflow: hidden; background: var(--sidebar); background-size: 300% 100%; border: 1px solid var(--line-soft); border-radius: var(--r-md); animation: shimmer 1.4s infinite; }
 
 .pack-prompt { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-4); margin-top: var(--sp-5); padding: var(--sp-4); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-lg); }
 .pack-icon { width: var(--tile-lg); height: var(--tile-lg); display: inline-flex; align-items: center; justify-content: center; color: var(--acid-ink); background: var(--acid); border-radius: var(--r-md); }

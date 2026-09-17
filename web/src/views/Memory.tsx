@@ -81,7 +81,8 @@ export function MemoryView() {
         </label>
       </section>
 
-      {error ? <p role="alert" className="form-error">{error}</p> : null}
+      {error ? <p role="alert" className="error-note">{error}</p> : null}
+
 
       {documents && documents.length === 0 ? (
         <EmptyState

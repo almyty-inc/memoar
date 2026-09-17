@@ -84,7 +84,8 @@ export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfe
         <div><strong>Visibility stays private until review is complete.</strong><p>Open a session and choose Share to review its redactions and mint a link.</p></div>
       </section>
 
-      {error ? <section className="privacy-banner" role="alert"><span><X size={20} /></span><div><strong>Sharing action failed</strong><p>{error}</p></div></section> : null}
+      {error ? <section className="privacy-banner banner-error" role="alert">
+<span><X size={20} /></span><div><strong>Sharing action failed</strong><p>{error}</p></div></section> : null}
 
       <div className="tabs" role="tablist" aria-label="Sharing sections">
         <button role="tab" aria-selected={tab === 'links'} className={cn(tab === 'links' && 'active')} onClick={() => setTab('links')} type="button"><Link2 size={15} /> Share links <Badge>{grants.length}</Badge></button>

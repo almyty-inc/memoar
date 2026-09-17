@@ -10,7 +10,11 @@ export type ViewId =
   | 'settings'
   | 'onboarding'
   | 'signin'
-  | 'session';
+  | 'session'
+  /** An address with no screen behind it. It has no path of its own: it is
+      whatever the reader typed, and the address bar keeps saying so. */
+  | 'not-found';
+
 
 /** A user-authored mark on a session: a pin, a tag, a note, a collection link. */
 export interface Annotation {

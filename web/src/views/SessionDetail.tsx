@@ -34,7 +34,9 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { memoarApi } from '../lib/api';
+import { DEFAULT_PACK_TOKEN_BUDGET } from '../lib/limits';
 import type { Annotation, Collection as CollectionRecord, ContentBlock, ConversionJob, Machine, PackResponse, SessionDetailData, ShareGrant } from '../lib/types';
+
 import {
   Badge,
   Button,
@@ -79,7 +81,8 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   const [actionError, setActionError] = useState<string | null>(null);
   // The pack controls drive the request. They were a readOnly number and a
   // disabled select, so the budget and freshness shown were never the ones used.
-  const [packBudget, setPackBudget] = useState(4000);
+  const [packBudget, setPackBudget] = useState(DEFAULT_PACK_TOKEN_BUDGET);
+
   const [packFreshness, setPackFreshness] = useState<'strict' | 'mixed'>('mixed');
   const [machineId, setMachineId] = useState('');
   const [collectionOpen, setCollectionOpen] = useState(false);
@@ -410,7 +413,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
             )}
           </label>
           <div className="conversion-note"><Sparkles size={16} /><p><strong>{conversion ? `Conversion ${conversion.status}` : 'Conversion report'}</strong><br />{conversion?.resumeCommand ?? (conversion ? 'Converting in the background — this stays open until the bundle is ready.' : 'Queue the canonical session to receive an exact resume command and mapping report.')}</p></div>
-          {actionError ? <p role="alert">{actionError}</p> : null}
+          {actionError ? <p role="alert" className="error-note">{actionError}</p> : null}
         </div>
         <footer className="modal-actions"><Button variant="ghost" onClick={() => setConvertOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => void queueConversion()}>Queue conversion <ArrowRight size={14} /></Button></footer>
       </Modal>
@@ -441,7 +444,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
               {pack.evidence[0] ? <small>[{pack.evidence[0].sessionId.slice(-8)} · turns {pack.evidence[0].turnStart}–{pack.evidence[0].turnEnd} · {pack.evidence[0].ageDays}d]</small> : null}
             </div>
           ) : null}
-          {actionError ? <p role="alert">{actionError}</p> : null}
+          {actionError ? <p role="alert" className="error-note">{actionError}</p> : null}
           {pack ? <div className="redaction-safe"><ShieldCheck size={15} /><span>Redaction status: {pack.redactionStatus}. {pack.staleCount} stale excerpts.</span></div> : null}
         </div>
         <footer className="modal-actions">{pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}<Button variant="primary" disabled={!pack} onClick={() => { setPackOpen(false); setConvertOpen(true); }}>Send to agent <ArrowRight size={14} /></Button></footer>
@@ -457,7 +460,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
               </button>
             ))}
           </div>
-          {actionError ? <p role="alert">{actionError}</p> : null}
+          {actionError ? <p role="alert" className="error-note">{actionError}</p> : null}
         </div>
         <footer className="modal-actions"><Button variant="ghost" onClick={() => setCollectionOpen(false)}>Cancel</Button></footer>
       </Modal>
@@ -627,7 +630,8 @@ function ShareReviewModal({ open, approved, link, busy, sessionId, onApprove, on
               </div>
               <Badge className="redaction-findings">{findings?.length ? 'Review required' : 'Review'}</Badge>
             </div>
-            {findingsError ? <p role="alert" className="form-error">{findingsError}</p> : null}
+            {findingsError ? <p role="alert" className="error-note">{findingsError}</p> : null}
+
             {/*
               Read-only on purpose: the server masks every finding and the
               review carries no per-finding decision, so a checkbox here would

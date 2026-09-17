@@ -3,8 +3,10 @@ import {
   Check,
   ChevronDown,
   CircleDot,
+  CircleSlash,
   Cloud,
   Code2,
+
   Cpu,
   HardDrive,
   Laptop,
@@ -26,6 +28,22 @@ const stateCopy: Record<MachineSource['state'], string> = {
   attention: 'Needs attention',
   disabled: 'Disabled',
 };
+
+/*
+  An icon per state, named.
+
+  This was a two-step ternary that fell through to the warning triangle for
+  anything that was not synced or syncing — so a source the reader had
+  deliberately switched off was flagged as needing attention, beside the word
+  "Disabled". Turning something off is not a fault.
+*/
+const stateIcon: Record<MachineSource['state'], typeof Check> = {
+  synced: Check,
+  syncing: RefreshCw,
+  attention: AlertCircle,
+  disabled: CircleSlash,
+};
+
 
 export function MachinesView({ machines, onConnect }: { machines: Machine[]; onConnect: () => void }) {
   const [expanded, setExpanded] = useState<string[]>(machines.slice(0, 2).map((machine) => machine.id));
@@ -120,12 +138,15 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
 
 function SourceRow({ source }: { source: MachineSource }) {
   const [enabled, setEnabled] = useState(source.enabled);
+  const StateIcon = stateIcon[source.state];
+
   return (
     <div className="source-row">
       <div><span className={`mini-source source-${source.id.replace('-cli', '').replace('-code', '')}`}><Code2 size={15} /></span><div><strong>{source.label}</strong><small>Native local store</small></div></div>
       <span><strong>{source.sessionCount}</strong> sessions</span>
       <span>{formatRelative(source.lastSyncAt)}</span>
-      <span className={cn('source-state', `source-state-${source.state}`)}>{source.state === 'synced' ? <Check size={13} /> : source.state === 'syncing' ? <RefreshCw size={13} /> : <AlertCircle size={13} />}{stateCopy[source.state]}</span>
+      <span className={cn('source-state', `source-state-${source.state}`)}><StateIcon size={13} aria-hidden="true" />{stateCopy[source.state]}</span>
+
       <button className={cn('switch compact', enabled && 'switch-on')} type="button" role="switch" aria-checked={enabled} aria-label={`${enabled ? 'Disable' : 'Enable'} ${source.label}`} onClick={() => setEnabled(!enabled)}><span /></button>
     </div>
   );

@@ -201,7 +201,19 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
               </section>
 
               <section className="settings-section mcp-section">
-                <header><div><h2>Remote MCP</h2><p>Let Claude Code, Codex, and other MCP clients retrieve cited archive evidence.</p></div><Badge className="status-active"><span /> Available</Badge></header>
+                {/*
+                  No status badge. This read "Available" with a live green dot,
+                  unconditionally, for an endpoint the browser never contacts —
+                  the same defect as the "Connected 8m ago" row below and the
+                  literal "Connected" in the topbar, both already removed. The
+                  only thing that can answer whether this deployment serves MCP
+                  is POST /v1/mcp/auth/handshake, which takes an API key the
+                  browser does not hold. Until the archive reports MCP
+                  availability on a session-authenticated route, this section
+                  says what it does know: the endpoint, and how to add it.
+                */}
+                <header><div><h2>Remote MCP</h2><p>Let Claude Code, Codex, and other MCP clients retrieve cited archive evidence.</p></div></header>
+
                 <div className="endpoint-row"><span><ServerCog size={16} /></span><div><small>Streamable HTTP endpoint</small><code>{mcpEndpoint}</code></div><CopyButton value={mcpEndpoint} /></div>
                 {/*
                   Setup commands, not connection status. This listed three
@@ -231,7 +243,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
                 <div><h2>Redaction rules</h2><p>Scan captured blocks before upload and before any visibility change.</p></div>
                 <Badge><ScanSearch size={12} /> {settings ? `${settings.redaction.customPatterns.length} custom ${settings.redaction.customPatterns.length === 1 ? 'pattern' : 'patterns'}` : 'Loading…'}</Badge>
               </header>
-              {settingsError ? <p role="alert">{settingsError}</p> : null}
+              {settingsError ? <p role="alert" className="error-note">{settingsError}</p> : null}
               <div className="toggle-list">
                 <Toggle checked={settings?.redaction.secretScan ?? false} onChange={(value) => setRedaction({ secretScan: value })} label="Credentials and private keys" hint="API keys, JWTs, .env blocks, and PEM material" />
                 <Toggle checked={settings?.redaction.pathScan ?? false} onChange={(value) => setRedaction({ pathScan: value })} label="Local filesystem paths" hint="Replace home directory segments with [redacted]" />
@@ -279,7 +291,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
                 "Custom policy" option led nowhere and is now the days field
                 that actually exists.
               */}
-              {settingsError ? <p role="alert">{settingsError}</p> : null}
+              {settingsError ? <p role="alert" className="error-note">{settingsError}</p> : null}
               <div className="retention-options">
                 <label>
                   <span><strong>Keep archive indefinitely</strong><small>Recommended while Memoar is your recovery source.</small></span>
@@ -347,7 +359,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
                 choose a provider and add a key, and the key is stored encrypted and never shown again.
               </p>
 
-              {distillationError ? <p role="alert">{distillationError}</p> : null}
+              {distillationError ? <p role="alert" className="error-note">{distillationError}</p> : null}
 
               <div className="form-grid">
                 <label className="field-label">Provider
@@ -457,7 +469,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
             <div className="modal-body form-stack">
               <label className="field-label">Key name<input value={keyName} onChange={(event) => setKeyName(event.target.value)} autoFocus /></label>
               <fieldset className="scope-options"><legend>Scopes</legend>{['sessions:read', 'collections:read', 'pack:read', 'notes:write'].map((scope) => <label key={scope}><input type="checkbox" checked={keyScopes.includes(scope)} onChange={(event) => setKeyScopes((current) => event.target.checked ? [...current, scope] : current.filter((value) => value !== scope))} /><span><code>{scope}</code><small>{scope.includes('write') ? 'Create durable notes' : 'Read archive data'}</small></span></label>)}</fieldset>
-              {keyError ? <p role="alert">{keyError}</p> : null}
+              {keyError ? <p role="alert" className="error-note">{keyError}</p> : null}
             </div>
             <footer className="modal-actions"><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button variant="primary" disabled={keySaving || !keyName.trim() || !keyScopes.length} onClick={() => void createKey()}><Fingerprint size={15} /> {keySaving ? 'Creating…' : 'Create key'}</Button></footer>
           </>

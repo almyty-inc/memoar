@@ -22,12 +22,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   of furniture for something you interact with rarely.
 */
 * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
-::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar { width: var(--scrollbar-w); height: var(--scrollbar-w); }
+
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--scroll-thumb);
-  border: 3px solid transparent;
+  border: var(--scrollbar-inset) solid transparent;
+
   border-radius: var(--r-full);
   background-clip: padding-box;
   transition: background 140ms ease;
@@ -64,10 +66,14 @@ code, pre, samp { font-family: var(--mono); }
   text-transform: uppercase;
 }
 
-/* Hairlines do the separating, so panels do not also need to be a different
-   colour from the page. */
-.panel, .tile, .collection-card, .memory-entry, .memory-detail,
-.install-card, .sync-card { box-shadow: none; }
+/*
+  A rule that turned off a shadow nobody had turned on. `.panel` is in no
+  component at all, and none of the other six set a shadow in their base rule —
+  the one element here that is meant to lift, `.tile-active`, sets --shadow
+  further down and won this anyway. Hairlines do the separating; that is stated
+  where the hairlines are defined.
+*/
+
 
 .link-button { padding: 0; color: var(--acid); background: none; border: 0; font: inherit; font-weight: var(--fw-medium); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .link-button:hover { color: var(--text); }
