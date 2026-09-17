@@ -8,6 +8,32 @@ fn run(arguments: &[&str]) -> std::process::Output {
         .expect("memoar binary should run")
 }
 
+/// The build version is expected to move; the contract is not.
+///
+/// The goldens pinned `clientVersion`, so bumping the crate broke both of them
+/// while `contractVersion` — the thing they exist to protect — had not changed.
+/// That is churn with no signal, and it trains you to re-record goldens without
+/// reading them. The version is asserted against the crate directly instead.
+fn take_client_version(value: &mut Value) -> Option<String> {
+    value
+        .get_mut("data")
+        .and_then(Value::as_object_mut)
+        .and_then(|data| data.remove("clientVersion"))
+        .and_then(|version| version.as_str().map(str::to_owned))
+}
+
+/// Compares the contract, and separately holds the binary to its own version.
+fn assert_contract_matches(mut actual: Value, mut expected: Value) {
+    let reported = take_client_version(&mut actual);
+    take_client_version(&mut expected);
+    assert_eq!(
+        reported.as_deref(),
+        Some(env!("CARGO_PKG_VERSION")),
+        "the binary must report the version it was built at"
+    );
+    assert_eq!(actual, expected);
+}
+
 #[test]
 fn compiled_binary_capabilities_match_golden_exactly() {
     let output = run(&["--json", "capabilities"]);
@@ -15,7 +41,7 @@ fn compiled_binary_capabilities_match_golden_exactly() {
     assert!(output.stderr.is_empty());
     let actual: Value = serde_json::from_slice(&output.stdout).unwrap();
     let expected: Value = serde_json::from_str(include_str!("golden/capabilities.json")).unwrap();
-    assert_eq!(actual, expected);
+    assert_contract_matches(actual, expected);
 }
 
 #[test]
@@ -25,7 +51,7 @@ fn compiled_binary_introspect_matches_golden_exactly() {
     assert!(output.stderr.is_empty());
     let actual: Value = serde_json::from_slice(&output.stdout).unwrap();
     let expected: Value = serde_json::from_str(include_str!("golden/introspect.json")).unwrap();
-    assert_eq!(actual, expected);
+    assert_contract_matches(actual, expected);
 }
 
 #[test]

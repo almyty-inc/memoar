@@ -18,7 +18,20 @@ const crypto = require("node:crypto");
  * falls back to a locally built binary, which is what it did before there was
  * any default at all.
  */
-const DEFAULT_DOWNLOAD_BASE = "https://github.com/almyty-inc/memoar-releases/releases/download";
+const DEFAULT_DOWNLOAD_BASE = "https://github.com/almyty-inc/memoar/releases/download";
+
+/**
+ * Which agent release this launcher installs.
+ *
+ * Deliberately not the launcher's own package version. The two are separate
+ * artifacts: a fix to the launcher — a wrong URL, a README — ships without
+ * rebuilding the agent, and the agent's version is tied to the canonical
+ * contract, which does not move because a Node package needed republishing.
+ *
+ * A test holds this to the version in agent/Cargo.toml, because it selects the
+ * release tag the binary is fetched from.
+ */
+const AGENT_VERSION = "0.3.0";
 
 const TARGETS = Object.freeze({
   "darwin-arm64": "aarch64-apple-darwin",
@@ -46,7 +59,7 @@ function assetName(platform = process.platform, architecture = process.arch) {
 }
 
 function cachePath(options = {}) {
-  const version = options.version || "0.1.1";
+  const version = options.version || AGENT_VERSION;
   const platform = options.platform || process.platform;
   const architecture = options.architecture || process.arch;
   const root = options.cacheRoot || process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
@@ -70,7 +83,7 @@ function downloadBase(options = {}) {
  * drift without a test noticing.
  */
 function downloadUrl(options = {}) {
-  const version = options.version || "0.1.1";
+  const version = options.version || AGENT_VERSION;
   const asset = assetName(options.platform || process.platform, options.architecture || process.arch);
   return `${downloadBase(options)}/v${version}/${asset}`;
 }
@@ -193,7 +206,7 @@ async function ensureBinary(options = {}) {
 }
 
 async function downloadBinary(options = {}) {
-  const version = options.version || "0.1.1";
+  const version = options.version || AGENT_VERSION;
   const platform = options.platform || process.platform;
   const architecture = options.architecture || process.arch;
   const asset = assetName(platform, architecture);
@@ -344,6 +357,7 @@ function verifySha256(file, expected) {
 }
 
 module.exports = {
+  AGENT_VERSION,
   DEFAULT_DOWNLOAD_BASE,
   TARGETS,
   assetName,

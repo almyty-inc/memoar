@@ -3,10 +3,9 @@
 
 const { spawn } = require("node:child_process");
 const { ensureBinary } = require("../lib/platform");
-const packageJson = require("../package.json");
 
 async function main() {
-  const binary = await ensureBinary({ version: packageJson.version });
+  const binary = await ensureBinary({});
   const child = spawn(binary, process.argv.slice(2), { stdio: "inherit" });
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

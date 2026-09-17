@@ -12,6 +12,7 @@ const {
   cachePath,
   cachedCandidate,
   downloadBinary,
+  AGENT_VERSION,
   downloadUrl,
   ensureBinary,
   parseChecksum,
@@ -39,7 +40,7 @@ test("has a release channel to download from without being told one", () => {
   try {
     const url = downloadUrl({ platform: "linux", architecture: "x64", version: "0.3.0" });
     assert.match(url, /^https:\/\//);
-    assert.equal(url, "https://github.com/almyty-inc/memoar-releases/releases/download/v0.3.0/memoar-x86_64-unknown-linux-gnu");
+    assert.equal(url, "https://github.com/almyty-inc/memoar/releases/download/v0.3.0/memoar-x86_64-unknown-linux-gnu");
   } finally {
     if (previous === undefined) {
       delete process.env.MEMOAR_DOWNLOAD_BASE;
@@ -175,20 +176,21 @@ test("concurrent callers share one locked download", async () => {
   await release.close();
 });
 
-test("asks for the version of the agent that is actually released", () => {
+test("pins the agent release it installs to one that exists", () => {
   /*
-    The launcher downloads `/v${its own version}/`, so its version is not
-    cosmetic: it selects which release it installs. It sat at 0.2.0 while the
-    agent was 0.3.0, which would have 404'd every install the moment the
-    package was published — the failure arriving after `npx` had already
-    fetched the launcher, which is a worse place to find out.
+    AGENT_VERSION selects the release tag the binary is fetched from, so a
+    value with no release behind it 404s every install — after npx has already
+    fetched the launcher, which is a worse place to find out. It was the
+    launcher's own package version for a while, which coupled a Node
+    republish to an agent rebuild; they are separate artifacts, and the
+    agent's version is tied to the canonical contract.
   */
   const manifest = fs.readFileSync(path.resolve(__dirname, "../../../agent/Cargo.toml"), "utf8");
   const workspaceVersion = manifest.match(/^\s*version\s*=\s*"([^"]+)"/m);
   assert.ok(workspaceVersion, "agent/Cargo.toml must declare a workspace version");
   assert.equal(
-    require("../package.json").version,
+    AGENT_VERSION,
     workspaceVersion[1],
-    "the launcher's version selects the release it downloads, so it must be the agent's"
+    "AGENT_VERSION selects the release tag, so it must name a built agent"
   );
 });

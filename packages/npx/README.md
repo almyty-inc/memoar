@@ -33,7 +33,7 @@ build it.
 
 Memoar is not a hosted service. You run the archive — Postgres, object storage
 and the API — and the agent uploads to it. Setup is in
-[the getting started guide](https://github.com/almyty-inc/memoar-releases#readme).
+[the getting started guide](https://github.com/almyty-inc/memoar#readme).
 
 ## Commands
 
