@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use memoar_cli::{Cli, Command, LoginArgs, RuntimePaths, SyncArgs};
+use memoar_cli::{Cli, Command, LoginArgs, RedactionArgs, RuntimePaths, SyncArgs};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -70,6 +70,22 @@ pub struct Status {
     /// Sessions and memory files the last sync uploaded.
     pub last_uploaded: Option<u64>,
     pub last_memory_recorded: Option<u64>,
+    /// What is masked before anything is hashed and uploaded.
+    ///
+    /// The window shows it and can change it. It used to be decided once, at
+    /// sign-in, by three `false`s in this file that nothing in the application
+    /// could reach — so the reader could neither see what was being sent
+    /// unmasked nor do anything about it.
+    pub redaction: Option<Redaction>,
+}
+
+/// The three masks, as the window renders them.
+#[derive(Debug, Clone, Copy, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Redaction {
+    pub secrets: bool,
+    pub email_addresses: bool,
+    pub home_paths: bool,
 }
 
 /// The app's own record of how the last capture went.
@@ -92,6 +108,22 @@ fn number(value: &Value, path: &[&str]) -> Option<u64> {
         cursor = cursor.get(key)?;
     }
     cursor.as_u64()
+}
+
+fn flag(value: &Value, path: &[&str]) -> Option<bool> {
+    let mut cursor = value;
+    for key in path {
+        cursor = cursor.get(key)?;
+    }
+    cursor.as_bool()
+}
+
+fn redaction_of(value: &Value) -> Option<Redaction> {
+    Some(Redaction {
+        secrets: flag(value, &["redaction", "secrets"])?,
+        email_addresses: flag(value, &["redaction", "emailAddresses"])?,
+        home_paths: flag(value, &["redaction", "homePaths"])?,
+    })
 }
 
 fn text(value: &Value, path: &[&str]) -> Option<String> {
@@ -123,6 +155,7 @@ pub fn status(paths: &Paths, state: &State) -> Status {
             last_error: last.error.clone(),
             last_uploaded: last.uploaded,
             last_memory_recorded: last.memory_recorded,
+            redaction: redaction_of(&output.data),
         },
         // `status` fails when there is no configuration yet, which is the
         // ordinary state of a machine nobody has connected — not an error to
@@ -150,7 +183,10 @@ pub fn sign_in(
         token: None,
         machine_id: None,
         // Off by default here as in the CLI: masking before upload is a choice
-        // the archive cannot undo, so it is not made on somebody's behalf.
+        // the archive cannot undo, so it is not made on somebody's behalf. What
+        // has changed is that it is no longer a choice made once and for ever —
+        // `set_redaction` below, and the toggles in the window, can change it
+        // afterwards.
         redact_secrets: false,
         redact_email_addresses: false,
         redact_home_paths: false,
@@ -158,6 +194,27 @@ pub fn sign_in(
     memoar_cli::execute(&base_cli(command), &paths.runtime())
         .map_err(|error| error.message.clone())?;
     Ok(status(paths, &State::default()))
+}
+
+/// Changes what is masked before upload, after sign-in.
+///
+/// # Errors
+/// When this machine has no configuration to change yet.
+pub fn set_redaction(
+    paths: &Paths,
+    state: &State,
+    secrets: bool,
+    email_addresses: bool,
+    home_paths: bool,
+) -> Result<Status, String> {
+    let command = Command::Redaction(RedactionArgs {
+        secrets: Some(secrets),
+        email_addresses: Some(email_addresses),
+        home_paths: Some(home_paths),
+    });
+    memoar_cli::execute(&base_cli(command), &paths.runtime())
+        .map_err(|error| error.message.clone())?;
+    Ok(status(paths, state))
 }
 
 /// Captures and uploads once, recording the outcome for the window.
@@ -170,6 +227,7 @@ pub fn sync_now(paths: &Paths, state: &State, now: &str) -> Result<Status, Strin
         watch: false,
         interval_seconds: 60,
         debounce_seconds: 2,
+        max_cycles: 0,
     });
     let outcome = memoar_cli::execute(&base_cli(command), &paths.runtime());
     {
@@ -239,6 +297,59 @@ mod tests {
         assert!(
             status.last_error.is_some(),
             "the reason is kept for the window"
+        );
+    }
+
+    /// What is masked was decided at sign-in and never again: this file passed
+    /// three `false`s and the window offered nothing, so somebody who is not
+    /// going to edit `config.json` by hand had no way to turn masking on after
+    /// seeing what was being uploaded.
+    #[test]
+    fn redaction_is_changeable_from_the_window() {
+        let (_temp, paths) = scratch();
+        std::fs::create_dir_all(&paths.config_dir).unwrap();
+        std::fs::write(
+            paths.config_dir.join("config.json"),
+            serde_json::to_vec(&json!({
+                "contractVersion": "0.3.0",
+                "endpoint": "http://127.0.0.1:1/v1",
+                "machineId": "0198d8d0-977c-777b-9f8f-0f6d8416e700",
+                "disabledSources": [],
+                "redaction": { "secrets": false, "emailAddresses": false, "homePaths": false }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            paths.config_dir.join("credentials.json"),
+            br#"{"apiKey":"memoar_test-capture-key"}"#,
+        )
+        .unwrap();
+        let state = State::default();
+
+        let before = status(&paths, &state);
+        assert_eq!(
+            before.redaction.map(|redaction| redaction.secrets),
+            Some(false),
+            "the window must be able to see the setting before changing it"
+        );
+
+        let after = set_redaction(&paths, &state, true, false, true).unwrap();
+
+        assert_eq!(
+            after.redaction.map(|redaction| redaction.secrets),
+            Some(true)
+        );
+        assert_eq!(
+            after.redaction.map(|redaction| redaction.home_paths),
+            Some(true)
+        );
+        assert_eq!(
+            status(&paths, &state)
+                .redaction
+                .map(|redaction| redaction.secrets),
+            Some(true),
+            "the change must survive the process, not just this call"
         );
     }
 

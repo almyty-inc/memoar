@@ -63,6 +63,8 @@ pub enum Command {
         command: SourcesCommand,
     },
     Sync(SyncArgs),
+    /// Show or change what is masked before anything is hashed and uploaded.
+    Redaction(RedactionArgs),
     Search(SearchArgs),
     View(ViewArgs),
     Pack(PackArgs),
@@ -122,6 +124,26 @@ pub struct SyncArgs {
     pub interval_seconds: u64,
     #[arg(long, default_value_t = 2)]
     pub debounce_seconds: u64,
+    /// Stop watching after this many completed sync cycles. 0 watches until
+    /// interrupted, which is what a person running this wants; a finite count
+    /// is how the retry behaviour is exercised without an infinite loop.
+    #[arg(long, default_value_t = 0, hide = true)]
+    pub max_cycles: usize,
+}
+
+/// What `redaction` can change, after `login` and without one.
+///
+/// A flag left off leaves that setting where it was, so turning one thing on
+/// does not quietly turn the other two off.
+#[derive(Debug, Args)]
+pub struct RedactionArgs {
+    /// Mask likely credentials before local snapshots are hashed and uploaded.
+    #[arg(long, value_name = "BOOL")]
+    pub secrets: Option<bool>,
+    #[arg(long, value_name = "BOOL")]
+    pub email_addresses: Option<bool>,
+    #[arg(long, value_name = "BOOL")]
+    pub home_paths: Option<bool>,
 }
 
 #[derive(Debug, Args)]
@@ -465,6 +487,7 @@ pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppErro
         Command::Status => status(paths),
         Command::Sources { command } => sources(command, paths),
         Command::Sync(args) => sync(args, cli.json, paths),
+        Command::Redaction(args) => redaction(args, paths),
         Command::Search(args) => search(args, paths),
         Command::View(args) => view(args, paths),
         Command::Pack(args) => pack(args, paths),
@@ -607,9 +630,83 @@ fn status(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
             "queue": counts,
             "redaction": config.redaction,
             "detectedSources": discovered.iter().filter(|source| source.detected).count(),
-            "sourceCount": discovered.len()
+            "sourceCount": discovered.len(),
+            // Detected and readable are not the same thing, and this used to
+            // report only the first. See `skipped_symlinks`.
+            "skippedSymlinks": skipped_symlinks(&paths.home)
         }),
     })
+}
+
+/// How deep the symlink scan looks below a source's root.
+///
+/// The root itself and the directories directly under it, which is where the
+/// two shapes that actually lose files live: a linked `~/.claude/projects`, and
+/// a linked project directory inside a real one. Not the whole tree, because
+/// `status` is polled every few seconds by the desktop app and walking every
+/// session store on every poll would cost more than the answer is worth.
+const SYMLINK_SCAN_DEPTH: u8 = 2;
+
+/// The symlinks discovery walks past without a word, per source.
+///
+/// Discovery skips any entry that is a symlink, and says nothing about having
+/// done it, while `detected` is answered by `Path::exists`, which follows them.
+/// So a `~/.claude/projects` linked to an external volume is reported as a
+/// detected source, captures nothing at all, and neither `sync` nor `doctor`
+/// ever says why. Nothing here changes what is captured — the skipping belongs
+/// to `memoar-connectors` — but the agent stops claiming a source it is not
+/// reading.
+fn skipped_symlinks(home: &Path) -> Vec<Value> {
+    let mut reports = Vec::new();
+    for source in discover(home, OperatingSystem::current()) {
+        let mut links = Vec::new();
+        for pattern in &source.paths {
+            collect_skipped_symlinks(&literal_root(pattern), 0, &mut links);
+        }
+        links.sort();
+        links.dedup();
+        reports.extend(links.into_iter().map(|path| {
+            json!({
+                "source": source.id,
+                "path": path,
+                "detail": "a symlink: discovery does not follow it, so nothing under it is captured"
+            })
+        }));
+    }
+    reports
+}
+
+fn collect_skipped_symlinks(path: &Path, depth: u8, found: &mut Vec<PathBuf>) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_symlink() {
+        found.push(path.to_path_buf());
+        return;
+    }
+    if depth >= SYMLINK_SCAN_DEPTH || !metadata.is_dir() {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        collect_skipped_symlinks(&entry.path(), depth + 1, found);
+    }
+}
+
+/// The part of a declared pattern that is a real path, which is the directory
+/// discovery starts its walk from. The same cut `memoar-connectors` makes.
+fn literal_root(pattern: &Path) -> PathBuf {
+    let mut root = PathBuf::new();
+    for component in pattern.components() {
+        let text = component.as_os_str().to_string_lossy();
+        if text.contains('*') || text.contains('<') || text.contains('{') {
+            break;
+        }
+        root.push(component);
+    }
+    root
 }
 
 fn sources(command: &SourcesCommand, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
@@ -694,34 +791,192 @@ fn sync(args: &SyncArgs, json_mode: bool, paths: &RuntimePaths) -> Result<Comman
         config.redaction,
     )
     .map_err(map_capture_error)?;
-    let mut last = sync_pending(&queue, &config, &credential, paths, captured)?;
+    let mut sweep = Sweep {
+        queue: &queue,
+        config: &config,
+        credential: &credential,
+        paths,
+        enabled,
+        // One sweep for the life of the command. It remembers which instruction
+        // files it has already sent, and a fresh one each cycle remembers
+        // nothing — which, now that a watch survives its own failures, is every
+        // instruction file on the machine re-uploaded every interval for as
+        // long as the laptop is on.
+        memory: MemorySync::with_redaction(config.redaction),
+    };
     if args.watch {
-        let mut watcher = PollingCapture::new(Duration::from_secs(args.debounce_seconds.max(1)));
-        loop {
-            println!(
-                "captured {} artifacts, uploaded {}",
-                last["captured"], last["sync"]["uploaded"]
-            );
-            thread::sleep(Duration::from_secs(args.interval_seconds.max(1)));
-            let captured = CaptureSummary {
-                captured: watcher
-                    .scan(
-                        &queue,
-                        &paths.home,
-                        OperatingSystem::current(),
-                        &enabled,
-                        config.redaction,
-                        SystemTime::now(),
-                    )
-                    .map_err(map_capture_error)?,
-                skipped: Vec::new(),
-            };
-            last = sync_pending(&queue, &config, &credential, paths, captured)?;
-        }
+        return watch(args, &mut sweep, captured);
     }
+    let last = sync_pending(&mut sweep, captured)?;
     Ok(CommandOutput {
         command: "sync".to_owned(),
         data: last,
+    })
+}
+
+/// What every cycle of a sync needs, assembled once.
+///
+/// Gathered into one value because a watch hands the same things to every
+/// cycle, and because the memory sweep in particular has to be the same one
+/// each time: it is what remembers which instruction files have not changed.
+struct Sweep<'a> {
+    queue: &'a OfflineQueue,
+    config: &'a Config,
+    credential: &'a Credential,
+    paths: &'a RuntimePaths,
+    enabled: HashSet<String>,
+    memory: MemorySync,
+}
+
+/// How long a watch waits after a failure it expects to outlive.
+///
+/// The first retry is one poll interval — the watcher is already prepared to
+/// wait that long — and doubles from there so an archive that is down for an
+/// afternoon is asked about every five minutes rather than every two seconds.
+const WATCH_BACKOFF_CEILING: Duration = Duration::from_secs(300);
+
+/// Losing the network must not end a watch.
+///
+/// `sync --watch` exists to ride out being offline: the queue holds what was
+/// captured until the archive is reachable again. Propagating the first
+/// transport error out of the loop ended the process instead, so closing a lid
+/// or changing wifi killed the watcher, and everything captured afterwards sat
+/// on the laptop with nothing running to send it. The whole point of the
+/// offline queue was a thing the watcher itself could not survive.
+///
+/// What still ends a watch is a condition repeating cannot fix: a credential
+/// the archive refuses, a queue that will not open, a redaction setting no
+/// capture can satisfy. See `fatal_for_watch`.
+fn watch(
+    args: &SyncArgs,
+    sweep: &mut Sweep,
+    first: CaptureSummary,
+) -> Result<CommandOutput, AppError> {
+    let interval = Duration::from_secs(args.interval_seconds.max(1));
+    let mut watcher = PollingCapture::new(Duration::from_secs(args.debounce_seconds.max(1)));
+    let mut backoff = interval;
+    let mut captured = first;
+    let mut completed = 0_usize;
+    let mut last = json!({});
+    loop {
+        match sync_pending(sweep, captured) {
+            Ok(report) => {
+                println!(
+                    "captured {} artifacts, uploaded {}",
+                    report["captured"], report["sync"]["uploaded"]
+                );
+                last = report;
+                backoff = interval;
+                completed += 1;
+                if args.max_cycles > 0 && completed >= args.max_cycles {
+                    return Ok(CommandOutput {
+                        command: "sync".to_owned(),
+                        data: last,
+                    });
+                }
+                thread::sleep(interval);
+            }
+            Err(error) => {
+                retry_or_give_up(&error, &mut backoff)?;
+            }
+        }
+        captured = match watcher.scan(
+            sweep.queue,
+            &sweep.paths.home,
+            OperatingSystem::current(),
+            &sweep.enabled,
+            sweep.config.redaction,
+            SystemTime::now(),
+        ) {
+            Ok(captured) => CaptureSummary {
+                captured,
+                skipped: Vec::new(),
+            },
+            Err(error) => {
+                retry_or_give_up(&map_capture_error(error), &mut backoff)?;
+                CaptureSummary {
+                    captured: 0,
+                    skipped: Vec::new(),
+                }
+            }
+        };
+    }
+}
+
+/// Waits out a failure a watch expects to outlive, or hands back the one it
+/// does not. Sleeping here — rather than at the top of the loop — is what keeps
+/// an unreachable archive from being asked again immediately, forever.
+fn retry_or_give_up(error: &AppError, backoff: &mut Duration) -> Result<(), AppError> {
+    if fatal_for_watch(error) {
+        return Err(error.clone());
+    }
+    eprintln!(
+        "memoar: {} — retrying in {}s",
+        error.message,
+        backoff.as_secs()
+    );
+    thread::sleep(*backoff);
+    *backoff = (*backoff * 2).min(WATCH_BACKOFF_CEILING);
+    Ok(())
+}
+
+/// Which failures a watch cannot outlive.
+///
+/// Retryable is the error's own word for it — a network error or a queue
+/// another process is holding will plausibly work on the next pass — with one
+/// exception that word gets wrong. A 401 or 403 is delivered as a network
+/// error, but the credential `login` stores does not expire: the archive is
+/// saying revoked or not permitted, and asking again every five minutes until
+/// somebody notices is worse than stopping and saying so.
+fn fatal_for_watch(error: &AppError) -> bool {
+    !error.retryable || refused_credentials(&error.message)
+}
+
+fn refused_credentials(message: &str) -> bool {
+    message.ends_with("(HTTP 401)") || message.ends_with("(HTTP 403)")
+}
+
+/// Reads, and changes, what is masked before upload.
+///
+/// `login` was the only place redaction was ever written. Somebody who forgot
+/// the flags had to delete their configuration and sign in again to add them,
+/// and the desktop app — the path somebody who does not use a terminal takes —
+/// passed all three as false with nothing anywhere to change them. A setting
+/// that can only be chosen once, before you have seen what gets uploaded, is
+/// not a setting.
+///
+/// Deliberately local and offline: turning masking on is exactly what somebody
+/// does after noticing something they did not want sent, and that must not
+/// depend on the archive being reachable. It applies from the next capture;
+/// what has already been uploaded is already uploaded.
+fn redaction(args: &RedactionArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
+    let mut config = load_config(paths)?;
+    let before = config.redaction;
+    if let Some(secrets) = args.secrets {
+        config.redaction.secrets = secrets;
+    }
+    if let Some(email_addresses) = args.email_addresses {
+        config.redaction.email_addresses = email_addresses;
+    }
+    if let Some(home_paths) = args.home_paths {
+        config.redaction.home_paths = home_paths;
+    }
+    // `RedactionConfig` is the daemon's type and does not compare, so the
+    // three settings are compared by hand rather than saving a file that did
+    // not change.
+    let changed = config.redaction.secrets != before.secrets
+        || config.redaction.email_addresses != before.email_addresses
+        || config.redaction.home_paths != before.home_paths;
+    if changed {
+        save_config(paths, &config)?;
+    }
+    Ok(CommandOutput {
+        command: "redaction".to_owned(),
+        data: json!({
+            "redaction": config.redaction,
+            "changed": changed,
+            "appliesFrom": "the next capture"
+        }),
     })
 }
 
@@ -733,13 +988,14 @@ fn enabled_sources(config: &Config) -> HashSet<String> {
         .collect()
 }
 
-fn sync_pending(
-    queue: &OfflineQueue,
-    config: &Config,
-    credential: &Credential,
-    paths: &RuntimePaths,
-    captured: CaptureSummary,
-) -> Result<Value, AppError> {
+fn sync_pending(sweep: &mut Sweep, captured: CaptureSummary) -> Result<Value, AppError> {
+    let Sweep {
+        queue,
+        config,
+        credential,
+        paths,
+        ..
+    } = *sweep;
     let api = ApiClient::new(&config.endpoint, Some(credential));
     patch_machine_state(&api, config, paths)?;
     let (token, expires_at) = issue_machine_token(&api, &config.machine_id)?;
@@ -754,24 +1010,40 @@ fn sync_pending(
     // The instruction files the agents on this machine read, for the projects
     // this account already has sessions in. They are not transcripts and do not
     // go through the queue: what matters is whether the text changed.
-    let memory = MemorySync::new().run(
+    // With the redaction the user asked for. It was applied to transcripts and
+    // not to these — so somebody who ran `memoar login --redact-secrets` had
+    // their sessions scrubbed and their `~/.claude/CLAUDE.md`, every project
+    // `AGENTS.md` and every `~/.claude/projects/*/memory/*.md` uploaded byte for
+    // byte, which are the files a connection string actually gets pasted into.
+    // The sweep is handed in rather than built here so its "this file has not
+    // changed" cache survives a watch cycle; building a new one each pass
+    // re-uploaded every instruction file on this machine every interval.
+    let memory = sweep.memory.run(
         &capture_transport(config, credential, &token, expires_at.as_deref()),
         &paths.home,
-        &archived_workspaces(&api),
+        &archived_workspaces(&api, &paths.home),
         &config.machine_id,
         &Utc::now().to_rfc3339(),
     );
     // `skipped` is named, not just counted: a file redaction could not be
     // applied to stays on this machine, and you are entitled to know which.
+    //
+    // `memoryRefused` is the same thing for instruction files, and is a count
+    // rather than a list because the report the daemon returns carries only a
+    // number. It sits here, beside `skipped`, rather than buried in the memory
+    // block: a file that stayed behind is not a detail. Naming them needs
+    // `MemoryReport` to carry the paths, which is the daemon's to change.
     Ok(json!({
         "captured": captured.captured,
         "skipped": captured.skipped.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+        "memoryRefused": memory.refused,
         "sync": report,
         "memory": memory,
     }))
 }
 
-/// The project roots this account has archived sessions in.
+/// The project roots this account has archived sessions in, kept inside the
+/// home this machine captures from.
 ///
 /// Which directories are projects is not something the agent can know by
 /// looking: a home directory is full of checkouts nobody works in. The archive
@@ -779,17 +1051,40 @@ fn sync_pending(
 /// so memory files are captured for the projects actually being worked on and
 /// nowhere else. A failure here means no project files this sweep, not a failed
 /// sync — the transcripts are the point.
-fn archived_workspaces(api: &ApiClient) -> Vec<PathBuf> {
+///
+/// But a `workspace` is a string the server chose, and it was being used as a
+/// local read root on the strength of `is_absolute() && is_dir()` alone. An
+/// archive that was compromised, or simply wrong, could answer
+/// `"workspace": "/Users/someone-else"` and this machine would read instruction
+/// files out of it and upload them. The server does not get to choose which
+/// local files the client reads: the capture home is the only directory the
+/// person running the agent nominated, so a root outside it is discarded.
+/// Both sides are canonicalised first, because `..` and a symlink pointing out
+/// of the home are the same trick spelled differently.
+fn archived_workspaces(api: &ApiClient, home: &Path) -> Vec<PathBuf> {
     let Ok(response) = api.get_query("/sessions", &[("limit", "100".to_owned())]) else {
+        return Vec::new();
+    };
+    let Ok(home) = home.canonicalize() else {
         return Vec::new();
     };
     let mut roots: BTreeSet<PathBuf> = BTreeSet::new();
     for session in response["items"].as_array().unwrap_or(&Vec::new()) {
-        if let Some(workspace) = session["workspace"].as_str() {
-            let path = PathBuf::from(workspace);
-            if path.is_absolute() && path.is_dir() {
-                roots.insert(path);
-            }
+        let Some(workspace) = session["workspace"].as_str() else {
+            continue;
+        };
+        let path = PathBuf::from(workspace);
+        // Canonicalising answers "does it exist" and "where does it really
+        // lead" in one step; an absolute path is still required first so a
+        // relative one is never resolved against this process's directory.
+        if !path.is_absolute() {
+            continue;
+        }
+        let Ok(path) = path.canonicalize() else {
+            continue;
+        };
+        if path.is_dir() && path.starts_with(&home) {
+            roots.insert(path);
         }
     }
     roots.into_iter().collect()
@@ -1092,6 +1387,7 @@ fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     verify_machine(&api, &config.machine_id)?;
     let (machine_token, _) = issue_machine_token(&api, &config.machine_id)?;
     patch_machine_state(&api, &config, paths)?;
+    let symlinks = skipped_symlinks(&paths.home);
     let checks = vec![
         json!({ "name": "contract_version", "ok": config.contract_version == memoar_canonical::CONTRACT_VERSION, "detail": config.contract_version }),
         json!({ "name": "queue_integrity", "ok": database_ok, "detail": paths.queue_file() }),
@@ -1100,12 +1396,40 @@ fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
         json!({ "name": "api_reachable", "ok": true, "detail": config.endpoint }),
         json!({ "name": "machine_registered", "ok": true, "detail": config.machine_id }),
         json!({ "name": "machine_token", "ok": !machine_token.is_empty(), "detail": "machine token issued" }),
+        // A source can be detected and still be captured from not at all: a
+        // symlinked store is skipped by discovery in silence. Not ok — files
+        // this machine believes it is archiving are being dropped.
+        json!({
+            "name": "source_symlinks",
+            "ok": symlinks.is_empty(),
+            "detail": if symlinks.is_empty() {
+                "no source is behind a symlink".to_owned()
+            } else {
+                format!("{} skipped: {}", symlinks.len(), symlink_summary(&symlinks))
+            },
+            "skipped": symlinks
+        }),
     ];
     let ok = checks.iter().all(|check| check["ok"] == Value::Bool(true));
     Ok(CommandOutput {
         command: "doctor".to_owned(),
         data: json!({ "ok": ok, "checks": checks }),
     })
+}
+
+/// Names the sources rather than the count, so the sentence is actionable.
+fn symlink_summary(symlinks: &[Value]) -> String {
+    symlinks
+        .iter()
+        .map(|entry| {
+            format!(
+                "{} ({})",
+                entry["path"].as_str().unwrap_or_default(),
+                entry["source"].as_str().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn patch_machine_state(
@@ -1304,21 +1628,79 @@ fn create_private(path: &Path, _unix_mode: u32) -> std::io::Result<File> {
     OpenOptions::new().create_new(true).write(true).open(path)
 }
 
+/// A dead host should not cost a whole download budget to discover.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// How long a control-plane request may take.
+///
+/// Registering a machine, minting a token, listing sessions: all of them are a
+/// few kilobytes of JSON, and one that has not answered in two minutes is not
+/// going to. This budget is deliberately not the one a bundle download gets.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The largest conversion bundle the materializer will accept, decoded.
+///
+/// It caps a single file at 512 MiB and the bundle's total at twice that, so
+/// this is the most bytes a `convert --here` can legitimately be waiting for.
+/// Declared here rather than imported so the download budget is not silently
+/// re-tuned by a change in another crate: if the materializer's ceiling moves,
+/// this constant and the test below are what notice.
+pub const MAX_CONVERSION_BUNDLE_BYTES: u64 = 2 * 512 * 1024 * 1024;
+
+/// Bundle files travel base64-encoded, which costs four bytes per three.
+pub const BASE64_EXPANSION_NUMERATOR: u64 = 4;
+pub const BASE64_EXPANSION_DENOMINATOR: u64 = 3;
+
+/// The slowest uplink a download is still expected to finish on: 2 Mbit/s.
+/// The same floor the upload path is budgeted for. Below it the agent is
+/// entitled to give up; at or above it, a timeout that fires is a bug in the
+/// timeout, not a slow network.
+pub const SLOWEST_TOLERATED_BYTES_PER_SEC: u64 = 256 * 1024;
+
+/// How long a conversion bundle download may take.
+///
+/// Not a free parameter: it has to cover `MAX_CONVERSION_BUNDLE_BYTES`, base64
+/// expanded, at `SLOWEST_TOLERATED_BYTES_PER_SEC`, and a test holds it to that.
+/// reqwest's 30-second default did not cover 8 MB, so every non-trivial
+/// `memoar convert --here` failed on a deadline it could never meet — the same
+/// defect already fixed on the upload side, left standing on this one.
+pub const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
+
 struct ApiClient {
     client: Client,
     endpoint: String,
     credential: Option<Credential>,
+    /// What a bundle download gets instead of `REQUEST_TIMEOUT`. A field rather
+    /// than a constant at the call site so a test can prove the download path
+    /// uses this budget and not the control-plane one.
+    download_timeout: Duration,
 }
 
 impl ApiClient {
     fn new(endpoint: &str, credential: Option<&Credential>) -> Self {
+        Self::with_timeouts(endpoint, credential, REQUEST_TIMEOUT, DOWNLOAD_TIMEOUT)
+    }
+
+    fn with_timeouts(
+        endpoint: &str,
+        credential: Option<&Credential>,
+        request: Duration,
+        download: Duration,
+    ) -> Self {
         Self {
+            // A whole-request cap is the wrong shape for a client that both asks
+            // small questions and pulls a bundle: one budget cannot be both
+            // short enough to notice a dead archive and long enough to carry
+            // half a gigabyte. So: fail fast on connect, keep the short budget
+            // for JSON, and let the download ask for its own.
             client: Client::builder()
-                .timeout(Duration::from_secs(30))
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(request)
                 .build()
                 .expect("static HTTP client configuration must be valid"),
             endpoint: endpoint.trim_end_matches('/').to_owned(),
             credential: credential.cloned(),
+            download_timeout: download,
         }
     }
 
@@ -1361,7 +1743,10 @@ impl ApiClient {
     }
 
     fn download_conversion(&self, path: &str) -> Result<ConversionBundle, AppError> {
-        let bytes = self.send_bytes(self.authorize(self.client.get(self.url(path))))?;
+        let bytes = self.send_bytes(
+            self.authorize(self.client.get(self.url(path)))
+                .timeout(self.download_timeout),
+        )?;
         if let Ok(bundle) = serde_json::from_slice::<ConversionBundle>(&bytes) {
             return Ok(bundle);
         }
@@ -1374,7 +1759,9 @@ impl ApiClient {
             .ok_or_else(|| {
                 AppError::network("download response did not include a bundle or URL")
             })?;
-        let bytes = self.send_bytes(self.client.get(url))?;
+        // The redirect to storage carries the same bytes, so it carries the
+        // same budget: the 30-second default cut this one off too.
+        let bytes = self.send_bytes(self.client.get(url).timeout(self.download_timeout))?;
         serde_json::from_slice(&bytes)
             .map_err(|error| AppError::network(format!("invalid conversion bundle: {error}")))
     }
@@ -1393,13 +1780,13 @@ impl ApiClient {
         self.send(request)?
             .bytes()
             .map(|bytes| bytes.to_vec())
-            .map_err(|error| AppError::network(error.to_string()))
+            .map_err(|error| AppError::network(transport_message(&error)))
     }
 
     fn send(&self, request: RequestBuilder) -> Result<Response, AppError> {
         let response = request
             .send()
-            .map_err(|error| AppError::network(error.to_string()))?;
+            .map_err(|error| AppError::network(transport_message(&error)))?;
         let status = response.status();
         if !status.is_success() {
             let body = response.text().unwrap_or_default();
@@ -1411,6 +1798,28 @@ impl ApiClient {
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.endpoint, path)
     }
+}
+
+/// A transport failure the operator can act on.
+///
+/// `reqwest::Error` renders as "error sending request for url (...)" and keeps
+/// the reason — connection reset, timed out, certificate — in its source chain.
+/// Printing only the top of that chain is why `memoar login` behind a
+/// TLS-inspecting proxy reported the URL and nothing about the certificate, and
+/// the operator had no way to tell a refused connection from a rejected one.
+/// The daemon walks the chain for exactly this reason; so does this.
+fn transport_message(error: &reqwest::Error) -> String {
+    let mut message = error.to_string();
+    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(error);
+    while let Some(cause) = source {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    if error.is_timeout() {
+        message.push_str(" (timed out)");
+    }
+    message
 }
 
 /// What to say when the archive refuses a request.
@@ -1529,6 +1938,7 @@ pub fn introspect_value() -> Value {
             { "name": "sources enable", "requiresAuth": true, "network": true },
             { "name": "sources disable", "requiresAuth": true, "network": true },
             { "name": "sync", "requiresAuth": true, "network": true },
+            { "name": "redaction", "requiresAuth": true, "network": false },
             { "name": "search", "requiresAuth": true, "network": true },
             { "name": "view", "requiresAuth": true, "network": true },
             { "name": "pack", "requiresAuth": true, "network": true },
@@ -1818,6 +2228,22 @@ mod tests {
         body: Vec<u8>,
     }
 
+    /// What the mock archive does before it answers.
+    #[derive(Default)]
+    struct MockOptions {
+        request_count: usize,
+        conversion_bundle: Option<Value>,
+        workspace: String,
+        /// Connections accepted and dropped without a reply, before any request
+        /// is answered: what a closed lid or a changed network looks like from
+        /// the client's side.
+        dropped_connections: usize,
+        /// A path substring whose response is held back, and for how long, so a
+        /// test can find out which timeout a request was given.
+        slow_path: &'static str,
+        slow_by: Duration,
+    }
+
     fn spawn_mock_api(
         request_count: usize,
         conversion_bundle: Option<Value>,
@@ -1840,13 +2266,42 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<RecordedRequest>>>,
         std::thread::JoinHandle<()>,
     ) {
+        spawn_mock(MockOptions {
+            request_count,
+            conversion_bundle,
+            workspace,
+            ..MockOptions::default()
+        })
+    }
+
+    fn spawn_mock(
+        options: MockOptions,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<RecordedRequest>>>,
+        std::thread::JoinHandle<()>,
+    ) {
         use std::io::{Read, Write};
         use std::net::TcpListener;
+        let MockOptions {
+            request_count,
+            conversion_bundle,
+            workspace,
+            dropped_connections,
+            slow_path,
+            slow_by,
+        } = options;
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
         let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let recorded = requests.clone();
         let handle = std::thread::spawn(move || {
+            // Accepted and hung up on: the client sees a transport failure with
+            // no HTTP status to interpret, which is the case the watcher used to
+            // die on.
+            for _ in 0..dropped_connections {
+                drop(listener.accept().unwrap());
+            }
             for _ in 0..request_count {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut bytes = Vec::new();
@@ -1951,13 +2406,18 @@ mod tests {
                     other => panic!("unexpected mock request: {other:?}"),
                 };
                 let response = serde_json::to_vec(&response).unwrap();
-                write!(
+                if !slow_path.is_empty() && path.contains(slow_path) {
+                    std::thread::sleep(slow_by);
+                }
+                // Writing is allowed to fail: a test that deliberately times a
+                // request out has already closed this socket, and that is the
+                // test passing, not the mock breaking.
+                let _ = write!(
                     stream,
                     "HTTP/1.1 {status} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                     response.len()
-                )
-                .unwrap();
-                stream.write_all(&response).unwrap();
+                );
+                let _ = stream.write_all(&response);
             }
         });
         (endpoint, requests, handle)
@@ -2076,6 +2536,7 @@ mod tests {
                 watch: false,
                 interval_seconds: 1,
                 debounce_seconds: 1,
+                max_cycles: 0,
             },
             false,
             &paths,
@@ -2098,7 +2559,9 @@ mod tests {
         // the agent can know by looking, so it asks the archive, which knows
         // because every transcript names the directory it was recorded in.
         let temp = tempfile::tempdir().unwrap();
-        let project = temp.path().join("project");
+        // Inside the capture home, because that is the only place a
+        // server-supplied workspace is now allowed to point.
+        let project = temp.path().join("fixture-home/project");
         fs::create_dir_all(&project).unwrap();
         fs::write(project.join("AGENTS.md"), "project rules").unwrap();
 
@@ -2116,6 +2579,7 @@ mod tests {
                 watch: false,
                 interval_seconds: 1,
                 debounce_seconds: 1,
+                max_cycles: 0,
             },
             false,
             &paths,
@@ -2155,6 +2619,396 @@ mod tests {
                 .headers
                 .contains("authorization: Bearer machine-token")
         );
+    }
+
+    /// A workspace is a string the server chose, and it was being used as a
+    /// local read root on the strength of "absolute and a directory" alone.
+    /// An archive that is compromised, or simply wrong, could answer
+    /// `"workspace": "/Users/someone-else"` and this machine would read that
+    /// directory's instruction files and upload them. The server does not get
+    /// to choose which local files the client reads.
+    #[test]
+    fn a_workspace_outside_the_capture_home_is_never_read() {
+        let temp = tempfile::tempdir().unwrap();
+        let elsewhere = temp.path().join("someone-else");
+        fs::create_dir_all(&elsewhere).unwrap();
+        fs::write(elsewhere.join("AGENTS.md"), "not this machine's to send").unwrap();
+
+        let (endpoint, requests, server) =
+            spawn_mock_api_with_workspace(4, None, elsewhere.to_string_lossy().into_owned());
+        let paths = configured_paths(&temp, &endpoint);
+        fs::create_dir_all(paths.home.join(".claude")).unwrap();
+        fs::write(paths.home.join(".claude/CLAUDE.md"), "be terse").unwrap();
+
+        let result = sync(
+            &SyncArgs {
+                watch: false,
+                interval_seconds: 1,
+                debounce_seconds: 1,
+                max_cycles: 0,
+            },
+            false,
+            &paths,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.data["memory"]["found"], 1,
+            "only this home's own instruction file"
+        );
+        server.join().unwrap();
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|request| {
+                String::from_utf8_lossy(&request.body).contains("not this machine's to send")
+            }),
+            "a directory the user never nominated was read and uploaded"
+        );
+    }
+
+    /// Redaction was applied to transcripts and to nothing else.
+    ///
+    /// Somebody who ran `memoar login --redact-secrets` had their sessions
+    /// scrubbed and their `~/.claude/CLAUDE.md`, every project `AGENTS.md` and
+    /// every `~/.claude/projects/*/memory/*.md` uploaded byte for byte — which
+    /// are precisely the files a connection string or an API key gets pasted
+    /// into, and they had been told masking was on.
+    #[test]
+    fn a_secret_in_an_instruction_file_is_masked_before_it_leaves() {
+        let temp = tempfile::tempdir().unwrap();
+        let (endpoint, requests, server) = spawn_mock_api(4, None);
+        let paths = configured_paths(&temp, &endpoint);
+        let mut config = load_config(&paths).unwrap();
+        config.redaction = RedactionConfig {
+            secrets: true,
+            email_addresses: false,
+            home_paths: false,
+        };
+        save_config(&paths, &config).unwrap();
+        fs::create_dir_all(paths.home.join(".claude")).unwrap();
+        fs::write(
+            paths.home.join(".claude/CLAUDE.md"),
+            "Use the staging archive.\nANTHROPIC_API_KEY=sk-live-do-not-upload\n",
+        )
+        .unwrap();
+
+        let result = sync(
+            &SyncArgs {
+                watch: false,
+                interval_seconds: 1,
+                debounce_seconds: 1,
+                max_cycles: 0,
+            },
+            false,
+            &paths,
+        )
+        .unwrap();
+
+        assert_eq!(result.data["memory"]["uploaded"], 1);
+        server.join().unwrap();
+        let requests = requests.lock().unwrap();
+        let sent: Vec<String> = requests
+            .iter()
+            .filter(|request| request.path == "/v1/memory")
+            .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+            .collect();
+        assert_eq!(sent.len(), 1);
+        assert!(
+            !sent[0].contains("sk-live-do-not-upload"),
+            "the key went up under a receipt saying masking was on: {}",
+            sent[0]
+        );
+        assert!(
+            sent[0].contains("[REDACTED]"),
+            "masked, not dropped — the rest of the file is still the archive's: {}",
+            sent[0]
+        );
+    }
+
+    /// The sweep remembers which instruction files it has already sent, and a
+    /// fresh one each cycle remembers nothing. Now that a watch survives its own
+    /// failures and runs indefinitely, that is every instruction file on the
+    /// machine re-uploaded every interval, for as long as the laptop is on.
+    #[test]
+    fn a_watch_does_not_re_upload_an_unchanged_instruction_file() {
+        let temp = tempfile::tempdir().unwrap();
+        // Room for a second upload, so the failure is an assertion about what
+        // was sent rather than a test that hangs waiting for a request the fix
+        // prevents. The server is left blocked on accept for the same reason.
+        let (endpoint, requests, _server) = spawn_mock_api(9, None);
+        let paths = configured_paths(&temp, &endpoint);
+        fs::create_dir_all(paths.home.join(".claude")).unwrap();
+        fs::write(paths.home.join(".claude/CLAUDE.md"), "be terse").unwrap();
+
+        sync(
+            &SyncArgs {
+                watch: true,
+                interval_seconds: 1,
+                debounce_seconds: 1,
+                max_cycles: 2,
+            },
+            false,
+            &paths,
+        )
+        .unwrap();
+
+        let uploads = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.path == "/v1/memory")
+            .count();
+        assert_eq!(
+            uploads, 1,
+            "two cycles, one unchanged file: it was sent {uploads} times"
+        );
+    }
+
+    /// A watcher that dies on the first transport failure is a watcher that
+    /// cannot do its job: the offline queue exists so a closed lid or a changed
+    /// network costs nothing, and `sync --watch` was the one thing on the
+    /// machine that could not survive either.
+    #[test]
+    fn a_lost_network_does_not_end_a_watch() {
+        let (endpoint, requests, server) = spawn_mock(MockOptions {
+            request_count: 3,
+            dropped_connections: 1,
+            ..MockOptions::default()
+        });
+        let temp = tempfile::tempdir().unwrap();
+        let paths = configured_paths(&temp, &endpoint);
+
+        let started = Instant::now();
+        let result = sync(
+            &SyncArgs {
+                watch: true,
+                interval_seconds: 1,
+                debounce_seconds: 1,
+                max_cycles: 1,
+            },
+            false,
+            &paths,
+        )
+        .expect("a dropped connection must be retried, not fatal");
+
+        assert!(
+            result.data["sync"]["uploaded"].is_number(),
+            "the cycle after the failure completed"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_secs(1),
+            "the retry waited a poll interval rather than hammering the archive"
+        );
+        server.join().unwrap();
+        assert!(!requests.lock().unwrap().is_empty());
+    }
+
+    /// Retrying forever is its own failure. A credential the archive refuses is
+    /// not going to start working, and a watch that keeps asking every five
+    /// minutes hides that from whoever has to fix it.
+    #[test]
+    fn a_refused_credential_ends_a_watch_but_a_dead_network_does_not() {
+        assert!(fatal_for_watch(&AppError::network(problem_message(
+            401, ""
+        ))));
+        assert!(fatal_for_watch(&AppError::network(problem_message(
+            403, ""
+        ))));
+        assert!(fatal_for_watch(&AppError::usage("no such source")));
+        assert!(fatal_for_watch(&AppError::internal("queue is corrupt")));
+        assert!(!fatal_for_watch(&AppError::network(
+            "error sending request: connection refused"
+        )));
+        assert!(!fatal_for_watch(&AppError::network(problem_message(
+            503, ""
+        ))));
+        assert!(
+            !fatal_for_watch(&AppError::locked("database is locked")),
+            "another process holding the queue is a wait, not a stop"
+        );
+    }
+
+    /// The download deadline has to be reachable for the largest bundle the
+    /// materializer will accept.
+    ///
+    /// reqwest's blocking client caps a whole request at 30 seconds by default,
+    /// and `ApiClient` took that default on every request including this one.
+    /// At the slowest uplink the upload path is budgeted for, 30 seconds buys
+    /// about 7.5 MB, so every non-trivial `memoar convert --here` failed on a
+    /// deadline it could never meet, with no retry. This fails if the budget
+    /// drops or the size ceiling rises without the other moving too.
+    #[test]
+    fn the_download_deadline_is_reachable_at_the_size_ceiling() {
+        let on_the_wire =
+            MAX_CONVERSION_BUNDLE_BYTES * BASE64_EXPANSION_NUMERATOR / BASE64_EXPANSION_DENOMINATOR;
+        let needed = on_the_wire / SLOWEST_TOLERATED_BYTES_PER_SEC;
+        assert!(
+            DOWNLOAD_TIMEOUT.as_secs() >= needed,
+            "a {MAX_CONVERSION_BUNDLE_BYTES}-byte bundle is {on_the_wire} bytes base64 and \
+             needs {needed}s at the slowest tolerated uplink, but downloads are cut off after {}s",
+            DOWNLOAD_TIMEOUT.as_secs()
+        );
+        assert!(
+            CONNECT_TIMEOUT < REQUEST_TIMEOUT && REQUEST_TIMEOUT < DOWNLOAD_TIMEOUT,
+            "an unreachable host must fail long before a slow download does"
+        );
+    }
+
+    /// And the budget must actually reach the request that needs it.
+    #[test]
+    fn a_bundle_download_is_not_held_to_the_control_plane_budget() {
+        let bundle = json!({ "contractVersion": "unreadable" });
+        let (endpoint, _requests, _server) = spawn_mock(MockOptions {
+            request_count: 1,
+            conversion_bundle: Some(bundle),
+            slow_path: "/download",
+            slow_by: Duration::from_millis(900),
+            ..MockOptions::default()
+        });
+        let api = ApiClient::with_timeouts(
+            &endpoint,
+            None,
+            Duration::from_millis(400),
+            Duration::from_secs(10),
+        );
+
+        // The bundle is deliberately not a bundle: what is being tested is that
+        // the bytes arrived at all, not what they say.
+        let outcome = api.download_conversion("/convert/conversion-job/download");
+        assert!(
+            !matches!(&outcome, Err(error) if error.message.contains("timed out")),
+            "the download was held to the control-plane budget: {outcome:?}"
+        );
+
+        let (endpoint, _requests, _server) = spawn_mock(MockOptions {
+            request_count: 1,
+            slow_path: "/machines",
+            slow_by: Duration::from_millis(900),
+            ..MockOptions::default()
+        });
+        let api = ApiClient::with_timeouts(
+            &endpoint,
+            None,
+            Duration::from_millis(400),
+            Duration::from_secs(10),
+        );
+        let error = api
+            .get("/machines")
+            .expect_err("a control request must keep the short budget");
+        assert!(
+            error.message.contains("timed out"),
+            "unexpected failure: {error:?}"
+        );
+    }
+
+    /// "error sending request for url (…)" is not something an operator can act
+    /// on. Behind a TLS-inspecting proxy it was the whole message: the URL, and
+    /// nothing about the certificate. The reason is in the source chain.
+    #[test]
+    fn a_transport_failure_says_why() {
+        let endpoint = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            format!("http://{}/v1", listener.local_addr().unwrap())
+        };
+        let error = ApiClient::new(&endpoint, None)
+            .get("/machines")
+            .expect_err("nothing is listening on that port");
+        assert!(
+            error.message.to_lowercase().contains("refused"),
+            "the reason was dropped with the source chain: {}",
+            error.message
+        );
+    }
+
+    /// Redaction was writable at `login` and nowhere else: a CLI user who forgot
+    /// the flags had to delete their configuration and sign in again, and the
+    /// desktop app passed all three as false with nothing anywhere to change
+    /// them.
+    #[test]
+    fn redaction_is_changeable_after_login() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = configured_paths(&temp, "http://127.0.0.1:1/v1");
+        assert!(!load_config(&paths).unwrap().redaction.secrets);
+
+        let output = redaction(
+            &RedactionArgs {
+                secrets: Some(true),
+                email_addresses: None,
+                home_paths: None,
+            },
+            &paths,
+        )
+        .unwrap();
+
+        assert_eq!(output.data["changed"], true);
+        assert_eq!(output.data["redaction"]["secrets"], true);
+        let stored = load_config(&paths).unwrap().redaction;
+        assert!(stored.secrets, "the setting must survive the process");
+        assert!(
+            !stored.email_addresses && !stored.home_paths,
+            "a flag left off leaves that setting alone"
+        );
+        // Reading is not writing: asking what the settings are must not change
+        // them or rewrite the file.
+        let shown = redaction(
+            &RedactionArgs {
+                secrets: None,
+                email_addresses: None,
+                home_paths: None,
+            },
+            &paths,
+        )
+        .unwrap();
+        assert_eq!(shown.data["changed"], false);
+        assert_eq!(shown.data["redaction"]["secrets"], true);
+    }
+
+    /// A symlinked session store is skipped by discovery without a word, while
+    /// `detected` follows the link and says the source is there. So `status`
+    /// reported a source it was capturing nothing from, and nothing anywhere
+    /// said why.
+    #[test]
+    fn status_and_doctor_name_a_source_behind_a_symlink() {
+        let temp = tempfile::tempdir().unwrap();
+        let (endpoint, _requests, server) = spawn_mock_api(3, None);
+        let paths = configured_paths(&temp, &endpoint);
+        let external = temp.path().join("external-volume/projects");
+        fs::create_dir_all(external.join("a-project")).unwrap();
+        fs::write(external.join("a-project/session.jsonl"), b"{}\n").unwrap();
+        fs::create_dir_all(paths.home.join(".claude")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&external, paths.home.join(".claude/projects")).unwrap();
+
+        let status = status(&paths).unwrap();
+        let skipped = status.data["skippedSymlinks"].as_array().unwrap().clone();
+        assert_eq!(skipped.len(), 1, "one source is behind a link: {skipped:?}");
+        assert_eq!(skipped[0]["source"], "claude-code");
+        assert_eq!(
+            skipped[0]["path"],
+            json!(paths.home.join(".claude/projects"))
+        );
+        assert!(
+            status.data["detectedSources"].as_u64().unwrap() > 0,
+            "the source still reads as detected, which is exactly the lie"
+        );
+
+        let doctor = doctor(&paths).unwrap();
+        server.join().unwrap();
+        let check = doctor.data["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["name"] == "source_symlinks")
+            .expect("doctor must report it");
+        assert_eq!(check["ok"], false);
+        assert!(
+            check["detail"]
+                .as_str()
+                .unwrap()
+                .contains(".claude/projects"),
+            "the check must name the path: {check}"
+        );
+        assert_eq!(doctor.data["ok"], false);
     }
 
     #[test]
