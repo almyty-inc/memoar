@@ -32,6 +32,17 @@ Use tools in this order:
 
 Other tools are `list_collections`, `get_memory`, and `save_note`.
 
+## Instruction files
+
+`list_memory_documents` lists the captured CLAUDE.md, AGENTS.md, GEMINI.md and
+.goosehints files, filtered by `machineId`, `scope`, `workspacePath` or a
+`pathPattern` glob over the file name or full path, and paged with `limit` and
+`offset`. `get_memory_document` reads one of them: its current text, bounded by
+`maxChars`, and its revision history newest first, bounded by `maxRevisions`.
+
+These are the files themselves. `get_memory`, despite the name, packs *sessions*
+for a topic and has nothing to do with them.
+
 ## Claude Code
 
 ```sh

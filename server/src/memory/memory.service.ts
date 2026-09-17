@@ -3,6 +3,7 @@ import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { MemoryDocument, MemoryRevision } from "../../libs/canonical/src/generated.js";
 import type { MemoryStore, TenantContext } from "../archive-store.js";
 import { ARCHIVE_STORE } from "../tokens.js";
+import { matchesMemoryFilter, type MemoryDocumentFilter } from "./memory-filter.js";
 import type { CaptureMemoryDto } from "./memory.dto.js";
 
 @Injectable()
@@ -11,6 +12,33 @@ export class MemoryService {
 
   async list(context: TenantContext, filter: { machineId?: string; scope?: string }): Promise<{ items: MemoryDocument[] }> {
     return { items: await this.store.listMemoryDocuments(context, filter) };
+  }
+
+  /**
+   * The same listing, narrowed by workspace and file name and cut into pages.
+   *
+   * Machine and scope are columns, so the store applies them. Workspace and the
+   * name pattern are applied to what comes back: an account's instruction files
+   * number in the dozens, and pushing a caller's glob down would put a supplied
+   * expression in front of the database for no gain. Either way every row comes
+   * from the tenant-scoped listing, never from the entities.
+   */
+  async search(
+    context: TenantContext,
+    filter: MemoryDocumentFilter,
+    page: { limit: number; offset: number },
+  ): Promise<{ items: MemoryDocument[]; total: number; limit: number; offset: number }> {
+    const { items } = await this.list(context, {
+      ...(filter.machineId ? { machineId: filter.machineId } : {}),
+      ...(filter.scope ? { scope: filter.scope } : {}),
+    });
+    const matched = items.filter((document) => matchesMemoryFilter(document, filter));
+    return {
+      items: matched.slice(page.offset, page.offset + page.limit),
+      total: matched.length,
+      limit: page.limit,
+      offset: page.offset,
+    };
   }
 
   async get(context: TenantContext, documentId: string): Promise<{ document: MemoryDocument; revisions: MemoryRevision[] }> {

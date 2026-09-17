@@ -8,6 +8,7 @@ import { CONTRACT_VERSION } from "../libs/canonical/src/generated.js";
 import type { ArchiveStore, TenantContext } from "./archive-store.js";
 import { RequireScopes, Tenant, TokenService } from "./auth.js";
 import { McpHandshakeDto } from "./mcp.dto.js";
+import { McpMemoryTools, MEMORY_TOOLS } from "./mcp/memory-tools.js";
 import { AnnotationService, CollectionService } from "./curation.js";
 import { PackService, SearchService, type PackRequest } from "./search.js";
 import { SessionsService } from "./sessions.js";
@@ -37,6 +38,7 @@ const TOOLS: readonly Tool[] = [
   { name: "list_collections", description: "List curated collections visible to the active tenant.", inputSchema: { type: "object", properties: {} } },
   { name: "get_memory", description: "Retrieve a compact cited pack for a topic using conservative defaults.", inputSchema: { type: "object", required: ["topic"], properties: { topic: { type: "string" }, maxTokens: { type: "integer" } } } },
   { name: "save_note", description: "Save a durable note linked to a source session after significant work.", inputSchema: { type: "object", required: ["sessionId", "markdown"], properties: { sessionId: { type: "string" }, markdown: { type: "string" }, topic: { type: "string" } } } },
+  ...MEMORY_TOOLS,
 ] as const;
 
 function stringArgument(args: Record<string, unknown>, name: string): string {
@@ -102,6 +104,7 @@ export class McpService {
     @Inject(SessionsService) private readonly sessions: SessionsService,
     @Inject(CollectionService) private readonly collections: CollectionService,
     @Inject(AnnotationService) private readonly annotations: AnnotationService,
+    @Inject(McpMemoryTools) private readonly memoryTools: McpMemoryTools,
     @Inject(ARCHIVE_STORE) private readonly store: ArchiveStore,
   ) {}
 
@@ -175,6 +178,9 @@ export class McpService {
       });
       return { annotation };
     }
+    // The instruction files. Their arguments are validated by DTO rather than
+    // read field by field, so the tools own their own bounds.
+    if (this.memoryTools.handles(name)) return this.memoryTools.call(context, name, args);
     throw new Error(`unknown_tool:${name}`);
   }
 }
