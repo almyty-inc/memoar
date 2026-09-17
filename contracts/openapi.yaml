@@ -17,7 +17,47 @@ tags:
   - name: Convert
   - name: Machines
   - name: MCP
+  - name: Operations
 paths:
+  /metrics:
+    get:
+      tags: [Operations]
+      operationId: getMetrics
+      description: >-
+        Prometheus exposition of the process and archive counters. Behind the
+        operator token, not a tenant credential: it describes the deployment
+        rather than any one account, and 404s when no operator token is
+        configured so an unconfigured archive does not advertise it.
+      responses:
+        '200':
+          description: Metrics in the Prometheus text exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+        '404':
+          description: No operator token is configured
+  /errors:
+    get:
+      tags: [Operations]
+      operationId: listErrorReports
+      description: >-
+        Aggregated error fingerprints. Behind the operator token, and never
+        carrying a raw error message — quoted literals, uuids, hashes, paths and
+        numbers are normalised out before an error is stored, so one tenant's
+        data cannot reach an operator through a stack trace.
+      responses:
+        '200':
+          description: Error fingerprints with counts and first and last occurrence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { type: object }
+        '404':
+          description: No operator token is configured
   /auth/login:
     post:
       tags: [Auth]
@@ -65,6 +105,17 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthMethods' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      description: >-
+        Ends the session the bearer token stands for. The token stops being accepted
+        immediately rather than at its expiry, so signing out is a fact about the
+        credential and not only about the client that was holding it.
+      responses:
+        '204': { description: Session ended }
+        '401': { $ref: '#/components/responses/ProblemResponse' }
   /auth/me:
     get:
       tags: [Auth]
@@ -118,7 +169,22 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [name, scopes], properties: { name: { type: string }, scopes: { type: array, items: { type: string } } } }
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  description: >-
+                    Must be known scopes, and must be a subset of the caller's own: a key is
+                    issued by somebody and cannot outrank them. '*' is a wildcard the guard
+                    honours, never a grant anybody may ask for.
+                  items:
+                    type: string
+                    enum: [archive:read, archive:write, sharing:write, keys:write, machines:write, ingest:write, machine:heartbeat, materialize:read, mcp:use]
       responses:
         '201':
           description: Secret is returned once
@@ -477,7 +543,7 @@ paths:
         - $ref: '#/components/parameters/CollectionId'
         - $ref: '#/components/parameters/SessionId'
       responses:
-        '204': { description: Membership saved }
+        '204': { description: Invitation recorded }
     delete:
       tags: [Collections]
       operationId: removeSessionFromCollection
@@ -684,11 +750,57 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Team' }
+  /teams/invitations:
+    get:
+      tags: [Teams]
+      operationId: listTeamInvitations
+      description: Teams this account has been asked to join and has not yet joined. Nobody sees anybody else's.
+      responses:
+        '200':
+          description: Pending invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [teamId, teamName, orgId]
+                      properties:
+                        teamId: { $ref: '#/components/schemas/Uuid' }
+                        teamName: { type: string }
+                        orgId: { $ref: '#/components/schemas/Uuid' }
+  /teams/invitations/{teamId}/accept:
+    post:
+      tags: [Teams]
+      operationId: acceptTeamInvitation
+      description: Joins the team. Membership begins here and not at the invitation, because being in a team decides what other people can see of your work.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Invitation accepted }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/invitations/{teamId}:
+    delete:
+      tags: [Teams]
+      operationId: declineTeamInvitation
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Invitation declined }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
   /teams/{teamId}/members:
     put:
       tags: [Teams]
-      operationId: addTeamMember
-      description: Adds a member by account email. Caller must already be a member. There is no roles matrix; every member has the same capabilities.
+      operationId: inviteTeamMember
+      description: >-
+        Invites an account by email. The caller must already be a member, and the invitation
+        becomes a membership only when the invited person accepts it. There is no roles matrix;
+        every member has the same capabilities.
       parameters:
         - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
       requestBody:
@@ -697,7 +809,7 @@ paths:
           application/json:
             schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
       responses:
-        '204': { description: Membership saved }
+        '204': { description: Invitation recorded }
         '403': { $ref: '#/components/responses/ProblemResponse' }
         '404': { $ref: '#/components/responses/ProblemResponse' }
   /teams/{teamId}/members/{userId}:
