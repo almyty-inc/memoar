@@ -9,9 +9,9 @@ Use the archive as cited evidence, not as an unbounded context dump.
 
 ## Retrieve in cost order
 
-1. Call `search_sessions` with a focused query and relevant project, agent, machine, or date filters. Keep the default summary fields.
+1. Call `search_sessions` with a focused query and the filters that narrow it: `agent`, `workspace`, `from`, `to`. To narrow by capture machine, use `list_sessions` with `machineId` — ranked search does not filter on machine. Keep the default summary fields.
 2. Call `get_excerpt` for the most promising result spans. Check source, age, and redaction status before relying on a claim.
-3. Call `pack` when several excerpts must be combined. Set the smallest useful `max_tokens`, `max_evidence`, and `max_sessions` limits. Use `freshness_policy: strict` for facts that may have changed.
+3. Call `pack` when several excerpts must be combined. Set the smallest useful `maxTokens`, `maxEvidence`, and `maxSessions` limits. Use `freshnessPolicy: strict` for facts that may have changed.
 4. Call chunked `get_session` only when the earlier steps cannot answer the request. Explain why a full session is needed.
 
 For CLI-only environments, use the matching `memoar search`, `memoar view`, and `memoar pack` commands with `--json`. Read [references/robot-api.md](references/robot-api.md) for stable outputs and exit codes.
