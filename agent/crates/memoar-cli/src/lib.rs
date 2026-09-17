@@ -192,15 +192,74 @@ struct Config {
     redaction: RedactionConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct Credentials {
+    /// A long-lived, revocable API key scoped to what the agent actually does.
+    /// What `login` mints and stores now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    api_key: Option<String>,
+    /// A user access token. What older installs stored, and what `--token`
+    /// accepts when it is handed one. It expires in an hour, which is why it is
+    /// no longer what `login` writes.
+    #[serde(default)]
     access_token: String,
 }
 
+/// How the agent proves who it is.
+///
+/// `login` used to store the browser access token, which the server issues with
+/// a one-hour lifetime and no refresh. Every command then depended on it, so
+/// `sync --watch` — a command whose entire purpose is to keep running —
+/// stopped working after an hour and could only be revived by typing a
+/// password again. An API key has no expiry, is revocable from the account, and
+/// carries only the scopes the agent needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Credential {
+    ApiKey(String),
+    Bearer(String),
+}
+
+/// The prefix the server puts on every API key it mints, which is what lets a
+/// secret handed to `--token` be classified without asking the user which kind
+/// they pasted.
+const API_KEY_PREFIX: &str = "memoar_";
+
+impl Credential {
+    fn classify(secret: &str) -> Self {
+        if secret.starts_with(API_KEY_PREFIX) {
+            Self::ApiKey(secret.to_owned())
+        } else {
+            Self::Bearer(secret.to_owned())
+        }
+    }
+
+    fn secret(&self) -> &str {
+        match self {
+            Self::ApiKey(secret) | Self::Bearer(secret) => secret,
+        }
+    }
+}
+
+/// The scopes `login` asks for, and no others.
+///
+/// Deliberately short of what a browser token carries: no `sharing:write`, no
+/// `keys:write`, no `mcp:use`. The agent captures, uploads, keeps its machine
+/// record current, and reads back what it archived. It has never needed the
+/// power to share a session, mint another credential, or act as an MCP client,
+/// and a credential that sits on a laptop indefinitely should not hold rights
+/// nothing on that laptop exercises.
+const CAPTURE_SCOPES: [&str; 5] = [
+    "archive:read",
+    "archive:write",
+    "ingest:write",
+    "machines:write",
+    "materialize:read",
+];
+
 pub trait CredentialStore {
-    fn load_token(&self) -> Result<Option<String>, AppError>;
-    fn store_token(&self, token: &str) -> Result<(), AppError>;
+    fn load(&self) -> Result<Option<Credential>, AppError>;
+    fn store(&self, credential: &Credential) -> Result<(), AppError>;
 }
 
 #[derive(Debug, Clone)]
@@ -216,7 +275,11 @@ impl FileCredentialStore {
 }
 
 impl CredentialStore for FileCredentialStore {
-    fn load_token(&self) -> Result<Option<String>, AppError> {
+    /// An API key wins over an access token when both are present, which is what
+    /// an install written before the key existed looks like after its next
+    /// `login`. The old token is left in place rather than deleted so that
+    /// rolling back to an older agent does not lock the machine out.
+    fn load(&self) -> Result<Option<Credential>, AppError> {
         if !self.path.exists() {
             return Ok(None);
         }
@@ -229,20 +292,31 @@ impl CredentialStore for FileCredentialStore {
                 self.path.display()
             ))
         })?;
+        if let Some(key) = credentials.api_key.filter(|key| !key.is_empty()) {
+            return Ok(Some(Credential::ApiKey(key)));
+        }
         if credentials.access_token.is_empty() {
             return Ok(None);
         }
-        Ok(Some(credentials.access_token))
+        Ok(Some(Credential::Bearer(credentials.access_token)))
     }
 
-    fn store_token(&self, token: &str) -> Result<(), AppError> {
-        if token.is_empty() {
-            return Err(AppError::usage("access token cannot be empty"));
+    fn store(&self, credential: &Credential) -> Result<(), AppError> {
+        if credential.secret().is_empty() {
+            return Err(AppError::usage("credential cannot be empty"));
         }
-        let bytes = serde_json::to_vec(&Credentials {
-            access_token: token.to_owned(),
-        })
-        .map_err(|error| AppError::internal(error.to_string()))?;
+        let credentials = match credential {
+            Credential::ApiKey(secret) => Credentials {
+                api_key: Some(secret.clone()),
+                access_token: String::new(),
+            },
+            Credential::Bearer(secret) => Credentials {
+                api_key: None,
+                access_token: secret.clone(),
+            },
+        };
+        let bytes = serde_json::to_vec(&credentials)
+            .map_err(|error| AppError::internal(error.to_string()))?;
         atomic_replace(&self.path, &bytes, 0o600)
     }
 }
@@ -414,12 +488,14 @@ fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppErr
     }
     let endpoint = args.endpoint.trim_end_matches('/');
     let unauthenticated = ApiClient::new(endpoint, None);
-    let access_token =
+    // What the user handed us, or what a password buys: either way it is only
+    // good enough to register the machine and mint the credential that lasts.
+    let account =
         if let Some(token) = &args.token {
             if token.is_empty() {
                 return Err(AppError::usage("--token cannot be empty"));
             }
-            token.clone()
+            Credential::classify(token)
         } else {
             let email = args.email.as_ref().ok_or_else(|| {
                 AppError::usage("login requires --email and --password, or --token")
@@ -431,12 +507,14 @@ fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppErr
                 "/auth/login",
                 &json!({ "email": email, "password": password }),
             )?;
-            auth.get("accessToken")
-                .and_then(Value::as_str)
-                .ok_or_else(|| AppError::network("login response did not include accessToken"))?
-                .to_owned()
+            Credential::Bearer(
+                auth.get("accessToken")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| AppError::network("login response did not include accessToken"))?
+                    .to_owned(),
+            )
         };
-    let api = ApiClient::new(endpoint, Some(&access_token));
+    let api = ApiClient::new(endpoint, Some(&account));
     let machine_id = if let Some(machine_id) = &args.machine_id {
         verify_machine(&api, machine_id)?;
         machine_id.clone()
@@ -468,7 +546,14 @@ fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppErr
         },
     };
     patch_machine_state(&api, &config, paths)?;
-    paths.credential_store().store_token(&access_token)?;
+    // A password or a browser token gets us this far and no further: what is
+    // stored is a capture-scoped key that does not expire, so no later command
+    // depends on a credential with an hour to live.
+    let credential = match &account {
+        Credential::ApiKey(_) => account.clone(),
+        Credential::Bearer(_) => mint_capture_key(&api, &machine_name())?,
+    };
+    paths.credential_store().store(&credential)?;
     save_config(paths, &config)?;
     OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     Ok(CommandOutput {
@@ -477,14 +562,38 @@ fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppErr
             "initialized": true,
             "endpoint": config.endpoint,
             "machineId": machine_id,
+            "credential": match credential { Credential::ApiKey(_) => "api-key", Credential::Bearer(_) => "access-token" },
             "redaction": config.redaction
         }),
     })
 }
 
+/// Trades the account credential for a long-lived one scoped to capture.
+///
+/// This is the whole point of the change. `login` used to keep the browser
+/// access token, which the server issues for one hour with no refresh, so every
+/// later command was living on a credential that had usually already died —
+/// `sync --watch`, whose entire job is to keep running, could not survive its
+/// own first hour.
+///
+/// Named after the machine so a key is recognisable in the account's key list
+/// and can be revoked for one laptop without touching the others.
+fn mint_capture_key(api: &ApiClient, machine_name: &str) -> Result<Credential, AppError> {
+    let response = api.post(
+        "/auth/api-keys",
+        &json!({ "name": format!("memoar agent · {machine_name}"), "scopes": CAPTURE_SCOPES }),
+    )?;
+    let secret = response
+        .get("secret")
+        .and_then(Value::as_str)
+        .filter(|secret| !secret.is_empty())
+        .ok_or_else(|| AppError::network("API key response did not include secret"))?;
+    Ok(Credential::classify(secret))
+}
+
 fn status(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let config = load_config(paths)?;
-    let credentials = load_token(paths)?;
+    let credential = load_credential(paths)?;
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let counts = queue.counts().map_err(map_queue_error)?;
     let discovered = discover(&paths.home, OperatingSystem::current());
@@ -492,7 +601,7 @@ fn status(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
         command: "status".to_owned(),
         data: json!({
             "initialized": true,
-            "credentialsConfigured": !credentials.is_empty(),
+            "credentialsConfigured": !credential.secret().is_empty(),
             "endpoint": config.endpoint,
             "machineId": config.machine_id,
             "queue": counts,
@@ -552,7 +661,7 @@ fn update_source(
         config.disabled_sources.insert(source.to_owned());
     }
     save_config(paths, &config)?;
-    let token = load_token(paths)?;
+    let token = load_credential(paths)?;
     patch_machine_state(
         &ApiClient::new(&config.endpoint, Some(&token)),
         &config,
@@ -574,7 +683,7 @@ fn sync(args: &SyncArgs, json_mode: bool, paths: &RuntimePaths) -> Result<Comman
         return Err(AppError::usage("--watch cannot be combined with --json"));
     }
     let config = load_config(paths)?;
-    let access_token = load_token(paths)?;
+    let credential = load_credential(paths)?;
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let enabled = enabled_sources(&config);
     let captured = capture_sources_with_redaction(
@@ -585,7 +694,7 @@ fn sync(args: &SyncArgs, json_mode: bool, paths: &RuntimePaths) -> Result<Comman
         config.redaction,
     )
     .map_err(map_capture_error)?;
-    let mut last = sync_pending(&queue, &config, &access_token, paths, captured)?;
+    let mut last = sync_pending(&queue, &config, &credential, paths, captured)?;
     if args.watch {
         let mut watcher = PollingCapture::new(Duration::from_secs(args.debounce_seconds.max(1)));
         loop {
@@ -607,7 +716,7 @@ fn sync(args: &SyncArgs, json_mode: bool, paths: &RuntimePaths) -> Result<Comman
                     .map_err(map_capture_error)?,
                 skipped: Vec::new(),
             };
-            last = sync_pending(&queue, &config, &access_token, paths, captured)?;
+            last = sync_pending(&queue, &config, &credential, paths, captured)?;
         }
     }
     Ok(CommandOutput {
@@ -627,22 +736,26 @@ fn enabled_sources(config: &Config) -> HashSet<String> {
 fn sync_pending(
     queue: &OfflineQueue,
     config: &Config,
-    access_token: &str,
+    credential: &Credential,
     paths: &RuntimePaths,
     captured: CaptureSummary,
 ) -> Result<Value, AppError> {
-    let api = ApiClient::new(&config.endpoint, Some(access_token));
+    let api = ApiClient::new(&config.endpoint, Some(credential));
     patch_machine_state(&api, config, paths)?;
-    let token = issue_machine_token(&api, &config.machine_id)?;
-    let transport = HttpTransport::new(&config.endpoint, token.clone());
-    let report = SyncEngine::new(transport)
-        .sync(queue, &config.machine_id)
-        .map_err(map_sync_error)?;
+    let (token, expires_at) = issue_machine_token(&api, &config.machine_id)?;
+    let report = SyncEngine::new(capture_transport(
+        config,
+        credential,
+        &token,
+        expires_at.as_deref(),
+    ))
+    .sync(queue, &config.machine_id)
+    .map_err(map_sync_error)?;
     // The instruction files the agents on this machine read, for the projects
     // this account already has sessions in. They are not transcripts and do not
     // go through the queue: what matters is whether the text changed.
     let memory = MemorySync::new().run(
-        &HttpTransport::new(&config.endpoint, token),
+        &capture_transport(config, credential, &token, expires_at.as_deref()),
         &paths.home,
         &archived_workspaces(&api),
         &config.machine_id,
@@ -836,8 +949,11 @@ fn convert(args: &ConvertArgs, paths: &RuntimePaths) -> Result<CommandOutput, Ap
 fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let (config, token) = authenticated_config(paths)?;
     let api = ApiClient::new(&config.endpoint, Some(&token));
-    let machine_token = issue_machine_token(&api, &config.machine_id)?;
-    let machine_api = ApiClient::new(&config.endpoint, Some(&machine_token));
+    let (machine_token, _) = issue_machine_token(&api, &config.machine_id)?;
+    let machine_api = ApiClient::new(
+        &config.endpoint,
+        Some(&Credential::Bearer(machine_token.clone())),
+    );
 
     let response = machine_api
         .authorize(
@@ -969,17 +1085,17 @@ fn materialize_conversion(
 
 fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let config = load_config(paths)?;
-    let access_token = load_token(paths)?;
+    let credential = load_credential(paths)?;
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let database_ok = queue.integrity_check().map_err(map_queue_error)?;
-    let api = ApiClient::new(&config.endpoint, Some(&access_token));
+    let api = ApiClient::new(&config.endpoint, Some(&credential));
     verify_machine(&api, &config.machine_id)?;
-    let machine_token = issue_machine_token(&api, &config.machine_id)?;
+    let (machine_token, _) = issue_machine_token(&api, &config.machine_id)?;
     patch_machine_state(&api, &config, paths)?;
     let checks = vec![
         json!({ "name": "contract_version", "ok": config.contract_version == memoar_canonical::CONTRACT_VERSION, "detail": config.contract_version }),
         json!({ "name": "queue_integrity", "ok": database_ok, "detail": paths.queue_file() }),
-        json!({ "name": "credentials", "ok": !access_token.is_empty(), "detail": "credential store contains a token" }),
+        json!({ "name": "credentials", "ok": !credential.secret().is_empty(), "detail": "credential store contains a token" }),
         json!({ "name": "source_table", "ok": !SOURCES.is_empty(), "detail": format!("{} sources", SOURCES.len()) }),
         json!({ "name": "api_reachable", "ok": true, "detail": config.endpoint }),
         json!({ "name": "machine_registered", "ok": true, "detail": config.machine_id }),
@@ -1041,14 +1157,55 @@ fn verify_machine(api: &ApiClient, machine_id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-fn issue_machine_token(api: &ApiClient, machine_id: &str) -> Result<String, AppError> {
+/// A transport that can replace its own machine token.
+///
+/// The machine token lives fifteen minutes; a single upload is allowed half an
+/// hour. Minting once per batch therefore handed long uploads a credential that
+/// had already expired by the time the server read it, and the archive answered
+/// 401 after accepting every byte. The transport now mints again whenever the
+/// token it holds is close to death, using the account credential — which,
+/// since `login` stores an API key, does not itself expire.
+fn capture_transport(
+    config: &Config,
+    credential: &Credential,
+    token: &str,
+    expires_at: Option<&str>,
+) -> HttpTransport {
+    let endpoint = config.endpoint.clone();
+    let machine_id = config.machine_id.clone();
+    let credential = credential.clone();
+    HttpTransport::with_minter(
+        &config.endpoint,
+        token,
+        expires_at,
+        Some(Box::new(move || {
+            let api = ApiClient::new(&endpoint, Some(&credential));
+            issue_machine_token(&api, &machine_id)
+                .map_err(|error| DaemonError::Transport(error.message.clone()))
+        })),
+    )
+}
+
+/// Mints a machine token, and reports when it dies.
+///
+/// The expiry is not decoration: it is what lets the transport replace the token
+/// before a long upload starts rather than after one has failed.
+fn issue_machine_token(
+    api: &ApiClient,
+    machine_id: &str,
+) -> Result<(String, Option<String>), AppError> {
     let response = api.post("/auth/machine-token", &json!({ "machineId": machine_id }))?;
-    response
+    let token = response
         .get("token")
         .and_then(Value::as_str)
         .filter(|token| !token.is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| AppError::network("machine token response did not include token"))
+        .ok_or_else(|| AppError::network("machine token response did not include token"))?
+        .to_owned();
+    let expires_at = response
+        .get("expiresAt")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    Ok((token, expires_at))
 }
 
 fn validate_uuid_v7(label: &str, value: &str) -> Result<(), AppError> {
@@ -1060,14 +1217,14 @@ fn validate_uuid_v7(label: &str, value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-fn authenticated_config(paths: &RuntimePaths) -> Result<(Config, String), AppError> {
-    Ok((load_config(paths)?, load_token(paths)?))
+fn authenticated_config(paths: &RuntimePaths) -> Result<(Config, Credential), AppError> {
+    Ok((load_config(paths)?, load_credential(paths)?))
 }
 
-fn load_token(paths: &RuntimePaths) -> Result<String, AppError> {
+fn load_credential(paths: &RuntimePaths) -> Result<Credential, AppError> {
     paths
         .credential_store()
-        .load_token()?
+        .load()?
         .ok_or_else(AppError::not_initialized)
 }
 
@@ -1150,26 +1307,29 @@ fn create_private(path: &Path, _unix_mode: u32) -> std::io::Result<File> {
 struct ApiClient {
     client: Client,
     endpoint: String,
-    token: Option<String>,
+    credential: Option<Credential>,
 }
 
 impl ApiClient {
-    fn new(endpoint: &str, token: Option<&str>) -> Self {
+    fn new(endpoint: &str, credential: Option<&Credential>) -> Self {
         Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
                 .expect("static HTTP client configuration must be valid"),
             endpoint: endpoint.trim_end_matches('/').to_owned(),
-            token: token.map(str::to_owned),
+            credential: credential.cloned(),
         }
     }
 
     fn authorize(&self, request: RequestBuilder) -> RequestBuilder {
-        if let Some(token) = &self.token {
-            request.bearer_auth(token)
-        } else {
-            request
+        // An API key is a header the server looks up directly; a bearer token is
+        // verified as a signed token. Sending a key as a bearer authenticates
+        // nobody, so the two are not interchangeable at the wire.
+        match &self.credential {
+            Some(Credential::ApiKey(secret)) => request.header("x-memoar-key", secret),
+            Some(Credential::Bearer(token)) => request.bearer_auth(token),
+            None => request,
         }
     }
 
@@ -1561,11 +1721,14 @@ mod tests {
         save_config(&paths, &config).unwrap();
         paths
             .credential_store()
-            .store_token("secret-user-token")
+            .store(&Credential::Bearer("secret-user-token".to_owned()))
             .unwrap();
         let config_text = fs::read_to_string(paths.config_file()).unwrap();
         assert!(!config_text.contains("secret-user-token"));
-        assert_eq!(load_token(&paths).unwrap(), "secret-user-token");
+        assert_eq!(
+            load_credential(&paths).unwrap(),
+            Credential::Bearer("secret-user-token".to_owned())
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1608,7 +1771,7 @@ mod tests {
         let paths = fixture_paths(&temp);
         paths
             .credential_store()
-            .store_token("secret-user-token")
+            .store(&Credential::Bearer("secret-user-token".to_owned()))
             .unwrap();
         let parent = paths.credentials_file().parent().unwrap().to_owned();
         let leftovers: Vec<_> = fs::read_dir(&parent)
@@ -1728,6 +1891,10 @@ mod tests {
                     ("POST", "/v1/machines") => (201, json!({"id": MACHINE_ID})),
                     ("PATCH", path) if path.starts_with("/v1/machines/") => (200, json!({})),
                     ("GET", "/v1/machines") => (200, json!({"items": [{"id": MACHINE_ID}]})),
+                    ("POST", "/v1/auth/api-keys") => (
+                        201,
+                        json!({"apiKey": {"id": "key-1"}, "secret": "memoar_test-capture-key"}),
+                    ),
                     ("POST", "/v1/auth/machine-token") => (
                         201,
                         json!({"token": "machine-token", "expiresAt": "2099-01-01T00:00:00Z"}),
@@ -1810,13 +1977,24 @@ mod tests {
             },
         )
         .unwrap();
-        paths.credential_store().store_token("user-token").unwrap();
+        paths
+            .credential_store()
+            .store(&Credential::Bearer("user-token".to_owned()))
+            .unwrap();
         paths
     }
 
+    /// `login` must not leave the agent holding the account's browser token.
+    ///
+    /// That token expires in an hour and the server issues no refresh for it, so
+    /// every later command — above all `sync --watch`, which exists to keep
+    /// running — died on `401 Valid bearer, machine, or API-key credentials are
+    /// required` and could only be revived by typing a password again. What is
+    /// stored is a capture-scoped API key, and what goes on the wire afterwards
+    /// is `x-memoar-key`, not the bearer.
     #[test]
-    fn http_login_registers_machine_and_doctor_validates_live_path() {
-        let (endpoint, requests, server) = spawn_mock_api(6, None);
+    fn login_trades_the_hour_long_token_for_a_capture_key() {
+        let (endpoint, requests, server) = spawn_mock_api(7, None);
         let temp = tempfile::tempdir().unwrap();
         let paths = fixture_paths(&temp);
         fs::create_dir_all(&paths.home).unwrap();
@@ -1835,6 +2013,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.data["machineId"], MACHINE_ID);
+        assert_eq!(result.data["credential"], "api-key");
+        assert_eq!(
+            load_credential(&paths).unwrap(),
+            Credential::ApiKey("memoar_test-capture-key".to_owned()),
+            "the stored credential must be the key, not the hour-long token"
+        );
         assert_eq!(doctor(&paths).unwrap().data["ok"], true);
         server.join().unwrap();
         let requests = requests.lock().unwrap();
@@ -1851,6 +2035,32 @@ mod tests {
                 .windows(12)
                 .any(|part| part == b"agentVersion")
         );
+        let key_request = requests
+            .iter()
+            .find(|request| request.path == "/v1/auth/api-keys")
+            .expect("login must mint a capture key");
+        let scopes = String::from_utf8_lossy(&key_request.body);
+        for scope in CAPTURE_SCOPES {
+            assert!(scopes.contains(scope), "capture key must request {scope}");
+        }
+        for withheld in ["sharing:write", "keys:write", "mcp:use"] {
+            assert!(
+                !scopes.contains(withheld),
+                "a credential that lives on a laptop forever must not carry {withheld}"
+            );
+        }
+        // Everything after the key exists is authenticated by the key.
+        let after_key = requests
+            .iter()
+            .skip_while(|request| request.path != "/v1/auth/api-keys")
+            .skip(1);
+        for request in after_key {
+            assert!(
+                request.headers.contains("x-memoar-key: memoar_"),
+                "{} still used the expiring token",
+                request.path
+            );
+        }
     }
 
     #[test]

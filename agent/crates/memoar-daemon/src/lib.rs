@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use uuid::Uuid;
@@ -689,10 +690,37 @@ pub trait SyncTransport {
     fn submit_manifest(&self, manifest: &IngestManifest) -> Result<IngestReceipt, DaemonError>;
 }
 
+/// The machine token the transport is currently using, and when it dies.
+struct Credential {
+    token: String,
+    expires_at: Option<DateTime<Utc>>,
+}
+
+/// Mints a fresh machine token. Supplied by the caller, because minting needs
+/// the account credential and that lives a layer up.
+pub type TokenMinter = Box<dyn Fn() -> Result<(String, Option<String>), DaemonError> + Send + Sync>;
+
+/// How much life a machine token must have left before a request will use it.
+///
+/// A machine token lives 900 seconds. A single upload may run for
+/// `UPLOAD_TIMEOUT`. The server validates the bearer once the body has
+/// arrived, so a large transcript pushed on a token minted at the start of a
+/// batch was authenticated against a credential that had already expired —
+/// twenty-six artifacts in a real drain died on
+/// `401 Valid bearer, machine, or API-key credentials are required`, having
+/// uploaded every byte first.
+///
+/// Re-minting before each request cannot make a token outlive its own TTL, so
+/// an upload slower than the full lifetime still cannot be authenticated. What
+/// it does guarantee is that no request ever *starts* on a credential that is
+/// about to die, which is what was actually happening.
+const CREDENTIAL_MARGIN: Duration = Duration::from_secs(300);
+
 pub struct HttpTransport {
     client: Client,
     endpoint: String,
-    machine_token: String,
+    credential: Mutex<Credential>,
+    mint: Option<TokenMinter>,
 }
 
 /// The largest artifact the archive accepts, mirroring `MEMOAR_MAX_ARTIFACT_BYTES`
@@ -718,6 +746,18 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 impl HttpTransport {
     #[must_use]
     pub fn new(endpoint: impl Into<String>, machine_token: impl Into<String>) -> Self {
+        Self::with_minter(endpoint, machine_token, None, None)
+    }
+
+    /// A transport that can replace its own machine token when the one it holds
+    /// is close to expiry.
+    #[must_use]
+    pub fn with_minter(
+        endpoint: impl Into<String>,
+        machine_token: impl Into<String>,
+        expires_at: Option<&str>,
+        mint: Option<TokenMinter>,
+    ) -> Self {
         Self {
             // `Client::new()` is a 30-second cap on the whole request, which is
             // the wrong shape for this: the payload is a transcript, and every
@@ -736,15 +776,47 @@ impl HttpTransport {
                 .build()
                 .expect("static HTTP client configuration must be valid"),
             endpoint: endpoint.into().trim_end_matches('/').to_owned(),
-            machine_token: machine_token.into(),
+            credential: Mutex::new(Credential {
+                token: machine_token.into(),
+                expires_at: expires_at.and_then(parse_expiry),
+            }),
+            mint,
         }
+    }
+
+    /// The token to start a request with, re-minted if the one held is within
+    /// `CREDENTIAL_MARGIN` of expiry.
+    ///
+    /// A transport with no minter keeps whatever it was given: that is the
+    /// single-shot case, and failing here would turn a working call into an
+    /// error over a token that may well still be good.
+    fn usable_token(&self) -> Result<String, DaemonError> {
+        let mut credential = self
+            .credential
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(mint) = self.mint.as_ref() else {
+            return Ok(credential.token.clone());
+        };
+        if let Some(expires_at) = credential.expires_at {
+            let remaining = expires_at.signed_duration_since(Utc::now());
+            if remaining
+                > chrono::Duration::from_std(CREDENTIAL_MARGIN).unwrap_or(chrono::Duration::zero())
+            {
+                return Ok(credential.token.clone());
+            }
+        }
+        let (token, expires_at) = mint()?;
+        credential.token = token.clone();
+        credential.expires_at = expires_at.as_deref().and_then(parse_expiry);
+        Ok(token)
     }
 
     fn authorize(
         &self,
         request: reqwest::blocking::RequestBuilder,
-    ) -> reqwest::blocking::RequestBuilder {
-        request.bearer_auth(&self.machine_token)
+    ) -> Result<reqwest::blocking::RequestBuilder, DaemonError> {
+        Ok(request.bearer_auth(self.usable_token()?))
     }
 
     /// Posts JSON to a path under the endpoint and refuses anything but success.
@@ -754,7 +826,7 @@ impl HttpTransport {
         body: &B,
     ) -> Result<reqwest::blocking::Response, DaemonError> {
         let response = self
-            .authorize(self.client.post(format!("{}{path}", self.endpoint)))
+            .authorize(self.client.post(format!("{}{path}", self.endpoint)))?
             .json(body)
             .send()
             .map_err(|error| transport_error(&error))?;
@@ -762,10 +834,19 @@ impl HttpTransport {
     }
 }
 
+/// An RFC 3339 instant, or nothing. An expiry the agent cannot read is treated
+/// as no expiry rather than as an immediate one: guessing "expired" would
+/// re-mint on every single request.
+fn parse_expiry(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|parsed| parsed.with_timezone(&Utc))
+}
+
 impl SyncTransport for HttpTransport {
     fn missing(&self, machine_id: &str, hashes: &[String]) -> Result<HashSet<String>, DaemonError> {
         let response = self
-            .authorize(self.client.post(format!("{}/ingest/delta", self.endpoint)))
+            .authorize(self.client.post(format!("{}/ingest/delta", self.endpoint)))?
             .json(&serde_json::json!({ "machineId": machine_id, "hashes": hashes }))
             .send()
             .map_err(|error| transport_error(&error))?;
@@ -785,7 +866,7 @@ impl SyncTransport for HttpTransport {
             .authorize(self.client.put(format!(
                 "{}/ingest/artifacts/{}",
                 self.endpoint, artifact.sha256
-            )))
+            )))?
             .header("x-memoar-source", &artifact.source)
             .header("x-memoar-source-path", &artifact.source_path)
             .header("content-type", "application/octet-stream")
@@ -800,7 +881,7 @@ impl SyncTransport for HttpTransport {
             .authorize(
                 self.client
                     .post(format!("{}/ingest/manifests", self.endpoint)),
-            )
+            )?
             .json(manifest)
             .send()
             .map_err(|error| transport_error(&error))?;
