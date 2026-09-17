@@ -59,9 +59,21 @@ jobs:
         run: npm run check --workspaces=false
       - name: Platform, checksum, cache, lock, and installer tests
         run: npm test --workspaces=false
-      # Publishing happens in release.yml, behind an explicit dispatch input and
-      # an NPM_TOKEN. This guard keeps the package from going out as a side
-      # effect of anything else; clearing `private` is the deliberate act that
-      # opts the launcher into the registry.
-      - name: Prove the package does not publish as a side effect
-        run: node -e 'const p=require("./package.json"); if (p.private !== true) process.exit(1)'
+      # The package is publishable now, so "it stays private" is no longer the
+      # thing worth asserting. What matters is that publishing it never ships
+      # anything but the launcher: five files, no source, no fixtures, no keys.
+      - name: The published tarball contains the launcher and nothing else
+        run: |
+          set -euo pipefail
+          npm pack --dry-run --json --ignore-scripts > pack.json
+          node -e '
+            const [pack] = require("./pack.json");
+            const files = pack.files.map((file) => file.path).sort();
+            const expected = ["README.md", "bin/memoar.js", "install.sh", "lib/platform.js", "package.json"];
+            const difference = files.filter((file) => !expected.includes(file));
+            if (difference.length > 0) {
+              console.error("unexpected files in the published tarball:", difference);
+              process.exit(1);
+            }
+            console.log("tarball contents:", files.join(", "));
+          '

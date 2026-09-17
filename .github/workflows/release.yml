@@ -159,8 +159,15 @@ jobs:
         env:
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
+  # Assets go to almyty-inc/memoar-releases, which is public so that `npx
+  # memoar` can fetch a binary without credentials. This repository stays
+  # private; that one carries build artifacts and checksums, no source.
+  #
+  # Writing to another repository is beyond what GITHUB_TOKEN can do, so this
+  # needs RELEASES_TOKEN: a fine-grained PAT with Contents: read and write on
+  # memoar-releases and nothing else.
   release:
-    name: GitHub Release
+    name: Publish binaries
     needs: verify
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
     runs-on: ubuntu-latest
@@ -170,8 +177,20 @@ jobs:
           path: assets
       - name: Flatten
         run: mkdir -p dist && find assets -type f -exec cp {} dist/ \;
+      - name: Refuse to publish without the cross-repository token
+        env:
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          test -n "$RELEASES_TOKEN" || {
+            echo "RELEASES_TOKEN is not set. Create a fine-grained PAT with"
+            echo "Contents: read and write on almyty-inc/memoar-releases, then:"
+            echo "  gh secret set RELEASES_TOKEN -R almyty-inc/memoar"
+            exit 1
+          }
       - uses: softprops/action-gh-release@v2
         with:
+          repository: almyty-inc/memoar-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
           tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
           files: dist/*
           fail_on_unmatched_files: true

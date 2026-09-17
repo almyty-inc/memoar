@@ -39,7 +39,7 @@ test("has a release channel to download from without being told one", () => {
   try {
     const url = downloadUrl({ platform: "linux", architecture: "x64", version: "0.3.0" });
     assert.match(url, /^https:\/\//);
-    assert.equal(url, "https://github.com/almyty-inc/memoar/releases/download/v0.3.0/memoar-x86_64-unknown-linux-gnu");
+    assert.equal(url, "https://github.com/almyty-inc/memoar-releases/releases/download/v0.3.0/memoar-x86_64-unknown-linux-gnu");
   } finally {
     if (previous === undefined) {
       delete process.env.MEMOAR_DOWNLOAD_BASE;

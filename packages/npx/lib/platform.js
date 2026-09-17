@@ -18,7 +18,7 @@ const crypto = require("node:crypto");
  * falls back to a locally built binary, which is what it did before there was
  * any default at all.
  */
-const DEFAULT_DOWNLOAD_BASE = "https://github.com/almyty-inc/memoar/releases/download";
+const DEFAULT_DOWNLOAD_BASE = "https://github.com/almyty-inc/memoar-releases/releases/download";
 
 const TARGETS = Object.freeze({
   "darwin-arm64": "aarch64-apple-darwin",
