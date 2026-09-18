@@ -27,12 +27,22 @@ session_file="$capture_home/.claude/projects/-memoar-e2e/$native_id.jsonl"
 mkdir -p "$(dirname "$session_file")"
 printf '%s\n' '{"uuid":"0198d8d0-977c-777b-9f8f-0f6d8416ea02","parentUuid":null,"sessionId":"0198d8d0-977c-777b-9f8f-0f6d8416ea01","type":"user","message":{"role":"user","content":[{"type":"text","text":"memoar-compose-agent-e2e-marker"}]},"timestamp":"2026-08-18T00:00:00Z","cwd":"/memoar/e2e"}' > "$session_file"
 
+# Every call here is captured into a variable, so a failing command's own
+# explanation goes into that variable and never reaches the log: `set -e` then
+# ends the run with an exit code and nothing else. A whole CI job reported
+# "exit code 4" and not one word about a scope the archive had refused.
 memoar() {
-  "$binary" --json \
+  output=$("$binary" --json \
     --config-dir "$config_dir" \
     --data-dir "$data_dir" \
     --capture-home "$capture_home" \
-    "$@"
+    "$@") || {
+    status=$?
+    echo "memoar e2e: \`memoar $*\` exited $status" >&2
+    printf '%s\n' "$output" >&2
+    return "$status"
+  }
+  printf '%s' "$output"
 }
 
 login=$(memoar login --endpoint "$endpoint" --email "$email" --password "$password")

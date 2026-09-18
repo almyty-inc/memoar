@@ -57,17 +57,20 @@ impl Credential {
 /// The scopes `login` asks for, and no others.
 ///
 /// Deliberately short of what a browser token carries: no `sharing:write`, no
-/// `keys:write`, no `mcp:use`. The agent captures, uploads, keeps its machine
+/// `keys:write`, no `mcp:use`. Nor `materialize:read`, which guards the machine
+/// command stream and its acknowledgements — those are reached with the machine
+/// token, which carries it. Asking for it here broke `login` outright once the
+/// server started refusing a key that outranks the session creating it, because
+/// a password session does not hold it either. The agent captures, uploads, keeps its machine
 /// record current, and reads back what it archived. It has never needed the
 /// power to share a session, mint another credential, or act as an MCP client,
 /// and a credential that sits on a laptop indefinitely should not hold rights
 /// nothing on that laptop exercises.
-pub(crate) const CAPTURE_SCOPES: [&str; 5] = [
+pub(crate) const CAPTURE_SCOPES: [&str; 4] = [
     "archive:read",
     "archive:write",
     "ingest:write",
     "machines:write",
-    "materialize:read",
 ];
 
 pub trait CredentialStore {
