@@ -156,15 +156,25 @@ export interface Transfer {
 /**
  * A team the signed-in account is an active member of.
  *
- * `memberCount` is the server's count of active members. There is no roster
- * endpoint, so the names behind it are not shown: a count the archive measured
- * is a fact, a list the app assembled would not be.
+ * `memberCount` is the server's count of active members — accepted ones only,
+ * so it does not move when somebody is invited. Who those members are is a
+ * separate read (`listTeamMembers`) and is never inferred from this number.
  */
 export interface Team {
   id: string;
   orgId: string;
   name: string;
   memberCount: number;
+}
+
+/**
+ * One row of a team's roster. `invited` has been asked and agreed to nothing;
+ * `active` has joined. The two are never rendered as one thing.
+ */
+export interface TeamMember {
+  userId: string;
+  email: string;
+  status: 'invited' | 'active';
 }
 
 /**

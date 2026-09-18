@@ -4,7 +4,7 @@ import type { ArchiveStore, MemoryCapture } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
-  TeamInvitation, TeamMember, TeamRecord, TeamShareOptinRecord, TenantSettingsRecord, TransferRecord,
+  TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord, TeamShareOptinRecord, TenantSettingsRecord, TransferRecord,
 } from "../records.js";
 import { MemoryAnnotationStore, MemoryCollectionStore } from "./curation.js";
 import { MemoryMemoryDocumentStore } from "./memory-documents.js";
@@ -82,6 +82,7 @@ export class DevArchiveStore implements ArchiveStore {
   isTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teamStore.isTeamMember(teamId, userId); }
   inviteTeamMember(teamId: string, member: TeamMember): Promise<void> { return this.teamStore.inviteTeamMember(teamId, member); }
   listTeamInvitations(userId: string): Promise<TeamInvitation[]> { return this.teamStore.listTeamInvitations(userId); }
+  listTeamMembers(teamId: string): Promise<TeamMemberSummary[]> { return this.teamStore.listTeamMembers(teamId); }
   acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> { return this.teamStore.acceptTeamInvitation(teamId, userId); }
   removeTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teamStore.removeTeamMember(teamId, userId); }
   findAccountByEmail(email: string): Promise<TeamMember | null> { return this.teamStore.findAccountByEmail(email); }

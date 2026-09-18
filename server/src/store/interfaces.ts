@@ -12,6 +12,7 @@ import type {
   ShareTokenLookup,
   TeamInvitation,
   TeamMember,
+  TeamMemberSummary,
   TeamRecord,
   TeamShareOptinRecord,
   TenantSettingsRecord,
@@ -161,6 +162,15 @@ export interface TeamStore {
   /** Records an invitation. It becomes a membership only when the invitee accepts. */
   inviteTeamMember(teamId: string, member: TeamMember): Promise<void>;
   listTeamInvitations(userId: string): Promise<TeamInvitation[]>;
+  /**
+   * Everybody on one team's roster, invited and accepted alike, in one list.
+   *
+   * Both halves, because they are the same question asked from two sides: who
+   * is here, and who has been asked. Splitting them would need two routes to
+   * answer one screen, and would leave an invitation the caller sent with
+   * nowhere to appear — `memberCount` does not move until it is accepted.
+   */
+  listTeamMembers(teamId: string): Promise<TeamMemberSummary[]>;
   /** @returns false when there is no pending invitation for this person. */
   acceptTeamInvitation(teamId: string, userId: string): Promise<boolean>;
   removeTeamMember(teamId: string, userId: string): Promise<boolean>;

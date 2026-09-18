@@ -50,6 +50,65 @@ describe("team scope", () => {
     await expect(teams.listSessions(bob, teamId)).rejects.toThrow("not a member");
   });
 
+  it("shows the sender an invitation they sent, which nothing else does", async () => {
+    /*
+      The gap this route closes. PUT /teams/:id/members answers 204 and then
+      nothing the sender can read changes: memberCount counts accepted members
+      only, and GET /teams/invitations is the invitee's own list. Before this,
+      an invitation you had just sent was invisible to you.
+    */
+    const store = new DevArchiveStore();
+    seedAccounts(store);
+    const teams = new TeamsService(store);
+
+    const team = await teams.create(alice, { name: "platform" });
+    const teamId = team.id as string;
+
+    expect((await teams.listMembers(alice, teamId)).items).toEqual([
+      { userId: alice.userId, email: "alice@example.test", status: "active" },
+    ]);
+
+    await teams.invite(alice, teamId, "bob@example.test");
+    // The count has not moved, because Bob has not joined. The roster has.
+    expect((await teams.list(alice)).items[0]).toMatchObject({ memberCount: 1 });
+    expect((await teams.listMembers(alice, teamId)).items).toContainEqual({
+      userId: bob.userId, email: "bob@example.test", status: "invited",
+    });
+
+    await teams.acceptInvitation(bob, teamId);
+    expect((await teams.listMembers(bob, teamId)).items).toContainEqual({
+      userId: bob.userId, email: "bob@example.test", status: "active",
+    });
+  });
+
+  it("refuses the roster to anybody who is not an accepted member of that team", async () => {
+    // Who is on a team is a team read. An outsider must not get it, and neither
+    // must somebody who has only been invited: an invitation grants no reads.
+    const store = new DevArchiveStore();
+    seedAccounts(store);
+    const teams = new TeamsService(store);
+
+    const team = await teams.create(alice, { name: "platform" });
+    const teamId = team.id as string;
+    await teams.invite(alice, teamId, "bob@example.test");
+
+    await expect(teams.listMembers(mallory, teamId)).rejects.toThrow("not a member");
+    await expect(teams.listMembers(bob, teamId)).rejects.toThrow("not a member");
+  });
+
+  it("serves no tenant id on the roster, because that is the isolation key", async () => {
+    const store = new DevArchiveStore();
+    seedAccounts(store);
+    const teams = new TeamsService(store);
+
+    const team = await teams.create(alice, { name: "platform" });
+    await teams.invite(alice, team.id as string, "bob@example.test");
+
+    for (const member of (await teams.listMembers(alice, team.id as string)).items) {
+      expect(Object.keys(member).sort()).toEqual(["email", "status", "userId"]);
+    }
+  });
+
   it("lists team-widened sessions across member tenants and team-shared collections", async () => {
     const store = new DevArchiveStore();
     seedAccounts(store);

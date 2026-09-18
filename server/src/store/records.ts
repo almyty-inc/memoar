@@ -21,6 +21,23 @@ export interface TeamMember {
   email: string;
 }
 
+/**
+ * One row of a team's roster, as the other members of that team may see it.
+ *
+ * `tenantId` is deliberately absent. It is the key the isolation argument turns
+ * on, it is never anybody's business but the store's, and a roster is not a
+ * reason to hand it out.
+ *
+ * `status` is what makes an invitation somebody sent visible to them at all:
+ * `memberCount` only moves on acceptance, and the invitee's own invitation list
+ * is scoped to the invitee, so without this the sender has nothing to look at.
+ */
+export interface TeamMemberSummary {
+  userId: string;
+  email: string;
+  status: "invited" | "active";
+}
+
 /** A team somebody has been asked to join but has not yet joined. */
 export interface TeamInvitation {
   teamId: string;

@@ -24,6 +24,7 @@ export function TeamsView({ user }: { user: CurrentUser | null }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [openRoster, setOpenRoster] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +51,7 @@ export function TeamsView({ user }: { user: CurrentUser | null }) {
     where the reader is looking: the banner is rendered unconditionally from
     this state, so a message can never be set and shown to nobody.
   */
-  const run = async (key: string, action: () => Promise<void>) => {
+  const run = async (key: string, action: () => Promise<void>): Promise<boolean> => {
     setBusy(key);
     setActionError(null);
     // The reload this ends with is the next chance either list has to load, so
@@ -60,11 +61,25 @@ export function TeamsView({ user }: { user: CurrentUser | null }) {
     try {
       await action();
       setReloads((count) => count + 1);
+      return true;
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'The request failed');
+      return false;
     } finally {
       setBusy(null);
     }
+  };
+
+  /*
+    An invitation that went through opens the roster of the team it was for.
+
+    The route answers 204 and nothing on this page could move: the member count
+    counts accepted members, and the invitation list is the invitee's. Opening
+    the roster is not an assertion that anything happened — it asks the archive,
+    and what it then shows is whatever the archive says, including nothing.
+  */
+  const invite = async (teamId: string, email: string) => {
+    if (await run(teamId, () => memoarApi.inviteTeamMember(teamId, email))) setOpenRoster(teamId);
   };
 
   return (
@@ -100,7 +115,11 @@ export function TeamsView({ user }: { user: CurrentUser | null }) {
           teams={teams}
           user={user}
           busy={busy}
-          onInvite={(teamId, email) => void run(teamId, () => memoarApi.inviteTeamMember(teamId, email))}
+          openRoster={openRoster}
+          reloadKey={reloads}
+          onToggleRoster={(teamId) => setOpenRoster((open) => (open === teamId ? null : teamId))}
+          onCreate={(name) => void run('create', async () => { await memoarApi.createTeam(name); })}
+          onInvite={(teamId, email) => void invite(teamId, email)}
           onLeave={(teamId, userId) => void run(teamId, () => memoarApi.removeTeamMember(teamId, userId))}
         />
       ) : null}

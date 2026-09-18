@@ -20,5 +20,25 @@
 .invite-form input::placeholder { color: var(--quiet); }
 .invite-form input:focus-visible { border-color: var(--acid); outline: 0; }
 
-/* Why there is a count and no names: the archive serves one and not the other. */
-.team-roster-hint { padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line-soft); }
+/* Creating is the only move an account with no team and no invitation has. */
+.create-team-form { display: flex; align-items: center; gap: var(--sp-2); }
+.create-team-form input { width: 200px; min-height: var(--h-md); padding: 0 var(--sp-3); color: var(--text); background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--fs-sm); }
+.create-team-form input::placeholder { color: var(--quiet); }
+.create-team-form input:focus-visible { border-color: var(--acid); outline: 0; }
+
+.team-actions { display: flex; align-items: center; gap: var(--sp-2); }
+
+/*
+  The roster, opened per team and spanning the width of the row it belongs to.
+
+  An invitation somebody sends has nowhere else to appear: the member count
+  counts accepted members only, and the invitations route answers for whoever
+  calls it. So the two statuses are told apart by colour and by word, never
+  merged into one list of people who are "on the team".
+*/
+.member-roster { grid-column: 1 / -1; margin-top: var(--sp-3); padding: var(--sp-3); background: var(--panel-raised); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.member-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--h-md); padding: var(--sp-1) 0; }
+.member-email { min-width: 0; overflow: hidden; color: var(--text); font-family: var(--mono); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.member-active { color: var(--acid); border-color: var(--acid); }
+.member-invited { color: var(--violet); border-color: var(--line); background: var(--sidebar); }
+.member-note { margin-top: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); align-items: flex-start; font-size: var(--fs-xs); }

@@ -148,12 +148,17 @@
      carry the only actions on their screens. */
   .invitation-row, .team-row, .unparsed-row { grid-template-columns: auto minmax(0, 1fr); }
   .invitation-row > .badge, .unparsed-row > .badge { grid-column: 2; justify-self: start; }
-  .invitation-row .transfer-actions, .team-row > .invite-form, .team-row > .button { grid-column: 1 / -1; }
-  .invitation-row .transfer-actions .button, .team-row > .button, .invite-form .button, .invite-form input { min-height: var(--h-lg); }
-  .invitation-row .transfer-actions .button, .invite-form .button { flex: 1; }
+  .invitation-row .transfer-actions, .team-row > .invite-form, .team-row > .team-actions { grid-column: 1 / -1; }
+  .invitation-row .transfer-actions .button, .team-actions .button, .invite-form .button, .invite-form input { min-height: var(--h-lg); }
+  .invitation-row .transfer-actions .button, .team-actions .button, .invite-form .button { flex: 1; }
   .invite-form { flex-wrap: wrap; }
   .invite-form input { width: 100%; }
-  .team-roster-hint { align-items: flex-start; }
+  /* The header form stacks under the heading rather than squeezing beside it. */
+  .data-panel > header:has(.create-team-form) { flex-wrap: wrap; }
+  .create-team-form { flex-wrap: wrap; width: 100%; }
+  .create-team-form input { width: 100%; }
+  .create-team-form .button, .create-team-form input { min-height: var(--h-lg); flex: 1; }
+  .member-note { align-items: flex-start; }
 
   .machine-overview { grid-template-columns: 1fr; }
   .machine-overview > div, .machine-overview > div:nth-child(-n+2) { border-right: 0; border-bottom: 1px solid var(--line); }

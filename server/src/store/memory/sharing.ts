@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/require-await -- in-memory store methods intentionally satisfy the asynchronous production port. */
 import type { ArchivedSession, TenantContext } from "../context.js";
 import type { DirectoryStore, SharingStore, TeamStore } from "../interfaces.js";
-import type { CollectionRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TeamInvitation, TeamMember, TeamRecord, TransferRecord } from "../records.js";
+import type { CollectionRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord, TransferRecord } from "../records.js";
 import { redactionPatterns, reviewedMasks } from "../../redaction.js";
 import { copyTransferredSession } from "../transfer-copy.js";
 import { uuidV7 } from "../../ids.js";
@@ -140,6 +140,11 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
       }
     }
     return invitations;
+  }
+
+  async listTeamMembers(teamId: string): Promise<TeamMemberSummary[]> {
+    return (this.tables.teamMembers.get(teamId) ?? [])
+      .map(({ userId, email, status }) => ({ userId, email, status }));
   }
 
   async acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> {

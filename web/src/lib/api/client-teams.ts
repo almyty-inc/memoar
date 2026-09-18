@@ -1,6 +1,6 @@
 import { SettingsApi } from './client-settings';
 import type { ListResponse } from './wire';
-import type { Team, TeamInvitation } from '../types';
+import type { Team, TeamInvitation, TeamMember } from '../types';
 
 /**
  * Teams, and the invitations that are the only way into one.
@@ -14,6 +14,29 @@ import type { Team, TeamInvitation } from '../types';
 export class TeamsApi extends SettingsApi {
   async listTeams(): Promise<Team[]> {
     return (await this.request<ListResponse<Team>>('/teams')).items;
+  }
+
+  /**
+   * Creates a team with this account as its first and only member.
+   *
+   * Omitting `orgId` has the archive create the owning organization too, which
+   * is what an account with no team of its own needs: there was no way to reach
+   * this route from the app at all, so a new account saw two empty lists and no
+   * way out of them.
+   */
+  createTeam(name: string): Promise<Team> {
+    return this.request<Team>('/teams', { method: 'POST', body: JSON.stringify({ name }) });
+  }
+
+  /**
+   * The team's roster: members and outstanding invitations, each marked.
+   *
+   * The only place an invitation this account sent can be seen. `memberCount`
+   * counts accepted members, and the invitations route answers for its caller,
+   * so without this a sent invitation had nowhere at all to appear.
+   */
+  async listTeamMembers(teamId: string): Promise<TeamMember[]> {
+    return (await this.request<ListResponse<TeamMember>>(`/teams/${encodeURIComponent(teamId)}/members`)).items;
   }
 
   /** Teams this account has been asked to join. Nobody sees anybody else's. */

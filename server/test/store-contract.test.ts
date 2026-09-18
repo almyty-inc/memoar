@@ -289,8 +289,15 @@ for (const implementation of implementations) {
       // An invitation is not a membership: it grants no reads until taken up.
       expect(await store.isTeamMember(team.id, bob.userId)).toBe(false);
       expect((await store.listTeamInvitations(bob.userId)).map((invitation) => invitation.teamId)).toContain(team.id);
+      // The roster carries both halves and says which is which, so the account
+      // that sent the invitation has somewhere to see it before it is accepted.
+      expect(await store.listTeamMembers(team.id)).toEqual([
+        { userId: alice.userId, email: "alice@example.test", status: "active" },
+        { userId: bob.userId, email: "bob@example.test", status: "invited" },
+      ]);
       expect(await store.acceptTeamInvitation(team.id, bob.userId)).toBe(true);
       expect(await store.isTeamMember(team.id, bob.userId)).toBe(true);
+      expect(await store.listTeamMembers(team.id)).toContainEqual({ userId: bob.userId, email: "bob@example.test", status: "active" });
 
       const bobSession = structuredClone(TEST_SESSION);
       bobSession.id = "0191cafe-0000-7000-8000-0000000c0009";

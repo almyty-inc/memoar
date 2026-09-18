@@ -2,7 +2,7 @@ import { AuthIdentityEntity, OrganizationEntity, TeamEntity, TeamMemberEntity, U
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, TenantContext } from "../context.js";
 import type { DirectoryStore, TeamStore } from "../interfaces.js";
-import type { CollectionRecord, TeamInvitation, TeamMember, TeamRecord } from "../records.js";
+import type { CollectionRecord, TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord } from "../records.js";
 import { teamVisibilitySql } from "../team-visibility.js";
 import type { PostgresCollectionStore } from "./collections.js";
 import { TenantRunner } from "./runner.js";
@@ -62,6 +62,14 @@ export class PostgresTeamStore implements TeamStore, DirectoryStore {
       if (team) invitations.push({ teamId: team.id, teamName: team.name, orgId: team.orgId });
     }
     return invitations;
+  }
+
+  async listTeamMembers(teamId: string): Promise<TeamMemberSummary[]> {
+    // Oldest first, so the row order is the order the team was built in rather
+    // than whatever the planner happened to return.
+    const rows = await this.runner.dataSource.getRepository(TeamMemberEntity)
+      .find({ where: { teamId }, order: { addedAt: "ASC" } });
+    return rows.map((row) => ({ userId: row.userId, email: row.email, status: row.status }));
   }
 
   async acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> {

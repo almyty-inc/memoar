@@ -5,7 +5,7 @@ import type { AnnotationStore, ArchiveStore, MemoryCapture } from "../interfaces
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
-  TeamInvitation, TeamMember, TeamRecord, TeamShareOptinRecord, TenantSettingsRecord, TransferRecord,
+  TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord, TeamShareOptinRecord, TenantSettingsRecord, TransferRecord,
 } from "../records.js";
 import { PostgresAnnotationStore } from "./annotations.js";
 import { PostgresArtifactStore } from "./artifacts.js";
@@ -101,6 +101,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   isTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teams.isTeamMember(teamId, userId); }
   inviteTeamMember(teamId: string, member: TeamMember): Promise<void> { return this.teams.inviteTeamMember(teamId, member); }
   listTeamInvitations(userId: string): Promise<TeamInvitation[]> { return this.teams.listTeamInvitations(userId); }
+  listTeamMembers(teamId: string): Promise<TeamMemberSummary[]> { return this.teams.listTeamMembers(teamId); }
   acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> { return this.teams.acceptTeamInvitation(teamId, userId); }
   removeTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teams.removeTeamMember(teamId, userId); }
   findAccountByEmail(email: string): Promise<TeamMember | null> { return this.teams.findAccountByEmail(email); }

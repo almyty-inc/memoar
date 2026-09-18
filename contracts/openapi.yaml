@@ -870,6 +870,40 @@ paths:
         '409': { $ref: '#/components/responses/ProblemResponse' }
         '404': { $ref: '#/components/responses/ProblemResponse' }
   /teams/{teamId}/members:
+    get:
+      tags: [Teams]
+      operationId: listTeamMembers
+      description: >-
+        The team's roster: accepted members and outstanding invitations, each marked with which
+        it is. Caller must already be a member, so this never tells an outsider who is on a team.
+        It is also the only view of an invitation the sender has — memberCount moves only when the
+        invited person accepts, and the invitation list is scoped to the invitee. No tenant ids:
+        those are the isolation key and are never served.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Roster of the team
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, email, status]
+                      properties:
+                        userId: { $ref: '#/components/schemas/Uuid' }
+                        email: { type: string, format: email }
+                        status:
+                          type: string
+                          enum: [invited, active]
+                          description: '`invited` has been asked and has not accepted; `active` has joined and can read what members widen to the team.'
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
     put:
       tags: [Teams]
       operationId: inviteTeamMember

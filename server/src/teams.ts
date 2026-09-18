@@ -1,5 +1,5 @@
 import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
-import type { DirectoryStore, TeamInvitation, TeamStore, TenantContext } from "./archive-store.js";
+import type { DirectoryStore, TeamInvitation, TeamMemberSummary, TeamStore, TenantContext } from "./archive-store.js";
 import { Tenant } from "./auth.js";
 import { sessionSummary } from "./sessions.js";
 import { RequireScopes } from "./auth/decorators.js";
@@ -47,6 +47,19 @@ export class TeamsService {
     const account = await this.store.findAccountByEmail(email);
     if (!account) throw new NotFoundException("No account with that email");
     await this.store.inviteTeamMember(teamId, account);
+  }
+
+  /**
+   * One team's roster: who is in it, and who has been asked and not answered.
+   *
+   * Membership-gated like every other team read, so it never tells an outsider
+   * who is on a team. It is also the only place an invitation is visible to the
+   * person who sent it — `memberCount` moves only on acceptance, and
+   * `listInvitations` is scoped to the invitee by design.
+   */
+  async listMembers(context: TenantContext, teamId: string): Promise<{ items: TeamMemberSummary[] }> {
+    await this.requireMember(teamId, context.userId);
+    return { items: await this.store.listTeamMembers(teamId) };
   }
 
   /** The teams this person has been asked to join. Nobody sees anybody else's. */
@@ -134,6 +147,14 @@ export class TeamsController {
   @RequireScopes("sharing:write")
   invite(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string, @Body() body: AddTeamMemberDto) {
     return this.teams.invite(context, teamId, body.email);
+  }
+
+  // Reading a roster is reading the team, so it is gated on membership exactly
+  // as the sessions and collections routes below are. Placed after the PUT so
+  // the two verbs on one path stay together.
+  @Get(":teamId/members")
+  listMembers(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string) {
+    return this.teams.listMembers(context, teamId);
   }
 
   @Delete(":teamId/members/:userId")

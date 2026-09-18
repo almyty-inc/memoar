@@ -245,6 +245,13 @@ describe("HTTP surface: teams, search, and distillation", () => {
     const teamCollections = await api.request("GET", `/teams/${teamId}/collections`);
     expect(arr(teamCollections.body)).toHaveLength(1);
 
+    // The roster is a team read and is gated like the rest of them.
+    const roster = await api.request("GET", `/teams/${teamId}/members`);
+    expect(roster.status).toBe(200);
+    expect(arr(roster.body)).toHaveLength(1);
+    expect(arr(roster.body)[0]).toMatchObject({ status: "active" });
+    expect((await api.request("GET", "/teams/0191cafe-0000-7000-8000-00000000beef/members")).status).toBe(403);
+
     const missingAccount = await api.request("PUT", `/teams/${teamId}/members`, { body: { email: "nobody@example.test" } });
     expect(missingAccount.status).toBe(404);
     expect((await api.request("PUT", `/teams/${teamId}/members`, { body: { email: "not-an-email" } })).status).toBe(400);
