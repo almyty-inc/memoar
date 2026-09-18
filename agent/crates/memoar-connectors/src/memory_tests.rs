@@ -106,6 +106,13 @@ fn skips_a_file_too_large_to_be_one_of_these() {
     assert!(memory_files(temp.path(), &[project]).is_empty());
 }
 
+/// Unix only, and the whole test rather than just the `symlink` call.
+///
+/// Without the link this asserts that nothing was found in a tree where nothing
+/// was ever linked — true on any platform, and evidence of nothing. A test that
+/// passes vacuously is worse than one that does not run, because the count says
+/// it ran.
+#[cfg(unix)]
 #[test]
 fn never_follows_a_symlink_out_of_the_tree() {
     let temp = tempfile::tempdir().unwrap();
@@ -113,7 +120,6 @@ fn never_follows_a_symlink_out_of_the_tree() {
     let elsewhere = temp.path().join("somebody-else");
     write(&elsewhere.join("rules/private.md"), "not ours to upload");
     fs::create_dir_all(project.join(".roo")).unwrap();
-    #[cfg(unix)]
     std::os::unix::fs::symlink(&elsewhere, project.join(".roo/rules")).unwrap();
 
     assert!(memory_files(temp.path(), &[project]).is_empty());

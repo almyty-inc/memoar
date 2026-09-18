@@ -3,7 +3,11 @@ use std::collections::BTreeSet;
 use std::fs;
 
 use super::mock::fixture_paths;
-use crate::config::{Config, create_private, load_credential, save_config};
+use crate::config::{Config, load_credential, save_config};
+// Only the two mode tests below use this, and a file mode is a unix idea, so on
+// Windows the import is dead and `-D warnings` says so.
+#[cfg(unix)]
+use crate::config::create_private;
 use crate::credential::{Credential, CredentialStore};
 
 #[test]

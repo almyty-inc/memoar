@@ -8,6 +8,9 @@ use crate::config::load_config;
 use crate::convert::convert;
 use crate::query::{pack, search, view};
 use crate::settings::redaction;
+// Only the symlink test reads these, and that test is unix-only, so on Windows
+// the import is dead and `-D warnings` says so.
+#[cfg(unix)]
 use crate::status::{doctor, status};
 
 /// Redaction was writable at `login` and nowhere else: a CLI user who forgot
@@ -57,6 +60,12 @@ fn redaction_is_changeable_after_login() {
 /// `detected` follows the link and says the source is there. So `status`
 /// reported a source it was capturing nothing from, and nothing anywhere
 /// said why.
+///
+/// Unix only, and the whole test rather than just the `symlink` call: creating
+/// one on Windows needs a privilege the runner does not grant, so the link
+/// would silently not exist and the assertion would look for a skipped source
+/// that nothing had skipped.
+#[cfg(unix)]
 #[test]
 fn status_and_doctor_name_a_source_behind_a_symlink() {
     let temp = tempfile::tempdir().unwrap();
