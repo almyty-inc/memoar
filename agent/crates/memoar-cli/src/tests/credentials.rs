@@ -89,3 +89,45 @@ fn no_temporary_file_survives_a_credential_write() {
         "temporary credential files were left behind: {leftovers:?}"
     );
 }
+
+/// The CLI has to find a home directory on the platform it is running on.
+///
+/// `RuntimePaths::resolve` read only `HOME`. Windows does not set it — it sets
+/// `USERPROFILE` — so every command there ended with "not initialized" before
+/// doing anything, including the two that touch no disk at all. The launcher
+/// ships a Windows binary, so `npx memoar` on Windows had never worked. The
+/// Windows runner never caught it either: the job failed at clippy for two
+/// weeks and the tests had not once run.
+#[test]
+fn a_home_directory_is_found_by_whichever_name_the_platform_uses() {
+    use crate::config::user_home;
+    use std::ffi::OsString;
+
+    let home = || Some(OsString::from("/home/person"));
+    let profile = || Some(OsString::from(r"C:\Users\person"));
+
+    assert_eq!(
+        user_home(home(), None).unwrap(),
+        std::path::PathBuf::from("/home/person"),
+    );
+    assert_eq!(
+        user_home(None, profile()).unwrap(),
+        std::path::PathBuf::from(r"C:\Users\person"),
+        "Windows names it USERPROFILE, and the CLI has to answer to that",
+    );
+    // A deliberate override still wins wherever it is set.
+    assert_eq!(
+        user_home(home(), profile()).unwrap(),
+        std::path::PathBuf::from("/home/person"),
+    );
+    // An empty value is not a home directory; it would resolve every path to
+    // the filesystem root. It must also not swallow the fallback.
+    assert_eq!(
+        user_home(Some(OsString::new()), profile()).unwrap(),
+        std::path::PathBuf::from(r"C:\Users\person"),
+        "an empty HOME falls through rather than short-circuiting",
+    );
+    assert!(user_home(Some(OsString::new()), None).is_err());
+    assert!(user_home(None, Some(OsString::new())).is_err());
+    assert!(user_home(None, None).is_err());
+}

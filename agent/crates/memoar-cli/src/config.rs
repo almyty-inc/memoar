@@ -1,6 +1,7 @@
 use memoar_daemon::RedactionConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -30,9 +31,7 @@ pub struct RuntimePaths {
 
 impl RuntimePaths {
     pub fn resolve(cli: &Cli) -> Result<Self, AppError> {
-        let user_home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .ok_or_else(AppError::not_initialized)?;
+        let user_home = user_home(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))?;
         let home = cli
             .capture_home
             .clone()
@@ -132,6 +131,35 @@ pub(crate) fn atomic_replace(path: &Path, bytes: &[u8], unix_mode: u32) -> Resul
     result.map_err(|error| {
         AppError::internal(format!("could not replace {}: {error}", path.display()))
     })
+}
+
+/// The user's home directory, however this platform chooses to name it.
+///
+/// Windows has no `HOME`. It has `USERPROFILE`, and reading only `HOME` meant
+/// every command on that platform ended with "not initialized" before doing
+/// anything — `capabilities` and `introspect` included, which touch no disk at
+/// all. The launcher ships a Windows binary, so `npx memoar` there had never
+/// worked.
+///
+/// `HOME` still wins where it is set, so pointing it somewhere deliberately
+/// keeps working on any platform.
+///
+/// Takes the values rather than reading the environment, because a test that
+/// sets process-wide environment variables races every other test in the
+/// binary.
+pub(crate) fn user_home(
+    home: Option<OsString>,
+    user_profile: Option<OsString>,
+) -> Result<PathBuf, AppError> {
+    // Each is emptied before the choice, not after: an empty HOME must fall
+    // through to USERPROFILE rather than short-circuit the fallback and then be
+    // rejected. An empty value is not a home directory — taken literally it
+    // resolves every path to the filesystem root.
+    let usable = |value: OsString| (!value.is_empty()).then_some(value);
+    home.and_then(usable)
+        .or_else(|| user_profile.and_then(usable))
+        .map(PathBuf::from)
+        .ok_or_else(AppError::not_initialized)
 }
 
 /// Creates a file that has its final permissions from the moment it exists.
