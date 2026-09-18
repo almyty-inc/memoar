@@ -96,7 +96,12 @@ function mapBlock(block: WireBlock): ContentBlock {
 }
 
 export function mapSessionDetail(summary: SessionSummary, chunks: WireSessionChunk[]): SessionDetailData {
-  const turns = chunks.flatMap((chunk) => chunk.turns).map((turn): SessionTurn => ({
+  // Flattened once. The cache-read total below used to re-flatten every chunk
+  // and scan the result for a turn it already had, once per turn, so opening a
+  // long session paid for the whole conversation squared before it drew
+  // anything.
+  const wireTurns = chunks.flatMap((chunk) => chunk.turns);
+  const turns = wireTurns.map((turn): SessionTurn => ({
     id: turn.id,
     ordinal: turn.ordinal,
     parentId: turn.parentId,
@@ -106,10 +111,10 @@ export function mapSessionDetail(summary: SessionSummary, chunks: WireSessionChu
     ...(turn.tokens ? { tokens: { input: turn.tokens.input, output: turn.tokens.output } } : {}),
     blocks: turn.blocks.map(mapBlock),
   }));
-  const tokenTotals = turns.reduce((totals, turn) => ({
+  const tokenTotals = wireTurns.reduce((totals, turn) => ({
     input: totals.input + (turn.tokens?.input ?? 0),
     output: totals.output + (turn.tokens?.output ?? 0),
-    cacheRead: totals.cacheRead + (chunks.flatMap((chunk) => chunk.turns).find((wire) => wire.id === turn.id)?.tokens?.cacheRead ?? 0),
+    cacheRead: totals.cacheRead + (turn.tokens?.cacheRead ?? 0),
   }), { input: 0, output: 0, cacheRead: 0 });
   const createdAt = turns[0]?.createdAt ?? summary.createdAt;
   const durationMinutes = turns.length > 1

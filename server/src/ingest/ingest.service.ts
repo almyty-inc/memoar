@@ -63,6 +63,21 @@ export class IngestService {
     return { created, artifact };
   }
 
+  /**
+   * What this account has collected and cannot read.
+   *
+   * Unparseable bytes are kept on purpose — a parser written later can still
+   * read them — but nothing ever said so out loud, and that silence hides the
+   * one failure capture can have without failing: a pattern pointed at the
+   * wrong directory. Two sources were found doing exactly that, one of them
+   * collecting an editor's terminal history instead of its conversations, for
+   * as long as the pattern had existed. The count is per tool, because the
+   * pattern is per tool.
+   */
+  async unparsed(context: TenantContext): Promise<{ items: { source: string; artifacts: number; diagnostic: string | null }[] }> {
+    return { items: await this.store.countUnparsedArtifactsBySource(context) };
+  }
+
   async delta(context: TenantContext, hashes: readonly string[]): Promise<{ missing: string[] }> {
     const present = await this.store.listArtifactHashes(context, hashes);
     return { missing: hashes.filter((hash) => !present.has(hash)) };

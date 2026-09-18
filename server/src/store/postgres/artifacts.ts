@@ -83,6 +83,30 @@ export class PostgresArtifactStore implements ArtifactStore {
     });
   }
 
+  /**
+   * What was collected and could not be read.
+   *
+   * An artifact the archive cannot parse is kept with its bytes and an
+   * `unknown_format` diagnostic, on purpose: a parser written later can still
+   * read it. What was missing is anyone being told. A capture pattern pointed
+   * at the wrong directory — which has happened twice — produces exactly this
+   * and nothing else, so a machine can sync happily for weeks while archiving
+   * nothing anybody can read.
+   *
+   * Counted in the database rather than by listing every artifact, because the
+   * answer is one row per tool and the question gets asked by `doctor`.
+   */
+  async countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]> {
+    return this.runner.inTenant(context, async (manager) => manager.query(
+      `SELECT source, count(*)::int AS artifacts, max(diagnostic) AS diagnostic
+         FROM raw_artifacts
+        WHERE "tenantId" = $1 AND status IN ('unknown_format', 'failed')
+        GROUP BY source
+        ORDER BY artifacts DESC`,
+      [context.tenantId],
+    ));
+  }
+
   async listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> {
     return this.runner.inTenant(context, async (manager) => {
       const rows = await manager.getRepository(RawArtifactEntity).findBy({ tenantId: context.tenantId });

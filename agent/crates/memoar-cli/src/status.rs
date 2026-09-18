@@ -105,6 +105,31 @@ fn literal_root(pattern: &Path) -> PathBuf {
     root
 }
 
+/// Tools whose uploads the archive could not turn into a session.
+///
+/// A failure to ask is not a failure of the machine: `doctor` reports what it
+/// can reach, and an archive that does not answer this yet leaves the check
+/// silent rather than red.
+fn unparsed_sources(api: &ApiClient) -> Vec<(String, u64)> {
+    let Ok(body) = api.get("/ingest/unparsed") else {
+        return Vec::new();
+    };
+    body.get("items")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    Some((
+                        item.get("source")?.as_str()?.to_owned(),
+                        item.get("artifacts")?.as_u64()?,
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let config = load_config(paths)?;
     let credential = load_credential(paths)?;
@@ -115,6 +140,7 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let (machine_token, _) = issue_machine_token(&api, &config.machine_id)?;
     patch_machine_state(&api, &config, paths)?;
     let symlinks = skipped_symlinks(&paths.home);
+    let unparsed = unparsed_sources(&api);
     let checks = vec![
         json!({ "name": "contract_version", "ok": config.contract_version == memoar_canonical::CONTRACT_VERSION, "detail": config.contract_version }),
         json!({ "name": "queue_integrity", "ok": database_ok, "detail": paths.queue_file() }),
@@ -135,6 +161,26 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
                 format!("{} skipped: {}", symlinks.len(), symlink_summary(&symlinks))
             },
             "skipped": symlinks
+        }),
+        // Bytes the archive kept and could not read. Keeping them is the right
+        // thing — a parser written later can still use them — but a tool that
+        // produces only these is capturing the wrong files, which is the one
+        // way capture fails without failing. Two sources were found doing it,
+        // one of them archiving an editor's terminal history rather than its
+        // conversations, for as long as its pattern had existed.
+        json!({
+            "name": "artifacts_parsed",
+            "ok": unparsed.is_empty(),
+            "detail": if unparsed.is_empty() {
+                "everything uploaded became a session".to_owned()
+            } else {
+                unparsed
+                    .iter()
+                    .map(|(source, count)| format!("{source}: {count}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+            "unparsed": unparsed.iter().map(|(source, count)| json!({ "source": source, "artifacts": count })).collect::<Vec<_>>()
         }),
     ];
     let ok = checks.iter().all(|check| check["ok"] == Value::Bool(true));

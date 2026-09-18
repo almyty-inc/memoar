@@ -91,6 +91,7 @@ export class DevArchiveStore implements ArchiveStore {
   getRawArtifact(context: TenantContext, sha256: string): Promise<RawArtifactRecord | null> { return this.artifactStore.getRawArtifact(context, sha256); }
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>> { return this.artifactStore.listArtifactHashes(context, hashes); }
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> { return this.artifactStore.listRawArtifacts(context); }
+  countUnparsedArtifactsBySource(context: TenantContext) { return this.artifactStore.countUnparsedArtifactsBySource(context); }
 
   saveJob(context: TenantContext, job: JobRecord): Promise<void> { return this.jobStore.saveJob(context, job); }
   getJob(context: TenantContext, jobId: string): Promise<JobRecord | null> { return this.jobStore.getJob(context, jobId); }

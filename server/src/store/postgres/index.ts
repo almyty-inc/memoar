@@ -108,6 +108,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   updateRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<void> { return this.artifacts.updateRawArtifact(context, artifact); }
   getRawArtifact(context: TenantContext, sha256: string): Promise<RawArtifactRecord | null> { return this.artifacts.getRawArtifact(context, sha256); }
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>> { return this.artifacts.listArtifactHashes(context, hashes); }
+  countUnparsedArtifactsBySource(context: TenantContext) { return this.artifacts.countUnparsedArtifactsBySource(context); }
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> { return this.artifacts.listRawArtifacts(context); }
 
   saveJob(context: TenantContext, job: JobRecord): Promise<void> { return this.jobs.saveJob(context, job); }

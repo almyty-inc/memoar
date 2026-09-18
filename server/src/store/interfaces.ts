@@ -163,6 +163,8 @@ export interface ArtifactStore {
   updateRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<void>;
   getRawArtifact(context: TenantContext, sha256: string): Promise<RawArtifactRecord | null>;
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>>;
+  /** Artifacts kept but never turned into a session, grouped by the tool they came from. */
+  countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]>;
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]>;
 }
 

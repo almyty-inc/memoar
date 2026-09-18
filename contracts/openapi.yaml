@@ -19,6 +19,35 @@ tags:
   - name: MCP
   - name: Operations
 paths:
+  /ingest/unparsed:
+    get:
+      tags: [Ingest]
+      operationId: listUnparsedArtifacts
+      description: >-
+        Artifacts this account collected and the archive could not turn into a
+        session, counted per tool. Unparseable bytes are kept deliberately, so a
+        parser written later can still read them — but nothing said so out loud,
+        and that silence hides the one way capture can fail without failing: a
+        pattern pointed at the wrong directory. A tool reporting artifacts here
+        and no sessions is capturing the wrong files.
+      responses:
+        '200':
+          description: Unparsed artifact counts, most affected tool first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [source, artifacts, diagnostic]
+                      properties:
+                        source: { type: string }
+                        artifacts: { type: integer }
+                        diagnostic: { type: [string, 'null'] }
   /capabilities:
     get:
       tags: [Operations]

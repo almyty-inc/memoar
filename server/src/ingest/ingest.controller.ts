@@ -59,6 +59,11 @@ export class IngestController {
     return this.ingest.status(context, sha256);
   }
 
+  @Get("unparsed")
+  unparsed(@Tenant() context: TenantContext): Promise<Record<string, unknown>> {
+    return this.ingest.unparsed(context);
+  }
+
   @Post("manifests")
   @HttpCode(202)
   manifest(@Tenant() context: TenantContext, @Body() body: ManifestDto) {

@@ -132,16 +132,4 @@ export class SessionsApi extends ApiClientCore {
       contentType: response.headers.get('content-type') ?? 'application/octet-stream',
     };
   }
-
-  async updateSessionVisibility(
-    sessionId: string,
-    visibility: { scope: 'private' | 'team' | 'org' | 'link'; teamId?: string; orgId?: string },
-    redactionReviewId?: string,
-  ): Promise<{ id: string; visibility: { scope: string } }> {
-    this.requireArchive();
-    return this.request(`/sessions/${sessionId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(redactionReviewId ? { visibility, redactionReviewId } : { visibility }),
-    });
-  }
 }
