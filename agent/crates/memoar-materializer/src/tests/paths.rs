@@ -5,6 +5,7 @@ use std::fs;
 use super::fixtures::fixture_session;
 use crate::entry::materialize;
 use crate::error::MaterializeError;
+use crate::native::encode_claude_workspace;
 use crate::paths::resolve_bundle_path;
 use crate::target::Target;
 
@@ -102,4 +103,44 @@ fn refuses_symlink_ancestor() {
         Err(MaterializeError::UnsafePath(_))
     ));
     assert!(fs::read_dir(outside.path()).unwrap().next().is_none());
+}
+
+/// A workspace path long enough to break the filesystem must still produce a
+/// name the filesystem accepts.
+///
+/// The encoding turns a whole absolute path into one directory component, and
+/// nothing bounded it. A session captured from a deep workspace failed at the
+/// write with `File name too long (os error 63)`, surfaced as MEMOAR_UNKNOWN
+/// with a hint to run `memoar doctor` — which cannot help. It compounded, too:
+/// re-archiving such a session encoded the already-encoded path again, so the
+/// name grew every round until it broke.
+#[test]
+fn a_deep_workspace_still_names_a_directory_the_filesystem_accepts() {
+    let deep = format!("/Users/person/{}/project", "nested-directory/".repeat(30));
+    let encoded = encode_claude_workspace(&deep);
+
+    assert!(
+        encoded.len() <= 255,
+        "a path component may not exceed 255 bytes: {} bytes",
+        encoded.len(),
+    );
+    assert!(
+        encoded.ends_with("-project"),
+        "the tail names the project and is the part worth keeping: {encoded}",
+    );
+    // Two deep workspaces that end the same way must not share a directory.
+    let sibling = format!(
+        "/Users/someone-else/{}/project",
+        "nested-directory/".repeat(30)
+    );
+    assert_ne!(
+        encoded,
+        encode_claude_workspace(&sibling),
+        "different workspaces sharing a tail must not collapse into one directory",
+    );
+    // An ordinary path is untouched, so existing archives keep their names.
+    assert_eq!(
+        encode_claude_workspace("/Users/person/workspace/memoar"),
+        "-Users-person-workspace-memoar",
+    );
 }
