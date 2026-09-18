@@ -37,7 +37,7 @@ function sources(): Array<{ path: string; text: string }> {
  */
 const POSITIONAL = new Set([
   'collections-page', 'import-page', 'machines-page', 'memory-page', 'not-found-page',
-  'settings-page', 'sharing-page', 'timeline-page', 'workspace-page',
+  'settings-page', 'sharing-page', 'teams-page', 'timeline-page', 'workspace-page',
   'mcp-section', 'conversation-column', 'overview-card',
   'actions', 'custom-rule-add',
 ]);

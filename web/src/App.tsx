@@ -18,6 +18,7 @@ import { SearchView } from './views/Search';
 import { SessionDetailView } from './views/SessionDetail';
 import { SettingsView } from './views/Settings';
 import { SharingView } from './views/Sharing';
+import { TeamsView } from './views/Teams';
 import { TimelineView } from './views/Timeline';
 import { WorkspaceView } from './views/Workspace';
 
@@ -242,6 +243,8 @@ export function App() {
         }}
       />
     );
+  } else if (view === 'teams') {
+    content = <TeamsView user={user} />;
   } else if (view === 'machines') {
     content = <MachinesView machines={dashboard.machines} onConnect={() => navigate('onboarding')} />;
   } else if (view === 'settings') {

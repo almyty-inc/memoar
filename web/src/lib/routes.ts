@@ -16,6 +16,7 @@ const VIEW_PATHS: Readonly<Record<Exclude<ViewId, 'session' | 'not-found'>, stri
   collections: '/collections',
   import: '/import',
   sharing: '/sharing',
+  teams: '/teams',
   machines: '/machines',
   memory: '/memory',
   settings: '/settings',

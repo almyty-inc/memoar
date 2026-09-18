@@ -2,7 +2,7 @@ import { SessionsApi } from './client-sessions';
 import type { ImportProgress, ImportSource, RawArtifactStatus } from './contracts';
 import { mapSession } from './mappers';
 import type { ListResponse, WireSessionSummary } from './wire';
-import type { ConversionJob, PackResponse, SessionSummary } from '../types';
+import type { ConversionJob, PackResponse, SessionSummary, UnparsedSource } from '../types';
 
 export class PacksApi extends SessionsApi {
   buildPack(query: string, maxTokens: number, freshnessPolicy: 'strict' | 'mixed'): Promise<PackResponse> {
@@ -103,6 +103,18 @@ export class PacksApi extends SessionsApi {
     }
     const waited = Math.round((Date.now() - startedAt) / 1000);
     throw new Error(`Import was queued but no canonical session appeared in ${waited} seconds`);
+  }
+
+  /**
+   * Files this account collected that never became a session, counted per tool.
+   *
+   * `memoar doctor` has reported this since the second time a capture pattern
+   * was pointed at the wrong directory; the archive synced happily for weeks
+   * both times while reading nothing. Anything that renders it has to survive
+   * the archive not answering, so callers hold null and show nothing.
+   */
+  async listUnparsedArtifacts(): Promise<UnparsedSource[]> {
+    return (await this.request<ListResponse<UnparsedSource>>('/ingest/unparsed')).items;
   }
 
   /**

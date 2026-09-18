@@ -14,6 +14,7 @@ import {
   Settings,
   Share2,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import { MemoarMark } from './MemoarMark';
@@ -46,6 +47,7 @@ const navGroups: Array<{
       // which is how it broke navigation for anyone matching on the name. A
       // real count needs real data, and needs to reach the name deliberately.
       { view: 'sharing', label: 'Sharing', icon: Share2 },
+      { view: 'teams', label: 'Teams', icon: Users },
       { view: 'machines', label: 'Machines & sources', icon: Cpu },
       { view: 'settings', label: 'Settings', icon: Settings },
     ],
@@ -60,6 +62,7 @@ const titles: Partial<Record<ViewId, string>> = {
   collections: 'Collections',
   memory: 'Agent memory',
   sharing: 'Sharing',
+  teams: 'Teams',
   machines: 'Machines & sources',
   settings: 'Settings',
   onboarding: 'Connect a machine',

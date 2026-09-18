@@ -1,4 +1,4 @@
-import { SettingsApi } from './client-settings';
+import { TeamsApi } from './client-teams';
 import { mapCollection, mapSession } from './mappers';
 import type { ListResponse, WireCollection, WireSessionSummary } from './wire';
 import type {
@@ -9,7 +9,7 @@ import type {
   SessionSummary,
 } from '../types';
 
-export class MemoarApiClient extends SettingsApi {
+export class MemoarApiClient extends TeamsApi {
   listMemory(): Promise<{ items: MemoryDocument[] }> {
     return this.request<{ items: MemoryDocument[] }>('/memory');
   }

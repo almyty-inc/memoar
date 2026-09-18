@@ -7,6 +7,7 @@ export type ViewId =
   | 'sharing'
   | 'machines'
   | 'memory'
+  | 'teams'
   | 'settings'
   | 'onboarding'
   | 'signin'
@@ -150,6 +151,43 @@ export interface Transfer {
   status: 'pending' | 'accepted' | 'declined' | 'expired';
   direction: 'incoming' | 'outgoing';
   createdAt: string;
+}
+
+/**
+ * A team the signed-in account is an active member of.
+ *
+ * `memberCount` is the server's count of active members. There is no roster
+ * endpoint, so the names behind it are not shown: a count the archive measured
+ * is a fact, a list the app assembled would not be.
+ */
+export interface Team {
+  id: string;
+  orgId: string;
+  name: string;
+  memberCount: number;
+}
+
+/**
+ * A team this account has been asked to join and has not joined.
+ *
+ * Deliberately a different type from Team, because being invited is not being
+ * a member: the invitation decides nothing about who can see this account's
+ * work until it is accepted.
+ */
+export interface TeamInvitation {
+  teamId: string;
+  teamName: string;
+  orgId: string;
+}
+
+/**
+ * Artifacts collected from one tool that the archive could not turn into a
+ * session. A source reporting these and no sessions is reading the wrong files.
+ */
+export interface UnparsedSource {
+  source: string;
+  artifacts: number;
+  diagnostic: string | null;
 }
 
 export interface MachineSource {

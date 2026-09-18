@@ -118,3 +118,24 @@
 .install-inline > span { color: var(--acid); background: var(--panel-hover); }
 .install-inline p { color: var(--quiet); }
 .install-inline code { color: var(--muted); font-size: var(--fs-sm); }
+
+/*
+  Files capture uploaded that the archive could not read.
+
+  A source collecting these and archiving nothing is the one failure that looks
+  like success from every other column in the row — the sync cell beside it
+  reads "Synced" throughout — so the line is allowed to wrap rather than being
+  clipped like the label above it.
+*/
+.source-row .source-unparsed { overflow: visible; color: var(--warning); white-space: normal; }
+.source-row .source-unparsed-blocked { color: var(--danger); font-weight: var(--fw-medium); }
+
+.unparsed-panel { margin-bottom: var(--sp-6); }
+.unparsed-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
+.unparsed-row:last-child { border-bottom: 0; }
+.unparsed-row > .row-icon { color: var(--warning); background: var(--surface-warning); }
+.unparsed-main { min-width: 0; }
+.unparsed-main strong { display: block; font-size: var(--fs-base); }
+.unparsed-main p { max-width: var(--measure); margin: var(--sp-1) 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-normal); overflow-wrap: anywhere; }
+.unparsed-count { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.unparsed-count strong { color: var(--text); }

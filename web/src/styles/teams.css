@@ -1,0 +1,24 @@
+/* Teams: the invitations, and the teams they lead to. */
+
+.invitation-row, .team-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
+.invitation-row:last-child, .team-row:last-child { border-bottom: 0; }
+.invitation-main, .team-main { min-width: 0; }
+.invitation-main strong, .team-main strong { display: block; font-size: var(--fs-base); }
+.invitation-main p, .team-main p { max-width: var(--measure); margin: var(--sp-1) 0 0; color: var(--quiet); font-size: var(--fs-xs); line-height: var(--lh-normal); }
+
+/*
+  An invitation carries a mark no joined team has, and sits in its own panel.
+  Being added to a team used to be indistinguishable from having joined one,
+  which is the confusion acceptance exists to end; the row should not put it
+  back by looking like the rows below it.
+*/
+.invitation-badge { color: var(--violet); background: var(--sidebar); border-color: var(--line); }
+.invitation-row > .row-icon { color: var(--violet); background: var(--panel-hover); }
+
+.invite-form { display: flex; align-items: center; gap: var(--sp-2); }
+.invite-form input { width: 220px; min-height: var(--h-md); padding: 0 var(--sp-3); color: var(--text); background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--fs-sm); }
+.invite-form input::placeholder { color: var(--quiet); }
+.invite-form input:focus-visible { border-color: var(--acid); outline: 0; }
+
+/* Why there is a count and no names: the archive serves one and not the other. */
+.team-roster-hint { padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line-soft); }
