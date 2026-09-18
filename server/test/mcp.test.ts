@@ -90,6 +90,8 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
       text: "Small files. Real coverage.",
       capturedAt: "2026-08-19T00:00:00.000Z",
       visibility: { scope: "private", ownerId: TEST_CONTEXT.userId },
+      redactionStatus: "clear",
+      redactionFindings: [],
     });
     const documents = await client.callTool({ name: "list_memory_documents", arguments: { pathPattern: "AGENTS.md" } });
     const listedDocuments = documents.structuredContent as { items: { id: string; path: string }[]; total: number };

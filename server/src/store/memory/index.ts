@@ -59,6 +59,7 @@ export class DevArchiveStore implements ArchiveStore {
   getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null> { return this.memoryStore.getMemoryDocument(context, documentId); }
   listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]> { return this.memoryStore.listMemoryRevisions(context, documentId); }
   captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> { return this.memoryStore.captureMemoryDocument(context, capture); }
+  reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null> { return this.memoryStore.reviewMemoryDocument(context, documentId, contentHash); }
   deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean> { return this.memoryStore.deleteMemoryDocument(context, documentId); }
 
   listCollections(context: TenantContext): Promise<CollectionRecord[]> { return this.collectionStore.listCollections(context); }

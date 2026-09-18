@@ -64,6 +64,8 @@ for (const implementation of implementations) {
         text,
         capturedAt: "2026-08-20T00:00:00.000Z",
         visibility: { scope: "private" as const, ownerId: alice.userId },
+        redactionStatus: "clear" as const,
+        redactionFindings: [] as string[],
         ...overrides,
       };
     }
@@ -109,6 +111,40 @@ for (const implementation of implementations) {
       expect(elsewhere.document.id).not.toBe(mine.document.id);
       expect(await store.listMemoryDocuments(alice, { machineId: "0191cafe-0000-7000-8000-0000000000ca" }))
         .toHaveLength(1);
+    });
+
+    /*
+      Both implementations must agree about when a memory file counts as
+      reviewed, because the gate that keeps a credential inside the tenant is
+      built on it. The in-memory store is what the unit tests run against; the
+      Postgres store is what production runs, and it does this in a WHERE clause
+      rather than in JavaScript.
+    */
+    it("marks a memory document reviewed, for the version that was reviewed", async () => {
+      const store = implementation.create();
+      const captured = await store.captureMemoryDocument(alice, capture("The key is sk_live_0123456789abcdefghij.", {
+        redactionStatus: "findings", redactionFindings: ["api_key"],
+      }));
+      const { id, contentHash } = captured.document;
+
+      expect(await store.reviewMemoryDocument(alice, id, "b".repeat(64)), "a stale hash reviews nothing").toBeNull();
+      expect(await store.reviewMemoryDocument(bob, id, contentHash), "and neither does another tenant").toBeNull();
+      expect((await store.getMemoryDocument(alice, id))!.redactionStatus).toBe("findings");
+
+      const reviewed = await store.reviewMemoryDocument(alice, id, contentHash);
+      expect(reviewed!.redactionStatus).toBe("reviewed");
+      expect(reviewed!.redactionFindings, "what was found does not stop being true once it is reviewed").toEqual(["api_key"]);
+
+      // The agent re-reads on a timer: an unchanged reading must not undo it.
+      const again = await store.captureMemoryDocument(alice, capture("The key is sk_live_0123456789abcdefghij.", {
+        redactionStatus: "findings", redactionFindings: ["api_key"],
+      }));
+      expect(again.document.redactionStatus).toBe("reviewed");
+
+      const edited = await store.captureMemoryDocument(alice, capture("The key is sk_live_zyxwvutsrqponmlkjihg.", {
+        redactionStatus: "findings", redactionFindings: ["api_key"],
+      }));
+      expect(edited.document.redactionStatus, "nobody has read this version").toBe("findings");
     });
 
     it("removes a document with everything it ever said", async () => {

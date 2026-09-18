@@ -2,7 +2,8 @@ import { BookMarked, FileText, History, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { memoarApi } from '../lib/api';
 import type { MemoryDocument, MemoryRevision } from '../lib/types';
-import { Badge, Button, EmptyState, formatDate, formatRelative } from '../components/ui';
+import { Badge, Button, EmptyState, formatDate, formatRelative, RedactionBadge } from '../components/ui';
+import { MemoryRedactionPanel } from './MemoryRedaction';
 
 /** Global first, then one group per project, each sorted by path. */
 function group(documents: MemoryDocument[]): { label: string; documents: MemoryDocument[] }[] {
@@ -22,6 +23,8 @@ export function MemoryView() {
   const [showing, setShowing] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Bumped after a removal, so the list reloads without the caller having to
   // reach into it.
@@ -38,12 +41,34 @@ export function MemoryView() {
 
   const open = async (documentId: string) => {
     setError(null);
+    setReviewError(null);
     try {
       const detail = await memoarApi.getMemory(documentId);
       setSelected(detail);
       setShowing(detail.revisions[0]?.id ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'That file could not be opened');
+    }
+  };
+
+  /**
+   * Records the review, and shows the status the server came back with.
+   *
+   * Not the status we hoped for: a review of a version the agent has since
+   * replaced is refused, and showing "Reviewed" on the strength of having asked
+   * would be the page asserting something nobody measured.
+   */
+  const review = async (document: MemoryDocument) => {
+    setReviewing(true);
+    setReviewError(null);
+    try {
+      const reviewed = await memoarApi.reviewMemory(document.id, document.contentHash);
+      setSelected((current) => (current && current.document.id === reviewed.id ? { ...current, document: reviewed } : current));
+      setDocuments((current) => current?.map((entry) => (entry.id === reviewed.id ? reviewed : entry)) ?? current);
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : 'The review could not be recorded');
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -104,6 +129,7 @@ export function MemoryView() {
                     <span className="memory-entry-path">{document.path}</span>
                   </button>
                   <div className="memory-entry-readers">
+                    <RedactionBadge status={document.redactionStatus} />
                     {document.readers.map((reader) => <Badge key={reader}>{reader}</Badge>)}
                   </div>
                   <footer>
@@ -124,6 +150,12 @@ export function MemoryView() {
               <h2>{selected.document.title}</h2>
               <p>{selected.document.path}</p>
             </header>
+            <MemoryRedactionPanel
+              document={selected.document}
+              busy={reviewing}
+              error={reviewError}
+              onReview={() => void review(selected.document)}
+            />
             <div className="memory-revisions">
               <h3><History size={14} /> {selected.revisions.length} {selected.revisions.length === 1 ? 'version' : 'versions'}</h3>
               {selected.revisions.map((entry, index) => (

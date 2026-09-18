@@ -1,6 +1,6 @@
 // Generated from contracts/source/canonical.model.json. Do not edit.
 import { EntitySchema } from "typeorm";
-import type { ContentBlockKind, MemoryScope, ProvenanceEntry, SourceDescriptor, TokenTotals, Visibility, WorkspaceDescriptor } from "./generated.js";
+import type { ContentBlockKind, MemoryScope, ProvenanceEntry, RedactionStatus, SourceDescriptor, TokenTotals, Visibility, WorkspaceDescriptor } from "./generated.js";
 
 export interface SessionRow {
   id: string;
@@ -135,6 +135,8 @@ export interface MemoryDocumentRow {
   contentHash: string;
   capturedAt: Date;
   visibility: Visibility;
+  redactionStatus: RedactionStatus;
+  redactionFindings: Array<string>;
   provenance: Array<ProvenanceEntry> | null;
   createdAt: Date;
   updatedAt: Date;
@@ -155,6 +157,8 @@ export const MemoryDocumentEntity = new EntitySchema<MemoryDocumentRow>({
     contentHash: { type: "text" },
     capturedAt: { type: "timestamptz" },
     visibility: { type: "jsonb" },
+    redactionStatus: { type: "text" },
+    redactionFindings: { type: "text", array: true },
     provenance: { type: "jsonb", nullable: true },
     createdAt: { type: "timestamptz", createDate: true },
     updatedAt: { type: "timestamptz", updateDate: true },

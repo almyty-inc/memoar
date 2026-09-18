@@ -9,7 +9,15 @@ export interface SecretPattern {
 }
 
 export const SECRET_PATTERNS: readonly SecretPattern[] = [
-  { kind: "api_key", expression: /\b(?:sk|ghp|xoxb|memoar)_[A-Za-z0-9_-]{16,}\b/gu },
+  // The separator is `[_-]`, not `_`.
+  //
+  // This required an underscore, which is the separator used by exactly one of
+  // the vendors named here: GitHub writes `ghp_…`, while OpenAI writes
+  // `sk-proj-…`, Anthropic `sk-ant-api03-…` and Slack `xoxb-…`. So the pattern
+  // matched the least common shape and missed the three a person is most likely
+  // to paste, in transcripts and in instruction files alike — including the
+  // literal `sk-…` in the note that asked for memory files to be scanned at all.
+  { kind: "api_key", expression: /\b(?:sk|ghp|github_pat|xoxb|memoar)[_-][A-Za-z0-9_-]{16,}\b/gu },
   { kind: "jwt", expression: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gu },
   { kind: "env", expression: /^(?:[A-Z][A-Z0-9_]{2,})\s*=\s*[^\s#]+$/gmu },
   { kind: "private_key", expression: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gu },

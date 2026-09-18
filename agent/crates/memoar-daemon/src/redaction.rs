@@ -104,8 +104,16 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
             r#"(?i)((?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)((?:bearer|basic|token)[ \t]+)?([^\s"',;{}\[\]]+)"#,
             "${1}${2}[REDACTED]",
         );
+        // The separator is `[_-]`, and the vendor list is the server's.
+        //
+        // This required an underscore, which only GitHub uses: OpenAI writes
+        // `sk-proj-…`, Anthropic `sk-ant-api03-…`, Slack `xoxb-…`. It also named
+        // a different set of vendors than the server's scanner did — so the two
+        // halves of the same product disagreed about what a key looks like, and
+        // each missed things the other would have caught. A test holds them to
+        // one list now.
         apply(
-            r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{16,}\b",
+            r"\b(?:sk|ghp|github_pat|xoxb|memoar)[_-][A-Za-z0-9_-]{16,}\b",
             "[REDACTED_TOKEN]",
         );
     }

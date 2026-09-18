@@ -16,6 +16,8 @@ function toDocument(row: MemoryDocumentRow): MemoryDocument {
     contentHash: row.contentHash,
     capturedAt: row.capturedAt.toISOString(),
     visibility: row.visibility,
+    redactionStatus: row.redactionStatus,
+    redactionFindings: row.redactionFindings,
     provenance: row.provenance ?? [],
     ...(row.workspacePath ? { workspacePath: row.workspacePath } : {}),
   };
@@ -97,6 +99,13 @@ export class PostgresMemoryStore implements MemoryStore {
         contentHash: capture.contentHash,
         capturedAt: new Date(capture.capturedAt),
         visibility: capture.visibility,
+        // A completed review survives a capture that found the file unchanged —
+        // the agent re-reads these on a timer, and a review undone every few
+        // minutes is not a review. Any change of content is a new document to
+        // look at, so the scan's verdict stands.
+        ...(existing?.contentHash === capture.contentHash && existing.redactionStatus === "reviewed"
+          ? { redactionStatus: "reviewed" as const, redactionFindings: existing.redactionFindings }
+          : { redactionStatus: capture.redactionStatus, redactionFindings: capture.redactionFindings }),
         provenance: capture.provenance ?? [],
       }));
 
@@ -121,6 +130,23 @@ export class PostgresMemoryStore implements MemoryStore {
 
       const saved = await documents.findOneByOrFail({ id, tenantId: context.tenantId });
       return { document: toDocument(saved), revision: toRevision(revision) };
+    });
+  }
+
+  /**
+   * Marks one document reviewed, but only the version that was reviewed.
+   *
+   * The content hash is part of the WHERE clause rather than checked and then
+   * written: between a read and an update the agent can capture a new version,
+   * and clearing that one would mark text nobody has read as read.
+   */
+  async reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null> {
+    return this.runner.inTenant(context, async (manager) => {
+      const documents = manager.getRepository(MemoryDocumentEntity);
+      const updated = await documents.update({ id: documentId, tenantId: context.tenantId, contentHash }, { redactionStatus: "reviewed" });
+      if (updated.affected !== 1) return null;
+      const row = await documents.findOneBy({ id: documentId, tenantId: context.tenantId });
+      return row ? toDocument(row) : null;
     });
   }
 

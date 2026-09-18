@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Qu
 import type { MemoryDocument, MemoryRevision } from "../../libs/canonical/src/generated.js";
 import type { TenantContext } from "../archive-store.js";
 import { RequireScopes, Tenant } from "../auth.js";
-import { CaptureMemoryDto, ListMemoryQueryDto } from "./memory.dto.js";
+import { CaptureMemoryDto, ListMemoryQueryDto, ReviewMemoryDto } from "./memory.dto.js";
 import { MemoryService } from "./memory.service.js";
 
 @Controller("memory")
@@ -36,6 +36,21 @@ export class MemoryController {
   @Get(":documentId")
   get(@Tenant() context: TenantContext, @Param("documentId", ParseUUIDPipe) documentId: string): Promise<{ document: MemoryDocument; revisions: MemoryRevision[] }> {
     return this.memory.get(context, documentId);
+  }
+
+  /*
+    The act of reviewing, which is what makes the gate a gate rather than a
+    wall. Named for the review, not for the status it happens to set, so it
+    reads the way `POST /sessions/:id/redaction-reviews` already does.
+  */
+  @Post(":documentId/redaction-reviews")
+  @HttpCode(200)
+  review(
+    @Tenant() context: TenantContext,
+    @Param("documentId", ParseUUIDPipe) documentId: string,
+    @Body() body: ReviewMemoryDto,
+  ): Promise<MemoryDocument> {
+    return this.memory.review(context, documentId, body.contentHash);
   }
 
   @Delete(":documentId")

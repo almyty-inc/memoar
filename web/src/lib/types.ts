@@ -277,6 +277,14 @@ export interface MemoryDocument {
   readers: string[];
   contentHash: string;
   capturedAt: string;
+  /**
+   * What the secret scanner made of this file, and whether anyone has looked.
+   * The same three words a session's status uses, because it is the same
+   * question. While this is 'findings' the text does not leave the archive.
+   */
+  redactionStatus: RedactionStatus;
+  /** The kind of each match — api_key, email, path — never the matched text. */
+  redactionFindings: string[];
 }
 
 export interface MemoryRevision {

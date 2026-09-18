@@ -1368,6 +1368,36 @@ paths:
       responses:
         '204': { description: Removed, with every revision it ever had }
         '404': { description: No such memory document }
+  /memory/{documentId}/redaction-reviews:
+    post:
+      tags: [Memory]
+      operationId: reviewMemoryDocument
+      summary: Record that a person has reviewed what the scanner found in this file
+      description: >
+        A memory document the scanner flagged is not served outside the owner's
+        own archive until this has been called for the version in question. The
+        content hash names that version: if the agent captured the file again
+        while it was being read, the review is refused rather than applied to
+        text nobody has seen.
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentHash]
+              properties:
+                contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200':
+          description: The document, now reviewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryDocument' }
+        '404': { description: No such memory document }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
 security:
   - bearerAuth: []
 components:
@@ -1806,7 +1836,7 @@ components:
         report: { type: object, additionalProperties: true }
     MemoryDocument:
       type: object
-      required: [id, scope, machineId, path, title, readers, contentHash, capturedAt]
+      required: [id, scope, machineId, path, title, readers, contentHash, capturedAt, redactionStatus, redactionFindings]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         scope: { type: string, enum: [global, project] }
@@ -1820,6 +1850,20 @@ components:
           description: The supported tools that read this path - a fact about the file, not its owner.
         contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
         capturedAt: { type: string, format: date-time }
+        redactionStatus:
+          type: string
+          enum: [clear, findings, reviewed]
+          description: >
+            What the secret scanner made of this file at capture, and whether a
+            person has since reviewed it. While this is findings the text is not
+            served outside the owner's own archive.
+        redactionFindings:
+          type: array
+          items: { type: string }
+          description: >
+            The kind of each thing the scanner matched - api_key, jwt, env,
+            private_key, email, path, custom. Kinds only: the matched text is
+            not stored beside the document.
     MemoryRevision:
       type: object
       required: [id, documentId, contentHash, text, size, capturedAt]

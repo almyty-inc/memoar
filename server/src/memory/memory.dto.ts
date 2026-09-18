@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import { ArrayMaxSize, IsArray, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
 import type { MemoryScope } from "../../libs/canonical/src/generated.js";
 
 export const MEMORY_SCOPES: readonly MemoryScope[] = ["global", "project"];
@@ -47,6 +47,19 @@ export class CaptureMemoryDto {
 
   @IsISO8601()
   capturedAt!: string;
+}
+
+/**
+ * Which version of the file the reviewer actually read.
+ *
+ * Required rather than inferred: the agent re-captures on a timer, and a review
+ * that clears "whatever the document says when this arrives" would clear text
+ * the reviewer never saw.
+ */
+export class ReviewMemoryDto {
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/u, { message: "contentHash must be a sha256 hex digest" })
+  contentHash!: string;
 }
 
 /**

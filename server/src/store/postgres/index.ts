@@ -78,6 +78,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null> { return this.memoryDocuments.getMemoryDocument(context, documentId); }
   listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]> { return this.memoryDocuments.listMemoryRevisions(context, documentId); }
   captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> { return this.memoryDocuments.captureMemoryDocument(context, capture); }
+  reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null> { return this.memoryDocuments.reviewMemoryDocument(context, documentId, contentHash); }
   deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean> { return this.memoryDocuments.deleteMemoryDocument(context, documentId); }
 
   listCollections(context: TenantContext): Promise<CollectionRecord[]> { return this.collections.listCollections(context); }

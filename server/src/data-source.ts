@@ -18,6 +18,7 @@ import { TenantProviderCredentials1700000012000 } from "./migrations/17000000120
 import { OAuthIdentities1700000013000 } from "./migrations/1700000013000-OAuthIdentities.js";
 import { TeamInvitations1700000014000 } from "./migrations/1700000014000-TeamInvitations.js";
 import { TeamShareOptins1700000015000 } from "./migrations/1700000015000-TeamShareOptins.js";
+import { MemoryRedaction1700000016000 } from "./migrations/1700000016000-MemoryRedaction.js";
 
 export const MIGRATIONS = [
   Initial1700000000000, CredentialBilling1700000001000, SessionIdentity1700000002000,
@@ -26,6 +27,7 @@ export const MIGRATIONS = [
   MachineCommands1700000009000, AppRole1700000010000, MemoryDocuments1700000011000,
   TenantProviderCredentials1700000012000, OAuthIdentities1700000013000,
   TeamInvitations1700000014000, TeamShareOptins1700000015000,
+  MemoryRedaction1700000016000,
 ];
 
 function dataSourceFor(url: string): DataSource {

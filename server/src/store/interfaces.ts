@@ -99,6 +99,9 @@ export interface MemoryCapture {
   capturedAt: string;
   visibility: Visibility;
   provenance?: ProvenanceEntry[];
+  /** What the secret scanner made of `text`, decided before the store is called. */
+  redactionStatus: Exclude<MemoryDocument["redactionStatus"], "reviewed">;
+  redactionFindings: string[];
 }
 
 /**
@@ -115,6 +118,17 @@ export interface MemoryStore {
   getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null>;
   listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]>;
   captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }>;
+
+  /**
+   * Records that a person looked at this document's findings and let it stand.
+   *
+   * The review names the content it was performed against. A reviewer reading
+   * one version while the agent captures the next would otherwise clear a
+   * document nobody has seen — the same reason a session's review carries a
+   * content digest. Returns null when the document is gone or has moved on,
+   * which the caller reports as a conflict rather than a success.
+   */
+  reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null>;
   deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean>;
 }
 

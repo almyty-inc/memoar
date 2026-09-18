@@ -443,6 +443,13 @@
           "project"
         ]
       },
+      "RedactionStatus": {
+        "enum": [
+          "clear",
+          "findings",
+          "reviewed"
+        ]
+      },
       "MemoryDocument": {
         "type": "object",
         "additionalProperties": false,
@@ -455,7 +462,9 @@
           "readers",
           "contentHash",
           "capturedAt",
-          "visibility"
+          "visibility",
+          "redactionStatus",
+          "redactionFindings"
         ],
         "properties": {
           "id": {
@@ -495,6 +504,16 @@
           },
           "visibility": {
             "$ref": "#/$defs/Visibility"
+          },
+          "redactionStatus": {
+            "$ref": "#/$defs/RedactionStatus"
+          },
+          "redactionFindings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
           },
           "provenance": {
             "type": "array",

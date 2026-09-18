@@ -1,6 +1,15 @@
-import type { Session } from "../../libs/canonical/src/generated.js";
+import type { RedactionStatus, Session } from "../../libs/canonical/src/generated.js";
 
-export type RedactionStatus = "clear" | "findings" | "reviewed";
+/*
+  One vocabulary for "has anyone looked at this yet", shared by sessions and by
+  memory documents.
+
+  It used to be spelled out here as a third copy of a list that also exists in
+  the contract and in the Rust the agent is built from. Re-exporting the
+  generated union means a status added to the model arrives here rather than
+  being remembered about.
+*/
+export type { RedactionStatus };
 
 export interface TenantContext {
   tenantId: string;

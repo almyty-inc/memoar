@@ -18,6 +18,20 @@ export class MemoarApiClient extends TeamsApi {
     return this.request<{ document: MemoryDocument; revisions: MemoryRevision[] }>(`/memory/${documentId}`);
   }
 
+  /**
+   * Records that this person has read what the scanner found in this file.
+   *
+   * The hash of the version they read goes with it: the capture agent re-reads
+   * these on a timer, and the server refuses a review of text that has since
+   * changed rather than clearing something nobody looked at.
+   */
+  reviewMemory(documentId: string, contentHash: string): Promise<MemoryDocument> {
+    return this.request<MemoryDocument>(`/memory/${documentId}/redaction-reviews`, {
+      method: 'POST',
+      body: JSON.stringify({ contentHash }),
+    });
+  }
+
   deleteMemory(documentId: string): Promise<void> {
     return this.request<void>(`/memory/${documentId}`, { method: 'DELETE' });
   }

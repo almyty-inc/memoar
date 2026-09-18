@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TenantContext } from "../archive-store.js";
+import { requireReviewed } from "../memory/memory-redaction.js";
 import { MEMORY_SCOPES } from "../memory/memory.dto.js";
 import { MemoryService } from "../memory/memory.service.js";
 import { parseToolArguments } from "./arguments.js";
@@ -37,7 +38,7 @@ export const MEMORY_TOOLS: readonly Tool[] = [
   },
   {
     name: "get_memory_document",
-    description: "Read one captured instruction file: its current text plus the history of how it changed. Take the documentId from list_memory_documents.",
+    description: "Read one captured instruction file: its current text plus the history of how it changed. Take the documentId from list_memory_documents. A file the secret scanner flagged is refused until a person reviews it in the web app.",
     inputSchema: {
       type: "object",
       required: ["documentId"],
@@ -87,6 +88,18 @@ export class McpMemoryTools implements McpToolGroup {
     // The service throws when the document belongs to another tenant or does
     // not exist; both are the same answer, and neither is ours to soften.
     const { document, revisions } = await this.memory.get(context, request.documentId);
+    /*
+      The gate, on the text rather than on the listing.
+
+      An MCP client is not a person reading their own archive: it packs what it
+      is given into a model's context and passes it on, and nothing in that
+      path ever re-reads the file. That is precisely the case the owner argued
+      about — "unlike a transcript nobody re-reads them before sharing" — so a
+      memory file the scanner flagged does not answer here until somebody has
+      looked at it. Listing still works, because an agent that cannot discover
+      the document cannot tell its human which file needs reviewing.
+    */
+    requireReviewed(document);
     const maxChars = request.maxChars ?? DEFAULT_MAX_CHARS;
     // The current text is the revision the document points at, not the newest
     // one. A file edited and then reverted reuses the revision already recorded

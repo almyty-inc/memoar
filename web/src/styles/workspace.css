@@ -79,6 +79,13 @@
  background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
 .memory-detail header h2 { margin: 0; font-size: var(--fs-lg); }
 .memory-detail header p { margin: var(--sp-1) 0 var(--sp-4); color: var(--quiet); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+/* What the scanner found in one memory file, above the text it found it in. */
+.memory-redaction { margin-bottom: var(--sp-4); padding: var(--sp-3); background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.memory-redaction.redaction-findings { border-color: var(--line-warning); background: var(--surface-warning); }
+.memory-redaction h3 { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-2); }
+.memory-redaction p { margin: 0 0 var(--sp-2); color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); }
+.memory-redaction ul { margin: 0 0 var(--sp-2); padding-left: var(--sp-4); color: var(--muted); font-size: var(--fs-sm); }
+
 .memory-revisions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .memory-revisions h3 { display: flex; align-items: center; gap: var(--sp-1); margin: 0 var(--sp-2) 0 0; color: var(--muted); font-size: var(--fs-sm); }
 .memory-revisions button { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2) var(--sp-3); background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); color: inherit; font-size: var(--fs-xs); cursor: pointer; }
