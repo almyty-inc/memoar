@@ -238,13 +238,15 @@ fn zed_captures_the_threads_and_not_the_editors_own_state() {
     std::fs::write(editor.join("db.sqlite"), b"panes and terminals").unwrap();
 
     let found = files_for_source(source("zed").unwrap(), home, OperatingSystem::Macos).unwrap();
+    // Written with forward slashes whatever the platform separator is, so the
+    // assertions below say what they mean on Windows too.
     let names: Vec<_> = found
         .iter()
         .map(|path| {
             path.strip_prefix(home)
                 .unwrap()
                 .to_string_lossy()
-                .into_owned()
+                .replace('\\', "/")
         })
         .collect();
 

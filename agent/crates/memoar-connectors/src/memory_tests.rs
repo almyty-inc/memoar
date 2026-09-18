@@ -11,10 +11,20 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+/// Finds a discovered file by the tail of its path, written with forward
+/// slashes whatever the platform separator is.
+///
+/// Windows renders these paths with backslashes, so a suffix of
+/// `.claude/CLAUDE.md` matched nothing there and the test reported the file
+/// missing when discovery had found it perfectly well — a failure of the
+/// assertion, not of the thing asserted.
 fn found<'a>(files: &'a [DiscoveredMemory], suffix: &str) -> Option<&'a DiscoveredMemory> {
-    files
-        .iter()
-        .find(|file| file.path.to_string_lossy().ends_with(suffix))
+    files.iter().find(|file| {
+        file.path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .ends_with(suffix)
+    })
 }
 
 #[test]
