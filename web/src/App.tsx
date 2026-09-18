@@ -1,15 +1,17 @@
-import { AlertCircle, FileQuestion, LoaderCircle, RefreshCw } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { emptyConnectedDashboard, routeFromLocation } from './app/bootstrap';
 import { Shell } from './components/Shell';
-import { Button } from './components/ui';
 import { memoarApi } from './lib/api';
 import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
-import { pathForLegacyHash, pathForRoute, routeForPath, type Route } from './lib/routes';
+import { pathForRoute, routeForPath, type Route } from './lib/routes';
 import { CollectionsView } from './views/Collections';
+import { ConnectionError } from './views/ConnectionError';
 import { MemoryView } from './views/Memory';
 import { ImportView } from './views/Import';
 import { MachinesView } from './views/Machines';
+import { NotFoundPage } from './views/NotFoundPage';
 import { SignInView } from './views/Onboarding';
 import { OnboardingView } from './views/OnboardingSteps';
 import { SearchView } from './views/Search';
@@ -18,32 +20,6 @@ import { SettingsView } from './views/Settings';
 import { SharingView } from './views/Sharing';
 import { TimelineView } from './views/Timeline';
 import { WorkspaceView } from './views/Workspace';
-
-const emptyConnectedDashboard: DashboardState = {
-  timeline: [],
-  archivedSessions: 0,
-  collections: [],
-  grants: [],
-  transfers: [],
-  machines: [],
-  apiKeys: [],
-};
-
-/**
- * The route in the address bar.
- *
- * A `#/…` link left over from before paths is rewritten once, here, so nothing
- * anyone bookmarked stops working.
- */
-function routeFromLocation(): Route {
-  const legacy = pathForLegacyHash(window.location.hash);
-  if (legacy) {
-    window.history.replaceState(null, '', legacy);
-    return routeForPath(legacy);
-  }
-  return routeForPath(window.location.pathname);
-}
-
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => {
@@ -217,11 +193,7 @@ export function App() {
   let content;
   if (connectionError) {
     content = (
-      <section className="page connection-error" role="alert">
-        <AlertCircle size={24} />
-        <div><h1>Archive connection failed</h1><p>{connectionError}</p></div>
-        <Button onClick={() => void loadDashboard()}><RefreshCw size={14} /> Retry</Button>
-      </section>
+      <ConnectionError connectionError={connectionError} loadDashboard={loadDashboard} />
     );
   } else if (view === 'workspace') {
     content = (
@@ -280,14 +252,7 @@ export function App() {
       corrected or reported.
     */
     content = (
-      <section className="page not-found-page">
-        <div className="empty-state">
-          <FileQuestion size={24} aria-hidden="true" />
-          <h1>No screen lives at this address</h1>
-          <p><code>{window.location.pathname}</code> is not part of this archive. It may have been mistyped, or it may be a link from a version of Memoar that had it.</p>
-          <Button variant="primary" onClick={() => navigate('timeline')}>Go to the timeline</Button>
-        </div>
-      </section>
+      <NotFoundPage navigate={navigate} />
     );
   } else if (view === 'onboarding') {
 

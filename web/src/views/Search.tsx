@@ -1,12 +1,8 @@
 import {
   ArrowRight,
-  Bot,
   Braces,
-  Calendar,
   ChevronDown,
-  CircleGauge,
   Command,
-  FolderGit2,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -16,34 +12,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { memoarApi } from '../lib/api';
 import { DEFAULT_PACK_TOKEN_BUDGET, formatTokenBudget } from '../lib/limits';
 import type { PackResponse, SearchResponse, SessionSummary } from '../lib/types';
+import { PackPreviewModal } from './search/PackPreviewModal';
+import { SearchFilters } from './search/SearchFilters';
 
 import {
-  Badge,
   Button,
-  CopyButton,
   EmptyState,
-  Modal,
   HighlightText,
   RedactionBadge,
   SourceBadge,
-  cn,
   formatRelative,
 } from '../components/ui';
-
-const noAggregations: SearchResponse['aggregations'] = { agents: [], workspaces: [], dates: [] };
-
-
-const MODE_TITLES: Record<SearchResponse['meta']['realizedMode'], string> = {
-  hybrid: 'Hybrid mode',
-  lexical: 'Lexical mode',
-  semantic: 'Semantic mode',
-};
-
-const MODE_EXPLANATIONS: Record<SearchResponse['meta']['realizedMode'], string> = {
-  hybrid: 'Lexical and semantic results, fused by reciprocal rank.',
-  lexical: 'Ranked by matching words alone.',
-  semantic: 'Ranked by meaning alone.',
-};
 
 export function SearchView({ onOpen, workspaces = [] }: {
   onOpen: (session: SessionSummary) => void;
@@ -181,44 +160,13 @@ export function SearchView({ onOpen, workspaces = [] }: {
       </section>
 
       <div className="search-layout">
-        <aside className={cn('aggregation-sidebar', filtersOpen && 'aggregation-open')} aria-label="Search filters">
-          <div className="aggregation-mobile-head">
-            <strong>Filter results</strong>
-            <Button size="sm" variant="ghost" onClick={() => setFiltersOpen(false)}><X size={14} /> Close</Button>
-          </div>
-          <AggregationGroup
-            icon={<Bot size={14} />}
-            title="Source"
-            items={(response?.aggregations ?? noAggregations).agents}
-            activeValue={activeSource}
-            onSelect={(value) => setActiveSource(activeSource === value ? null : value)}
-          />
-          <AggregationGroup icon={<FolderGit2 size={14} />} title="Workspace" items={(response?.aggregations ?? noAggregations).workspaces} />
-          <AggregationGroup icon={<Calendar size={14} />} title="Date" items={(response?.aggregations ?? noAggregations).dates} />
-
-          {/*
-            What the search actually did, which the server reports. This card
-            said "Hybrid mode — lexical and semantic results are fused with RRF"
-            whatever ran: a deployment with no embedding provider falls back to
-            lexical, and the panel went on describing a fusion that had not
-            happened.
-          */}
-          {response ? (
-            <div className="search-mode-card">
-              <CircleGauge size={17} />
-              <div>
-                <strong>{MODE_TITLES[response.meta.realizedMode]}</strong>
-                <p>
-                  {MODE_EXPLANATIONS[response.meta.realizedMode]}
-                  {response.meta.semanticFailure
-                    ? ` Semantic search was unavailable: ${response.meta.semanticFailure}`
-                    : ''}
-                </p>
-              </div>
-            </div>
-          ) : null}
-
-        </aside>
+        <SearchFilters
+          filtersOpen={filtersOpen}
+          setFiltersOpen={setFiltersOpen}
+          response={response}
+          activeSource={activeSource}
+          setActiveSource={setActiveSource}
+        />
 
         <section className="search-results" aria-busy={loading}>
           <div className="results-toolbar">
@@ -312,49 +260,13 @@ export function SearchView({ onOpen, workspaces = [] }: {
         </section>
       </div>
 
-      <Modal open={packOpen} title="Pack preview" description="A cited, extractive bundle built from these results." onClose={() => setPackOpen(false)}>
-        <div className="modal-body pack-modal-body">
-          {packLoading ? <p role="status">Building cited preview…</p> : null}
-          {packError ? <p role="alert" className="error-note">{packError}</p> : null}
-
-          {pack ? (
-            <div className="pack-preview-card">
-              <div><Badge>{pack.evidence.length} excerpts</Badge><span>Estimated {pack.tokenEstimate.toLocaleString()} tokens</span></div>
-              <h3>{pack.query}</h3>
-              <p>{pack.evidence[0]?.excerpt ?? 'No evidence matched this query.'}</p>
-            </div>
-          ) : null}
-        </div>
-        <footer className="modal-actions">
-          {pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}
-          <Button variant="ghost" onClick={() => setPackOpen(false)}>Close</Button>
-        </footer>
-      </Modal>
+      <PackPreviewModal
+        packOpen={packOpen}
+        setPackOpen={setPackOpen}
+        packLoading={packLoading}
+        packError={packError}
+        pack={pack}
+      />
     </div>
-  );
-}
-
-function AggregationGroup({ icon, title, items, activeValue, onSelect }: {
-  icon: React.ReactNode;
-  title: string;
-  items: SearchResponse['aggregations']['agents'];
-  activeValue?: string | null;
-  onSelect?: (value: string) => void;
-}) {
-  return (
-    <section className="aggregation-group">
-      <h2>{icon}{title}</h2>
-      {items.slice(0, 6).map((item) => (
-        <button
-          key={item.value}
-          type="button"
-          className={cn(activeValue === item.value && 'active')}
-          onClick={() => onSelect?.(item.value)}
-        >
-          <span>{item.label}</span><small>{item.count}</small>
-        </button>
-      ))}
-      {!items.length ? <p className="muted-small">No values</p> : null}
-    </section>
   );
 }
