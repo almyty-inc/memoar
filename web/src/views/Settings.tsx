@@ -28,7 +28,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
   const [createOpen, setCreateOpen] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [keyName, setKeyName] = useState('Codex MCP');
-  const [keyScopes, setKeyScopes] = useState<string[]>(['sessions:read', 'collections:read', 'pack:read']);
+  const [keyScopes, setKeyScopes] = useState<string[]>(['archive:read', 'mcp:use']);
   const [keySaving, setKeySaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);

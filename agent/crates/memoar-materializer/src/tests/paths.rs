@@ -1,3 +1,5 @@
+// Used only by the symlink-ancestor test below, which is unix-only.
+#[cfg(unix)]
 use std::fs;
 
 use super::fixtures::fixture_session;

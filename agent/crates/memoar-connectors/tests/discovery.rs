@@ -1,5 +1,8 @@
 //! What discovery is allowed to reach, per source and per link.
 
+// Only the symlink-escape test reads instruction files, and that test is
+// unix-only, so on Windows this import is dead and `-D warnings` says so.
+#[cfg(unix)]
 use memoar_connectors::memory::memory_files;
 use memoar_connectors::{OperatingSystem, files_for_source, files_for_source_with_env, source};
 use std::fs;
