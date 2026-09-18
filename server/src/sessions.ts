@@ -49,6 +49,29 @@ export function sessionSummary(session: ArchivedSession): Record<string, unknown
   };
 }
 
+/**
+ * One page of a session's turns, in the detail shape the client reads.
+ *
+ * Lifted out of SessionsService because a teammate's session is fetched through
+ * the team fan-out rather than through the tenant-scoped store, and had to come
+ * back looking identical. Two functions building the same body is how one of
+ * them ends up missing a field.
+ */
+export function sessionChunk(session: ArchivedSession, cursor?: string, chunkSizeValue?: string): Record<string, unknown> {
+  const offset = cursor ? Number.parseInt(Buffer.from(cursor, "base64url").toString("utf8"), 10) : 0;
+  const chunkSize = positiveInt(chunkSizeValue, 50, 200);
+  const turns = session.turns.slice(offset, offset + chunkSize);
+  const nextOffset = offset + turns.length;
+  return {
+    session: sessionSummary(session),
+    turns,
+    // Provenance rides the detail chunk, not the summary, so list responses
+    // stay small while the detail view can show how a session got here.
+    provenance: session.provenance,
+    nextCursor: nextOffset < session.turns.length ? Buffer.from(String(nextOffset)).toString("base64url") : null,
+  };
+}
+
 @Injectable()
 export class SessionsService {
   constructor(@Inject(ARCHIVE_STORE) private readonly store: SessionStore) {}
@@ -91,18 +114,7 @@ export class SessionsService {
   async getChunk(context: TenantContext, sessionId: string, cursor?: string, chunkSizeValue?: string): Promise<Record<string, unknown>> {
     const session = await this.store.getSession(context, sessionId);
     if (!session) throw new NotFoundException("Session not found");
-    const offset = cursor ? Number.parseInt(Buffer.from(cursor, "base64url").toString("utf8"), 10) : 0;
-    const chunkSize = positiveInt(chunkSizeValue, 50, 200);
-    const turns = session.turns.slice(offset, offset + chunkSize);
-    const nextOffset = offset + turns.length;
-    return {
-      session: sessionSummary(session),
-      turns,
-      // Provenance rides the detail chunk, not the summary, so list responses
-      // stay small while the detail view can show how a session got here.
-      provenance: session.provenance,
-      nextCursor: nextOffset < session.turns.length ? Buffer.from(String(nextOffset)).toString("base64url") : null,
-    };
+    return sessionChunk(session, cursor, chunkSizeValue);
   }
 
   async remove(context: TenantContext, sessionId: string): Promise<void> {

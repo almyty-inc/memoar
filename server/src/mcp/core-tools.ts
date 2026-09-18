@@ -6,6 +6,7 @@ import { CollectionService } from "../collections/collections.service.js";
 import { PackService, SearchService } from "../search.js";
 import { BuildPackDto } from "../search/search.dto.js";
 import { SessionsService } from "../sessions.js";
+import { TeamWorkspaceService } from "../team-workspace.js";
 import { ARCHIVE_STORE } from "../tokens.js";
 import { parseToolArguments } from "./arguments.js";
 import {
@@ -30,6 +31,7 @@ export const CORE_TOOLS: readonly Tool[] = [
         workspace: { type: "string", maxLength: 4_096, description: "Exact workspace path." },
         from: { type: "string", format: "date-time" },
         to: { type: "string", format: "date-time" },
+        teamId: { type: "string", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
       },
     },
   },
@@ -44,6 +46,7 @@ export const CORE_TOOLS: readonly Tool[] = [
         turnStart: { type: "integer", minimum: 0 },
         turnEnd: { type: "integer", minimum: 0 },
         maxChars: { type: "integer", minimum: 200, maximum: 20_000 },
+        teamId: { type: "string", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
       },
     },
   },
@@ -74,6 +77,7 @@ export const CORE_TOOLS: readonly Tool[] = [
         sessionId: { type: "string" },
         cursor: { type: "string", maxLength: 200 },
         chunkSize: { type: "integer", minimum: 1, maximum: 200 },
+        teamId: { type: "string", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
       },
     },
   },
@@ -121,6 +125,7 @@ export class McpCoreTools implements McpToolGroup {
     @Inject(CollectionService) private readonly collections: CollectionService,
     @Inject(AnnotationService) private readonly annotations: AnnotationService,
     @Inject(ARCHIVE_STORE) private readonly store: ArchiveStore,
+    @Inject(TeamWorkspaceService) private readonly workspace: TeamWorkspaceService,
   ) {}
 
   handles(name: string): boolean {
@@ -137,19 +142,32 @@ export class McpCoreTools implements McpToolGroup {
     return this.saveNote(context, args);
   }
 
+  /**
+   * Absent `teamId`, byte-identical to what this tool has always done. Present,
+   * the same query runs across the team through the same service the HTTP team
+   * route uses, so the membership check and the team visibility predicate are
+   * the ones already proven rather than a second pair.
+   */
   private async searchSessions(context: TenantContext, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const request = parseToolArguments(SearchSessionsDto, args);
-    return this.search.response(context, request.query, request.mode ?? "hybrid", {
+    const limit = request.limit ?? 10;
+    const filters = {
       ...(request.agent ? { agent: request.agent } : {}),
       ...(request.workspace ? { workspace: request.workspace } : {}),
       ...(request.from ? { from: new Date(request.from) } : {}),
       ...(request.to ? { to: new Date(request.to) } : {}),
-    }, request.limit ?? 10);
+    };
+    if (request.teamId) return this.workspace.searchTeam(context, request.teamId, request.query, request.mode ?? "hybrid", filters, limit);
+    return this.search.response(context, request.query, request.mode ?? "hybrid", filters, limit);
   }
 
   private async excerpt(context: TenantContext, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const request = parseToolArguments(GetExcerptDto, args);
-    const session = await this.store.getSession(context, request.sessionId);
+    // A teammate's session is reachable only through the team, never through
+    // the tenant-scoped read — that one is not loosened.
+    const session = request.teamId
+      ? await this.workspace.readSession(context, request.teamId, request.sessionId)
+      : await this.store.getSession(context, request.sessionId);
     if (!session) throw new Error("session_not_found");
     const maximum = request.maxChars ?? 4_000;
     const turns = session.turns.filter((turn) => turn.ordinal >= request.turnStart && turn.ordinal <= request.turnEnd);
@@ -168,7 +186,10 @@ export class McpCoreTools implements McpToolGroup {
 
   private async session(context: TenantContext, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const request = parseToolArguments(GetSessionDto, args);
-    return this.sessions.getChunk(context, request.sessionId, request.cursor, String(request.chunkSize ?? 25));
+    const chunkSize = String(request.chunkSize ?? 25);
+    return request.teamId
+      ? this.workspace.getSession(context, request.teamId, request.sessionId, request.cursor, chunkSize)
+      : this.sessions.getChunk(context, request.sessionId, request.cursor, chunkSize);
   }
 
   private async listCollections(context: TenantContext, args: Record<string, unknown>): Promise<Record<string, unknown>> {

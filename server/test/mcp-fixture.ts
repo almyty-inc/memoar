@@ -29,6 +29,9 @@ import { MemoryService } from "../src/memory/memory.service.js";
 import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackService, SearchService } from "../src/search.js";
 import { SessionsService } from "../src/sessions.js";
 import { SharingService } from "../src/sharing/sharing.service.js";
+import { TeamsService } from "../src/teams.js";
+import { TeamSearchService } from "../src/search/team-search.js";
+import { TeamWorkspaceService } from "../src/team-workspace.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 
 export function buildRegistry(store: ArchiveStore, now = () => new Date("2026-08-19T00:00:00.000Z")): McpToolRegistry {
@@ -36,8 +39,14 @@ export function buildRegistry(store: ArchiveStore, now = () => new Date("2026-08
   const sessions = new SessionsService(store);
   const collections = new CollectionService(store);
   const annotations = new AnnotationService(store);
+  const teams = new TeamsService(store);
+  const workspace = new TeamWorkspaceService(
+    store,
+    teams,
+    new TeamSearchService(new DeterministicLexicalBackend(store), new DisabledSemanticSearchProvider()),
+  );
   return new McpToolRegistry(
-    new McpCoreTools(search, new PackService(search, now), sessions, collections, annotations, store),
+    new McpCoreTools(search, new PackService(search, now), sessions, collections, annotations, store, workspace),
     new McpArchiveTools(sessions, new MachinesService(store)),
     new McpAnnotationTools(annotations),
     new McpCollectionTools(collections),

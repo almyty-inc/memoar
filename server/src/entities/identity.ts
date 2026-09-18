@@ -67,6 +67,35 @@ export class TeamMemberEntity extends IdentifiedEntity {
   addedAt!: Date;
 }
 
+/**
+ * Standing consent: sessions this tenant captures from here on are widened to
+ * this team at ingest. A null `machineId` means every machine of the tenant.
+ *
+ * Not under RLS, for the same reason `team_members` is not — consent metadata,
+ * no session content. The moment a content-bearing column appears here that
+ * rationale is void.
+ */
+@Entity("team_share_optins")
+@Unique(["teamId", "tenantId", "machineId"])
+export class TeamShareOptinEntity extends IdentifiedEntity {
+  @Index()
+  @Column("uuid")
+  teamId!: string;
+
+  @Index()
+  @Column("uuid")
+  tenantId!: string;
+
+  @Column("uuid")
+  userId!: string;
+
+  @Column("uuid", { nullable: true })
+  machineId!: string | null;
+
+  @CreateDateColumn({ type: "timestamptz" })
+  createdAt!: Date;
+}
+
 @Entity("auth_sessions")
 export class AuthSessionEntity extends IdentifiedEntity {
   @Index()

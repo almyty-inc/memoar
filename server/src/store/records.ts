@@ -28,6 +28,24 @@ export interface TeamInvitation {
   orgId: string;
 }
 
+/**
+ * Standing consent to share into one team. No row means no sharing: the default
+ * is off, and creating or joining a team shares nothing by itself.
+ *
+ * `machineId: null` means every machine of the tenant, including ones enrolled
+ * later. Consent is forward-looking only — enrolling never widens what is
+ * already archived, because "share what I do from here on" is a different
+ * consent from "share everything I have ever captured on this laptop".
+ */
+export interface TeamShareOptinRecord {
+  id: string;
+  teamId: string;
+  tenantId: string;
+  userId: string;
+  machineId: string | null;
+  createdAt: string;
+}
+
 export interface RedactionMaskSnapshot {
   kind: string;
   start: number;

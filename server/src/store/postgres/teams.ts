@@ -3,6 +3,7 @@ import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, TenantContext } from "../context.js";
 import type { DirectoryStore, TeamStore } from "../interfaces.js";
 import type { CollectionRecord, TeamInvitation, TeamMember, TeamRecord } from "../records.js";
+import { teamVisibilitySql } from "../team-visibility.js";
 import type { PostgresCollectionStore } from "./collections.js";
 import { TenantRunner } from "./runner.js";
 import type { PostgresSessionStore } from "./sessions.js";
@@ -91,19 +92,22 @@ export class PostgresTeamStore implements TeamStore, DirectoryStore {
     return user?.email ?? null;
   }
 
-  private async memberTenants(teamId: string): Promise<string[]> {
+  async listTeamMemberTenants(teamId: string): Promise<string[]> {
     // Accepted members only: an invitation must not open anybody's archive.
+    // This list is the entire membership half of the isolation argument — a
+    // tenant that is not in it is never bound into the RLS setting for this
+    // request, so no SQL the request runs can name it.
     const rows = await this.runner.dataSource.getRepository(TeamMemberEntity).findBy({ teamId, status: "active" });
     return [...new Set(rows.map((row) => row.tenantId))];
   }
 
   async listTeamSessions(teamId: string): Promise<ArchivedSession[]> {
     const sessions: ArchivedSession[] = [];
-    for (const tenantId of await this.memberTenants(teamId)) {
+    for (const tenantId of await this.listTeamMemberTenants(teamId)) {
       const context = this.systemContext(tenantId);
       const ids = await this.runner.inTenant(context, async (manager) => {
         const raw: unknown = await manager.query(
-          `SELECT id FROM sessions WHERE "tenantId" = $1 AND visibility->>'scope' = 'team' AND visibility->>'teamId' = $2`,
+          `SELECT id FROM sessions WHERE "tenantId" = $1 AND ${teamVisibilitySql(2)}`,
           [tenantId, teamId],
         );
         return raw as { id: string }[];
@@ -116,9 +120,29 @@ export class PostgresTeamStore implements TeamStore, DirectoryStore {
     return sessions;
   }
 
+  /**
+   * One teammate's session by id. The id is not the permission: the row is
+   * fetched inside its owner's tenant transaction and only returned when the
+   * same team predicate every other fan-out uses says it is team-visible.
+   */
+  async getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null> {
+    for (const tenantId of await this.listTeamMemberTenants(teamId)) {
+      const context = this.systemContext(tenantId);
+      const found = await this.runner.inTenant(context, async (manager) => {
+        const raw: unknown = await manager.query(
+          `SELECT id FROM sessions WHERE "tenantId" = $1 AND id = $3 AND ${teamVisibilitySql(2)}`,
+          [tenantId, teamId, sessionId],
+        );
+        return (raw as { id: string }[]).length > 0;
+      });
+      if (found) return this.sessions.getSession(context, sessionId);
+    }
+    return null;
+  }
+
   async listTeamCollections(teamId: string): Promise<CollectionRecord[]> {
     const collections: CollectionRecord[] = [];
-    for (const tenantId of await this.memberTenants(teamId)) {
+    for (const tenantId of await this.listTeamMemberTenants(teamId)) {
       const rows = await this.collections.listCollections(this.systemContext(tenantId));
       collections.push(...rows.filter((collection) => collection.teamId === teamId));
     }

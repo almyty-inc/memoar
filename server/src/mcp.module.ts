@@ -18,6 +18,7 @@ import { MemoryModule } from "./memory/memory.module.js";
 import { SearchModule } from "./search.module.js";
 import { SessionsModule } from "./sessions.module.js";
 import { SharingModule } from "./sharing/sharing.module.js";
+import { TeamsModule } from "./teams.module.js";
 
 @Module({
   // Every tool reaches data through one of these modules' exported services, so
@@ -29,7 +30,7 @@ import { SharingModule } from "./sharing/sharing.module.js";
   // only; what MCP deliberately does not expose from them is in docs/mcp.md.
   imports: [
     AuthModule, SearchModule, SessionsModule, MachinesModule, CollectionsModule,
-    AnnotationsModule, MemoryModule, SharingModule, DistillationModule,
+    AnnotationsModule, MemoryModule, SharingModule, DistillationModule, TeamsModule,
   ],
   controllers: [McpController, McpHandshakeController, McpStatusController],
   providers: [

@@ -2,6 +2,7 @@ import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, H
 import type { DirectoryStore, TeamInvitation, TeamStore, TenantContext } from "./archive-store.js";
 import { Tenant } from "./auth.js";
 import { sessionSummary } from "./sessions.js";
+import { RequireScopes } from "./auth/decorators.js";
 import { AddTeamMemberDto, CreateTeamDto } from "./teams.dto.js";
 import { ARCHIVE_STORE } from "./tokens.js";
 
@@ -9,7 +10,12 @@ import { ARCHIVE_STORE } from "./tokens.js";
 export class TeamsService {
   constructor(@Inject(ARCHIVE_STORE) private readonly store: TeamStore & DirectoryStore) {}
 
-  private async requireMember(teamId: string, userId: string): Promise<void> {
+  /**
+   * Public because the team workspace routes live in their own controller and
+   * must gate on exactly this, not on a second copy of it. One membership check
+   * for every team read there is.
+   */
+  async requireMember(teamId: string, userId: string): Promise<void> {
     if (!await this.store.isTeamMember(teamId, userId)) {
       throw new ForbiddenException("Caller is not a member of this team");
     }
@@ -119,8 +125,13 @@ export class TeamsController {
     return this.teams.declineInvitation(context, teamId);
   }
 
+  // Inviting somebody into a team decides who may read the members' archives,
+  // so it is a sharing act and asks for the sharing scope. The guard infers
+  // scopes from the path and /teams matches no branch, so a PUT here was
+  // inferred as archive:write — the scope for writing one's own archive.
   @Put(":teamId/members")
   @HttpCode(204)
+  @RequireScopes("sharing:write")
   invite(@Tenant() context: TenantContext, @Param("teamId", ParseUUIDPipe) teamId: string, @Body() body: AddTeamMemberDto) {
     return this.teams.invite(context, teamId, body.email);
   }

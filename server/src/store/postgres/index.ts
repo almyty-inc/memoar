@@ -5,7 +5,7 @@ import type { AnnotationStore, ArchiveStore, MemoryCapture } from "../interfaces
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
-  TeamInvitation, TeamMember, TeamRecord, TenantSettingsRecord, TransferRecord,
+  TeamInvitation, TeamMember, TeamRecord, TeamShareOptinRecord, TenantSettingsRecord, TransferRecord,
 } from "../records.js";
 import { PostgresAnnotationStore } from "./annotations.js";
 import { PostgresArtifactStore } from "./artifacts.js";
@@ -17,6 +17,7 @@ import { TenantRunner } from "./runner.js";
 import { PostgresSessionStore } from "./sessions.js";
 import { PostgresSettingsStore } from "./settings.js";
 import { PostgresSharingStore } from "./sharing.js";
+import { PostgresTeamOptinStore } from "./team-optins.js";
 import { PostgresTeamStore } from "./teams.js";
 
 export { TenantRunner, TenantScope } from "./runner.js";
@@ -32,6 +33,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   private readonly collections: PostgresCollectionStore;
   private readonly sharing: PostgresSharingStore;
   private readonly teams: PostgresTeamStore;
+  private readonly teamOptins: PostgresTeamOptinStore;
   private readonly artifacts: PostgresArtifactStore;
   private readonly jobs: PostgresJobStore;
   private readonly settings: PostgresSettingsStore;
@@ -44,6 +46,7 @@ export class PostgresArchiveStore implements ArchiveStore {
     this.annotations = new PostgresAnnotationStore(runner, this.sessions);
     this.collections = new PostgresCollectionStore(runner);
     this.teams = new PostgresTeamStore(runner, this.sessions, this.collections);
+    this.teamOptins = new PostgresTeamOptinStore(runner);
     this.artifacts = new PostgresArtifactStore(runner);
     this.jobs = new PostgresJobStore(runner);
     this.settings = new PostgresSettingsStore(runner);
@@ -102,7 +105,16 @@ export class PostgresArchiveStore implements ArchiveStore {
   findAccountByEmail(email: string): Promise<TeamMember | null> { return this.teams.findAccountByEmail(email); }
   getAccountEmail(userId: string): Promise<string | null> { return this.teams.getAccountEmail(userId); }
   listTeamSessions(teamId: string): Promise<ArchivedSession[]> { return this.teams.listTeamSessions(teamId); }
+  listTeamMemberTenants(teamId: string): Promise<string[]> { return this.teams.listTeamMemberTenants(teamId); }
+  getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null> { return this.teams.getTeamSession(teamId, sessionId); }
   listTeamCollections(teamId: string): Promise<CollectionRecord[]> { return this.teams.listTeamCollections(teamId); }
+
+  listTeamOptins(teamId: string, tenantId: string): Promise<TeamShareOptinRecord[]> { return this.teamOptins.listTeamOptins(teamId, tenantId); }
+  listTenantOptins(tenantId: string): Promise<TeamShareOptinRecord[]> { return this.teamOptins.listTenantOptins(tenantId); }
+  createTeamOptin(optin: TeamShareOptinRecord): Promise<boolean> { return this.teamOptins.createTeamOptin(optin); }
+  deleteTeamOptin(teamId: string, tenantId: string, machineId: string | null): Promise<boolean> { return this.teamOptins.deleteTeamOptin(teamId, tenantId, machineId); }
+  resolveIngestTeam(tenantId: string, machineId?: string): Promise<string | null> { return this.teamOptins.resolveIngestTeam(tenantId, machineId); }
+  revokeTeamVisibility(context: TenantContext, teamId: string, machineId: string | null): Promise<number> { return this.teamOptins.revokeTeamVisibility(context, teamId, machineId); }
 
   saveRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<boolean> { return this.artifacts.saveRawArtifact(context, artifact); }
   updateRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<void> { return this.artifacts.updateRawArtifact(context, artifact); }

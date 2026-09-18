@@ -5,6 +5,7 @@ import type { CollectionRecord, RedactionReviewRecord, ShareGrantRecord, ShareTo
 import { redactionPatterns, reviewedMasks } from "../../redaction.js";
 import { copyTransferredSession } from "../transfer-copy.js";
 import { uuidV7 } from "../../ids.js";
+import { isTeamVisible } from "../team-visibility.js";
 import { copy, key, type MemoryTables } from "./tables.js";
 
 export class MemorySharingStore implements SharingStore {
@@ -167,10 +168,32 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
     return null;
   }
 
+  async listTeamMemberTenants(teamId: string): Promise<string[]> {
+    const members = this.tables.teamMembers.get(teamId) ?? [];
+    return [...new Set(members.filter((member) => member.status === "active").map((member) => member.tenantId))];
+  }
+
+  /**
+   * Fans out over accepted members' tenants, exactly as the Postgres store
+   * does. It used to sweep every session in the table regardless of whose
+   * tenant it was in, which passed the same tests while modelling none of the
+   * boundary the real store depends on.
+   */
   async listTeamSessions(teamId: string): Promise<ArchivedSession[]> {
-    return [...this.tables.sessions.values()]
-      .filter((session) => session.visibility.scope === "team" && session.visibility.teamId === teamId)
+    const tenants = new Set(await this.listTeamMemberTenants(teamId));
+    return [...this.tables.sessions.entries()]
+      .filter(([entryKey]) => tenants.has(entryKey.slice(0, entryKey.indexOf(":"))))
+      .map(([, session]) => session)
+      .filter((session) => isTeamVisible(session.visibility, teamId))
       .map((session) => copy(session));
+  }
+
+  async getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null> {
+    for (const tenantId of await this.listTeamMemberTenants(teamId)) {
+      const session = this.tables.sessions.get(key(tenantId, sessionId));
+      if (session && isTeamVisible(session.visibility, teamId)) return copy(session);
+    }
+    return null;
   }
 
   async listTeamCollections(teamId: string): Promise<CollectionRecord[]> {

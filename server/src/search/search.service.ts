@@ -7,16 +7,27 @@ import type { SearchBackend, SearchCandidate, SearchFilters } from "./backends.j
 import type { SemanticSearchProvider } from "./embeddings.js";
 import { BuildPackDto, SearchQueryDto } from "./search.dto.js";
 
-function rrf(lexical: readonly SearchCandidate[], semantic: readonly SearchCandidate[]): SearchCandidate[] {
+/**
+ * Reciprocal rank fusion over any number of ranked lists.
+ *
+ * It used to take exactly two, lexical and semantic, which is all a
+ * single-tenant search has. A team search has one pair *per member tenant*, and
+ * their raw scores are not comparable across tenants — a ts_rank from one
+ * archive means nothing against a ts_rank from another. RRF only reads
+ * positions, so feeding it the lists separately fuses them without ever
+ * pretending the scores line up. Two lists in, behaviour is unchanged.
+ */
+export function fuse(...lists: readonly (readonly SearchCandidate[])[]): SearchCandidate[] {
   const fused = new Map<string, SearchCandidate & { fused: number }>();
-  for (const [index, candidate] of lexical.entries()) fused.set(candidate.session.id, { ...candidate, fused: 1 / (60 + index + 1) });
-  for (const [index, candidate] of semantic.entries()) {
-    const current = fused.get(candidate.session.id);
-    if (current) current.fused += 1 / (60 + index + 1);
-    else fused.set(candidate.session.id, { ...candidate, fused: 1 / (60 + index + 1) });
+  for (const list of lists) {
+    for (const [index, candidate] of list.entries()) {
+      const current = fused.get(candidate.session.id);
+      if (current) current.fused += 1 / (60 + index + 1);
+      else fused.set(candidate.session.id, { ...candidate, fused: 1 / (60 + index + 1) });
+    }
   }
   return [...fused.values()].sort((left, right) => right.fused - left.fused || left.session.id.localeCompare(right.session.id))
-    .map(({ fused, ...candidate }) => ({ ...candidate, score: fused }));
+    .map(({ fused: score, ...candidate }) => ({ ...candidate, score }));
 }
 
 export interface SearchResult {
@@ -46,7 +57,7 @@ export class SearchService {
       const semantic = await this.semantic.search(context, query, filters, limit);
       if (requestedMode === "semantic") return { candidates: semantic, requestedMode, realizedMode: "semantic", semanticFailure: null };
       const lexical = await lexicalPromise;
-      return { candidates: rrf(lexical, semantic).slice(0, limit), requestedMode, realizedMode: "hybrid", semanticFailure: null };
+      return { candidates: fuse(lexical, semantic).slice(0, limit), requestedMode, realizedMode: "hybrid", semanticFailure: null };
     } catch (error) {
       return {
         candidates: await lexicalPromise,
@@ -59,25 +70,34 @@ export class SearchService {
 
   async response(context: TenantContext, query: string, mode: "hybrid" | "lexical" | "semantic", filters: SearchFilters, limit: number): Promise<Record<string, unknown>> {
     const started = performance.now();
-    const result = await this.execute(context, query, mode, filters, limit);
-    const agents: Record<string, number> = {};
-    const workspaces: Record<string, number> = {};
-    for (const candidate of result.candidates) {
-      agents[candidate.session.source.tool] = (agents[candidate.session.source.tool] ?? 0) + 1;
-      workspaces[candidate.session.workspace.path] = (workspaces[candidate.session.workspace.path] ?? 0) + 1;
-    }
-    return {
-      items: result.candidates.map((candidate) => ({ ...sessionSummary(candidate.session), score: candidate.score, highlight: candidate.highlight })),
-      nextCursor: null,
-      aggregations: { agents, workspaces },
-      meta: {
-        requestedMode: result.requestedMode,
-        realizedMode: result.realizedMode,
-        tookMs: Math.max(0, Math.round(performance.now() - started)),
-        semanticFailure: result.semanticFailure,
-      },
-    };
+    return searchResponseBody(await this.execute(context, query, mode, filters, limit), started);
   }
+}
+
+/**
+ * One response shape for every search route. The team fan-out returns the same
+ * body as `/search` — same items, same aggregations, same meta — so a client
+ * renders one result list and not two, and so a field added here cannot appear
+ * on one route and be forgotten on the other.
+ */
+export function searchResponseBody(result: SearchResult, startedAt: number): Record<string, unknown> {
+  const agents: Record<string, number> = {};
+  const workspaces: Record<string, number> = {};
+  for (const candidate of result.candidates) {
+    agents[candidate.session.source.tool] = (agents[candidate.session.source.tool] ?? 0) + 1;
+    workspaces[candidate.session.workspace.path] = (workspaces[candidate.session.workspace.path] ?? 0) + 1;
+  }
+  return {
+    items: result.candidates.map((candidate) => ({ ...sessionSummary(candidate.session), score: candidate.score, highlight: candidate.highlight })),
+    nextCursor: null,
+    aggregations: { agents, workspaces },
+    meta: {
+      requestedMode: result.requestedMode,
+      realizedMode: result.realizedMode,
+      tookMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      semanticFailure: result.semanticFailure,
+    },
+  };
 }
 
 export interface PackRequest {

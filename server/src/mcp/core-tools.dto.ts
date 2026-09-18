@@ -50,6 +50,11 @@ export class SearchSessionsDto {
   @IsOptional()
   @IsISO8601()
   to?: string;
+
+  /** A team the caller belongs to. Present, the tool reads that team's shared archive instead of the caller's own. */
+  @IsOptional()
+  @IsUUID()
+  teamId?: string;
 }
 
 /** Arguments for `get_excerpt`. */
@@ -72,6 +77,11 @@ export class GetExcerptDto {
   @Min(200)
   @Max(20_000)
   maxChars?: number;
+
+  /** A team the caller belongs to. Present, the tool reads that team's shared archive instead of the caller's own. */
+  @IsOptional()
+  @IsUUID()
+  teamId?: string;
 }
 
 /** Arguments for `get_session`. */
@@ -90,6 +100,11 @@ export class GetSessionDto {
   @Min(1)
   @Max(200)
   chunkSize?: number;
+
+  /** A team the caller belongs to. Present, the tool reads that team's shared archive instead of the caller's own. */
+  @IsOptional()
+  @IsUUID()
+  teamId?: string;
 }
 
 /** Arguments for `list_collections`. */

@@ -13,6 +13,7 @@ import type {
   TeamInvitation,
   TeamMember,
   TeamRecord,
+  TeamShareOptinRecord,
   TenantSettingsRecord,
   TransferRecord,
 } from "./records.js";
@@ -151,6 +152,47 @@ export interface TeamStore {
   removeTeamMember(teamId: string, userId: string): Promise<boolean>;
   listTeamSessions(teamId: string): Promise<ArchivedSession[]>;
   listTeamCollections(teamId: string): Promise<CollectionRecord[]>;
+  /**
+   * The distinct tenants a team request may iterate over: accepted members
+   * only. This is the whole of the membership half of the isolation argument —
+   * row-level security bounds each query to one tenant, and this bounds which
+   * tenants a request may bind into the setting the policy reads.
+   */
+  listTeamMemberTenants(teamId: string): Promise<string[]>;
+  /**
+   * One teammate's session, found across member tenants and returned only if
+   * its visibility actually names this team. Never a way into a private one.
+   */
+  getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null>;
+}
+
+/**
+ * Who has agreed to share into a team, and from which machines.
+ *
+ * Separate from TeamStore because this is consent, not membership: being in a
+ * team and sharing your capture with it are two different decisions, and the
+ * second one is never implied by the first.
+ */
+export interface TeamOptinStore {
+  /** The caller's own enrolments for one team. Nobody reads anybody else's. */
+  listTeamOptins(teamId: string, tenantId: string): Promise<TeamShareOptinRecord[]>;
+  /** Every enrolment this tenant holds, across all teams. At most one team's worth. */
+  listTenantOptins(tenantId: string): Promise<TeamShareOptinRecord[]>;
+  /** @returns false when an identical enrolment already exists. */
+  createTeamOptin(optin: TeamShareOptinRecord): Promise<boolean>;
+  deleteTeamOptin(teamId: string, tenantId: string, machineId: string | null): Promise<boolean>;
+  /**
+   * The team a session captured right now on this machine is widened to, or
+   * null. Resolved at ingest and written into `sessions.visibility`, so no read
+   * path has to consult this table or change shape.
+   */
+  resolveIngestTeam(tenantId: string, machineId?: string): Promise<string | null>;
+  /**
+   * Puts the caller's already-stamped sessions back to private. An ordinary
+   * single-tenant write under the caller's own policy — revocation reaches only
+   * the sharer's own archive, never a copy somebody already imported.
+   */
+  revokeTeamVisibility(context: TenantContext, teamId: string, machineId: string | null): Promise<number>;
 }
 
 export interface DirectoryStore {
@@ -208,6 +250,7 @@ export interface ArchiveStore extends
   CollectionStore,
   SharingStore,
   TeamStore,
+  TeamOptinStore,
   DirectoryStore,
   ArtifactStore,
   JobStore,

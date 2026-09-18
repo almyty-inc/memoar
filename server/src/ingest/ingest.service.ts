@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { AnnotationKind } from "../../libs/canonical/src/generated.js";
 import { ParserRegistry, type SessionSeed } from "../../libs/parsers/src/index.js";
 import type { EmbeddingProvider } from "../search.js";
-import type { AnnotationStore, ArtifactStore, RawArtifactRecord, SessionStore, SettingsStore, TenantContext } from "../archive-store.js";
+import type { AnnotationStore, ArchivedSession, ArtifactStore, RawArtifactRecord, SessionStore, SettingsStore, TeamOptinStore, TenantContext } from "../archive-store.js";
 import { redactionPatterns } from "../redaction.js";
 import { uuidV5, uuidV7 } from "../ids.js";
 import { artifactsIngested, ingestBytes, sessionsArchived } from "../metrics/metrics.registry.js";
@@ -11,6 +11,7 @@ import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "../tokens.js";
 import { type JobQueue, type QueueJob } from "./queues.js";
 import type { ObjectStorage } from "./object-storage.js";
 import { FormatDetector, SecretScanner } from "./detection.js";
+import { IngestTeamStamp } from "./team-stamp.js";
 
 /** Names the rows the secret scanner owns, so re-scanning replaces only its own. */
 export const SCANNER_ORIGIN = "secret-scanner";
@@ -161,7 +162,7 @@ export class DefaultPipelineSeedFactory implements PipelineSeedFactory {
 
 export class IngestPipeline {
   constructor(
-    private readonly store: ArtifactStore & SessionStore & AnnotationStore & SettingsStore,
+    private readonly store: ArtifactStore & SessionStore & AnnotationStore & SettingsStore & TeamOptinStore,
     private readonly objects: ObjectStorage,
     private readonly parsers = new ParserRegistry(),
     private readonly detector = new FormatDetector(),
@@ -185,6 +186,8 @@ export class IngestPipeline {
     const settings = await this.store.getTenantSettings(context);
     const findings = this.scanner.scan(bytes, redactionPatterns(settings.redaction));
     const savedSessionIds: string[] = [];
+    // Standing team consent, resolved once per artifact and applied per session.
+    const teamStamp = new IngestTeamStamp(this.store, context);
     try {
     for (const [index, parsedSession] of result.sessions.entries()) {
       const canonicalSessionId = await this.store.resolveSessionIdentity(context, {
@@ -202,7 +205,7 @@ export class IngestPipeline {
         replay a parser improvement over what earlier versions produced, and it
         cannot find those sessions if provenance says they were all the same.
       */
-      const session = {
+      const parsed: ArchivedSession = {
         ...parsedSession,
         id: canonicalSessionId,
         provenance: parsedSession.provenance.map((entry) => (
@@ -210,6 +213,9 @@ export class IngestPipeline {
         )),
         redactionStatus: findings.length ? "findings" as const : "clear" as const,
       };
+      // Widened here or never: the opt-in is written into the row rather than
+      // consulted by every reader. See IngestTeamStamp for the two gates.
+      const session: ArchivedSession = { ...parsed, visibility: await teamStamp.visibilityFor(parsed) };
       await this.store.saveSession(context, session);
       // Every finding at once. Written one by one, a transcript that leaked a
       // credential on a hundred lines cost a hundred round trips to store.

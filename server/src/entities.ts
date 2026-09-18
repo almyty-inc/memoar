@@ -11,7 +11,7 @@ export type { ContentBlockRow, MemoryDocumentRow, MemoryRevisionRow, SessionRow,
 
 import { ContentBlockEntity, MemoryDocumentEntity, MemoryRevisionEntity, SessionEntity, TurnEntity } from "../libs/canonical/src/orm.generated.js";
 import { AnnotationEntity, CollectionEntity, CollectionSessionEntity } from "./entities/curation.js";
-import { ApiKeyEntity, AuthIdentityEntity, AuthSessionEntity, BillingAccountEntity, BillingSubscriptionEntity, OrganizationEntity, TeamEntity, TeamMemberEntity, UserEntity } from "./entities/identity.js";
+import { ApiKeyEntity, AuthIdentityEntity, AuthSessionEntity, BillingAccountEntity, BillingSubscriptionEntity, OrganizationEntity, TeamEntity, TeamMemberEntity, TeamShareOptinEntity, UserEntity } from "./entities/identity.js";
 import { MachineCommandEntity, MachineEntity, MachineTokenEntity } from "./entities/machines.js";
 import { AccountSettingsEntity, ArtifactSessionEntity, JobEntity, RawArtifactEntity, SessionIdentityEntity } from "./entities/operations.js";
 import { RedactionReviewEntity, ShareGrantEntity, ShareTokenEntity, TransferEntity, TransferOfferEntity } from "./entities/sharing.js";
@@ -45,6 +45,7 @@ export const ENTITIES = [
   TransferOfferEntity,
   ShareTokenEntity,
   TeamMemberEntity,
+  TeamShareOptinEntity,
   MachineCommandEntity,
   ArtifactSessionEntity,
 ] as const;
