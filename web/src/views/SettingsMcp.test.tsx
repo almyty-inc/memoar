@@ -4,6 +4,7 @@ import { SettingsView } from './Settings';
 import { memoarApi } from '../lib/api';
 
 let settingsLoaded: ReturnType<typeof vi.spyOn>;
+let mcpStatusAsked: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -18,6 +19,11 @@ beforeEach(() => {
     budgetWindowStartedAt: '2026-09-01T00:00:00.000Z',
   });
 
+  mcpStatusAsked = vi.spyOn(memoarApi, 'getMcpStatus').mockResolvedValue({
+    available: true,
+    contractVersion: '0.3.0',
+    tools: ['search_sessions', 'get_excerpt', 'pack'],
+  });
 });
 
 function renderSettings() {
@@ -45,8 +51,16 @@ describe('the remote MCP section', () => {
     const { container } = renderSettings();
     await waitFor(() => expect(settingsLoaded).toHaveBeenCalled());
 
+    // The word itself is gone: a badge that says how many tools are served
+    // cannot be produced without having asked. "Available" could.
     expect(screen.queryByText(/Available/u)).not.toBeInTheDocument();
-    expect(container.querySelector('.mcp-section .status-active')).toBeNull();
+    // And the live-green state is now reachable only through the archive's
+    // answer, so it must have been asked for before it can appear.
+    await waitFor(() =>
+      expect(container.querySelector('.mcp-section .status-active')).not.toBeNull(),
+    );
+    // The spy is what records that the archive was asked at all.
+    expect(mcpStatusAsked).toHaveBeenCalled();
   });
 
   it('still says what it does know: the endpoint, and how to add it', async () => {
@@ -55,5 +69,34 @@ describe('the remote MCP section', () => {
 
     expect(screen.getByText('https://app.dev.memoar.test/mcp')).toBeInTheDocument();
     expect(screen.getByText(/claude mcp add --transport http memoar/u)).toBeInTheDocument();
+  });
+});
+
+describe('the MCP badge', () => {
+  it('says what the archive answered, not what the page assumed', async () => {
+    renderSettings();
+    // The tool count is the proof it was measured: a literal could claim
+    // availability, but not how many tools this deployment serves.
+    expect(await screen.findByText('3 tools')).toBeInTheDocument();
+  });
+
+  it('shows nothing at all while the answer is in flight', () => {
+    renderSettings();
+    expect(screen.queryByText(/tools|Not served/u)).not.toBeInTheDocument();
+  });
+
+  it('claims nothing when the archive cannot be asked', async () => {
+    vi.spyOn(memoarApi, 'getMcpStatus').mockRejectedValue(new Error('offline'));
+    renderSettings();
+    await waitFor(() => expect(settingsLoaded).toHaveBeenCalled());
+    expect(screen.queryByText(/tools|Not served/u)).not.toBeInTheDocument();
+  });
+
+  it('says so when the deployment serves no tools', async () => {
+    vi.spyOn(memoarApi, 'getMcpStatus').mockResolvedValue({
+      available: false, contractVersion: '0.3.0', tools: [],
+    });
+    renderSettings();
+    expect(await screen.findByText('Not served')).toBeInTheDocument();
   });
 });

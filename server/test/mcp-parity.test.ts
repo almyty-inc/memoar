@@ -187,3 +187,28 @@ describe("collection tools", () => {
       .toEqual([THEIR_SESSION]);
   });
 });
+
+/**
+ * The signal the settings page never had.
+ *
+ * It showed a green dot and the word "Available" beside the endpoint,
+ * unconditionally, next to a URL nothing ever contacted. It could not be gated
+ * on anything: the only route that knew was the handshake, and that
+ * authenticates with an API key while a browser holds a session token.
+ */
+describe("mcp status", () => {
+  it("answers from the registry that serves the tools", async () => {
+    const { McpStatusController } = await import("../src/mcp/status.controller.js");
+    const registry = buildRegistry(new DevArchiveStore());
+    const body = new McpStatusController(registry).status() as {
+      available: boolean;
+      tools: string[];
+    };
+    expect(body.available).toBe(true);
+    expect(body.tools).toEqual(registry.names);
+    // If it ever reports availability without naming what is available, the
+    // badge is a literal wearing a network call.
+    expect(body.tools.length).toBeGreaterThan(0);
+    expect(body.tools).toContain("search_sessions");
+  });
+});

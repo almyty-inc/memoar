@@ -17,6 +17,17 @@ export function OnboardingView({ machines, onComplete, onRefresh }: {
   const login = `memoar login --endpoint ${endpoint}`;
   const sync = 'memoar sync --watch';
 
+  // Null until the archive answers, and null if it refuses: the sentence drops
+  // the number rather than guessing one.
+  const [connectorCount, setConnectorCount] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    void memoarApi.getCapabilities()
+      .then((capabilities) => { if (active) setConnectorCount(capabilities.connectorCount); })
+      .catch(() => { if (active) setConnectorCount(null); });
+    return () => { active = false; };
+  }, []);
+
   // The page is waiting for something that happens on another machine, so it
   // asks the archive rather than asking the reader to reload.
   const [checking, setChecking] = useState(false);
@@ -89,14 +100,15 @@ export function OnboardingView({ machines, onComplete, onRefresh }: {
           <div className="install-explainer">
             <div><p><strong>Signing in registers the machine</strong><small>The archive learns its name and platform; the agent keeps a token scoped to capture.</small></p></div>
             {/*
-              No count. "Eleven agents' session stores" was an English literal
-              in this file bound to a Rust array in another crate: accurate the
-              day it was written, and nothing keeps it so — adding a connector
-              is a change in agent/crates/memoar-connectors with no reason to
-              visit this line. The archive does not report how many connectors
-              the agent ships, so the sentence stops claiming a number.
+              The number comes from the archive now. It was the English word
+              "Eleven", kept in step with a Rust array in another crate by
+              nothing at all — right on the day it was written, and a lie the
+              day a twelfth connector shipped. GET /capabilities counts the
+              parsers that read a store on a machine, so the sentence and the
+              software cannot disagree. Until it answers, the sentence simply
+              carries no number.
             */}
-            <div><p><strong>Sync discovers what is there</strong><small>The session stores your coding agents already write, plus the instruction files they read. Nothing else is read.</small></p></div>
+            <div><p><strong>Sync discovers what is there</strong><small>{connectorCount === null ? 'The session stores your coding agents already write' : `${connectorCount} agents' session stores`}, plus the instruction files they read. Nothing else is read.</small></p></div>
 
             <div><p><strong>--watch keeps it going</strong><small>Files are re-read as they grow, so an ongoing session stays up to date.</small></p></div>
           </div>

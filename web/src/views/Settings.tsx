@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { accountInitials } from '../lib/account';
-import { memoarApi, type DistillationSettings, type TenantSettings } from '../lib/api';
+import { memoarApi, type DistillationSettings, type TenantSettings, McpStatus } from '../lib/api';
 import type { CurrentUser, ApiKey } from '../lib/types';
 import { Badge, Button, CopyButton, IconButton, Modal, Toggle, cn, formatDate, formatRelative } from '../components/ui';
 
@@ -65,6 +65,9 @@ function mcpCommands(endpoint: string): { name: string; command: string }[] {
 
 export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRevoked }: { apiKeys: ApiKey[]; mcpEndpoint: string; user: CurrentUser | null; onCreateKey: (name: string, scopes: string[]) => Promise<string>; onKeyRevoked: () => void }) {
   const [tab, setTab] = useState<SettingsTab>('keys');
+  // Null until the archive answers, and null again if it refuses: a failed
+  // check is not evidence of availability in either direction.
+  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [keyName, setKeyName] = useState('Codex MCP');
@@ -105,6 +108,12 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
     void memoarApi.getDistillationSettings()
       .then((loaded) => { if (active) setDistillation(loaded); })
       .catch((error: unknown) => { if (active) setDistillationError(error instanceof Error ? error.message : 'Distillation settings could not be loaded'); });
+    // A failed check leaves the badge absent rather than claiming either
+    // answer. The page is still useful without it — the endpoint and the setup
+    // commands do not depend on knowing.
+    void memoarApi.getMcpStatus()
+      .then((loaded) => { if (active) setMcpStatus(loaded); })
+      .catch(() => { if (active) setMcpStatus(null); });
     return () => { active = false; };
   }, []);
 
@@ -202,17 +211,26 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
 
               <section className="settings-section mcp-section">
                 {/*
-                  No status badge. This read "Available" with a live green dot,
-                  unconditionally, for an endpoint the browser never contacts —
-                  the same defect as the "Connected 8m ago" row below and the
-                  literal "Connected" in the topbar, both already removed. The
-                  only thing that can answer whether this deployment serves MCP
-                  is POST /v1/mcp/auth/handshake, which takes an API key the
-                  browser does not hold. Until the archive reports MCP
-                  availability on a session-authenticated route, this section
-                  says what it does know: the endpoint, and how to add it.
+                  The badge is measured now. It read "Available" with a live
+                  green dot, unconditionally, for an endpoint the browser never
+                  contacted — the same defect as the "Connected 8m ago" row
+                  below and the literal "Connected" in the topbar. Nothing could
+                  answer it: the handshake takes an API key the browser does not
+                  hold. GET /v1/mcp/status is that missing signal, and it names
+                  the tools as well, so the badge cannot be right about
+                  availability and wrong about what is available. While the
+                  request is in flight there is no badge, because "checking" is
+                  not a status either.
                 */}
-                <header><div><h2>Remote MCP</h2><p>Let Claude Code, Codex, and other MCP clients retrieve cited archive evidence.</p></div></header>
+                <header>
+                  <div><h2>Remote MCP</h2><p>Let Claude Code, Codex, and other MCP clients retrieve cited archive evidence.</p></div>
+                  {mcpStatus && (
+                    <Badge className={mcpStatus.available ? 'status-active' : 'status-idle'}>
+                      <span />
+                      {mcpStatus.available ? `${mcpStatus.tools.length} tools` : 'Not served'}
+                    </Badge>
+                  )}
+                </header>
 
                 <div className="endpoint-row"><span><ServerCog size={16} /></span><div><small>Streamable HTTP endpoint</small><code>{mcpEndpoint}</code></div><CopyButton value={mcpEndpoint} /></div>
                 {/*

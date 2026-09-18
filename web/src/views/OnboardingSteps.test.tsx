@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { OnboardingView } from './OnboardingSteps';
 import type { Machine } from '../lib/types';
+import { memoarApi } from '../lib/api';
 
 function machine(overrides: Partial<Machine> = {}): Machine {
   return {
@@ -56,6 +57,7 @@ describe('connecting a machine', () => {
 
     const explainer = screen.getByText(/session stores/u);
     expect(explainer).toHaveTextContent(/session stores/u);
+    // No number before the archive has answered, and never a written-out one.
     expect(explainer.textContent).not.toMatch(/Eleven|eleven|\b\d+\b/u);
 
   });
@@ -91,5 +93,25 @@ describe('connecting a machine', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('the connector count', () => {
+  it('states the number the archive reports', async () => {
+    vi.spyOn(memoarApi, 'getCapabilities').mockResolvedValue({
+      contractVersion: '0.3.0',
+      connectors: ['claude-code', 'codex', 'cursor'],
+      connectorCount: 3,
+      uploadFormats: ['chatgpt-export'],
+    });
+    render(<OnboardingView machines={[machine()]} onComplete={vi.fn()} onRefresh={vi.fn()} />);
+    expect(await screen.findByText(/3 agents' session stores/u)).toBeInTheDocument();
+  });
+
+  it('carries no number when the archive cannot be asked', async () => {
+    vi.spyOn(memoarApi, 'getCapabilities').mockRejectedValue(new Error('offline'));
+    render(<OnboardingView machines={[machine()]} onComplete={vi.fn()} onRefresh={vi.fn()} />);
+    const explainer = await screen.findByText(/session stores/u);
+    expect(explainer.textContent).not.toMatch(/\b\d+\b/u);
   });
 });

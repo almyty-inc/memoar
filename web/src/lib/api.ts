@@ -194,6 +194,21 @@ export type ImportSource = 'canonical' | 'cass' | 'claude-code' | 'codex' | 'ant
 
 export type ImportStage = 'hashing' | 'uploading' | 'queued' | 'processing' | 'ready';
 
+/** What `GET /mcp/status` answers. */
+export interface McpStatus {
+  available: boolean;
+  contractVersion: string;
+  tools: string[];
+}
+
+/** What `GET /capabilities` answers. */
+export interface ArchiveCapabilities {
+  contractVersion: string;
+  connectors: string[];
+  connectorCount: number;
+  uploadFormats: string[];
+}
+
 export interface TenantSettings {
   redaction: { secretScan: boolean; pathScan: boolean; emailScan: boolean; customPatterns: string[] };
   retention: { policy: 'indefinite' | 'days'; days?: number; exemptCollected: boolean };
@@ -726,6 +741,26 @@ export class MemoarApiClient {
   async getSettings(): Promise<TenantSettings> {
     this.requireArchive();
     return this.request<TenantSettings>('/settings');
+  }
+
+  /**
+   * Whether this deployment serves MCP, and what it serves.
+   *
+   * The settings page used to state availability without asking anything. It
+   * could not ask: the handshake takes an API key and the browser holds a
+   * session token. This is the route that closed that.
+   */
+  async getMcpStatus(): Promise<McpStatus> {
+    this.requireArchive();
+    return this.request<McpStatus>('/mcp/status');
+  }
+
+  /**
+   * What the archive can read. Public, and deliberately so — the page that
+   * shows it is read before anyone signs in.
+   */
+  async getCapabilities(): Promise<ArchiveCapabilities> {
+    return this.request<ArchiveCapabilities>('/capabilities');
   }
 
   async updateSettings(update: {

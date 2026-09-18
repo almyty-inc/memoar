@@ -5,6 +5,7 @@ import { CollectionsModule } from "./collections/collections.module.js";
 import { DistillationModule } from "./distillation.module.js";
 import { MachinesModule } from "./machines.module.js";
 import { McpController, McpHandshakeController, McpRateLimiter, McpService } from "./mcp.js";
+import { McpStatusController } from "./mcp/status.controller.js";
 import { McpAnnotationTools } from "./mcp/annotation-tools.js";
 import { McpArchiveTools } from "./mcp/archive-tools.js";
 import { McpCollectionTools } from "./mcp/collection-tools.js";
@@ -30,7 +31,7 @@ import { SharingModule } from "./sharing/sharing.module.js";
     AuthModule, SearchModule, SessionsModule, MachinesModule, CollectionsModule,
     AnnotationsModule, MemoryModule, SharingModule, DistillationModule,
   ],
-  controllers: [McpController, McpHandshakeController],
+  controllers: [McpController, McpHandshakeController, McpStatusController],
   providers: [
     { provide: McpRateLimiter, useFactory: () => new McpRateLimiter() },
     McpCoreTools,

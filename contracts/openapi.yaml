@@ -19,6 +19,53 @@ tags:
   - name: MCP
   - name: Operations
 paths:
+  /capabilities:
+    get:
+      tags: [Operations]
+      operationId: getCapabilities
+      description: >-
+        What this deployment can read: the coding agents whose own stores the
+        capture agent collects, the formats that arrive by upload instead, and
+        the contract version. Answered from the parser registry rather than from
+        a list maintained by hand. Public, because it describes the software and
+        not an archive — someone deciding whether to run memoar has not signed
+        in yet.
+      security: []
+      responses:
+        '200':
+          description: The connectors and upload formats this build parses
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contractVersion, connectors, connectorCount, uploadFormats]
+                properties:
+                  contractVersion: { type: string }
+                  connectors: { type: array, items: { type: string } }
+                  connectorCount: { type: integer }
+                  uploadFormats: { type: array, items: { type: string } }
+  /mcp/status:
+    get:
+      tags: [MCP]
+      operationId: getMcpStatus
+      description: >-
+        Whether this deployment serves MCP and which tools it serves, answered
+        from the registry that serves them. Session-authenticated: the handshake
+        takes an API key, which a browser does not hold, so a web client had no
+        way to ask this and the settings page asserted availability it had never
+        measured.
+      responses:
+        '200':
+          description: MCP availability and the tool names on offer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available, contractVersion, tools]
+                properties:
+                  available: { type: boolean }
+                  contractVersion: { type: string }
+                  tools: { type: array, items: { type: string } }
   /metrics:
     get:
       tags: [Operations]
