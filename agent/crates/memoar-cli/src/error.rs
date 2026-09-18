@@ -120,6 +120,7 @@ pub(crate) fn map_materialize_error(error: MaterializeError) -> AppError {
         | MaterializeError::UnsafePath(_)
         | MaterializeError::ContractVersion(_)
         | MaterializeError::Integrity(_)
+        | MaterializeError::MissingWorkspace
         | MaterializeError::Decode { .. } => AppError::usage(error.to_string()),
         _ => AppError::internal(error.to_string()),
     }

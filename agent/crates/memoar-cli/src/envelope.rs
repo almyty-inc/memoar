@@ -59,6 +59,7 @@ pub fn introspect_value() -> Value {
             { "name": "view", "requiresAuth": true, "network": true },
             { "name": "pack", "requiresAuth": true, "network": true },
             { "name": "convert", "requiresAuth": true, "network": true },
+            { "name": "memory convert", "requiresAuth": true, "network": true },
             { "name": "doctor", "requiresAuth": true, "network": true },
             { "name": "capabilities", "requiresAuth": false, "network": false },
             { "name": "introspect", "requiresAuth": false, "network": false }

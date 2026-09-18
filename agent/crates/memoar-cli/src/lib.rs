@@ -8,6 +8,7 @@ mod error;
 mod listen;
 mod login;
 mod machine;
+mod memory;
 mod query;
 mod settings;
 mod sse;
@@ -23,8 +24,8 @@ pub use crate::api::{
     MAX_CONVERSION_BUNDLE_BYTES, SLOWEST_TOLERATED_BYTES_PER_SEC,
 };
 pub use crate::args::{
-    Cli, Command, ConvertArgs, ListenArgs, LoginArgs, PackArgs, RedactionArgs, SearchArgs,
-    SourcesCommand, SyncArgs, ViewArgs,
+    Cli, Command, ConvertArgs, ListenArgs, LoginArgs, MemoryCommand, MemoryConvertArgs, PackArgs,
+    RedactionArgs, SearchArgs, SourcesCommand, SyncArgs, ViewArgs,
 };
 pub use crate::config::RuntimePaths;
 pub use crate::credential::{Credential, CredentialStore, FileCredentialStore};
@@ -42,6 +43,7 @@ use serde_json::Value;
 use crate::convert::convert;
 use crate::listen::listen;
 use crate::login::login;
+use crate::memory::memory;
 use crate::query::{pack, search, view};
 use crate::settings::{redaction, sources};
 use crate::status::{doctor, status};
@@ -65,6 +67,7 @@ pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppErro
         Command::View(args) => view(args, paths),
         Command::Pack(args) => pack(args, paths),
         Command::Convert(args) => convert(args, paths),
+        Command::Memory { command } => memory(command, paths),
         Command::Listen(args) => listen(args, paths),
         Command::Doctor => doctor(paths),
         Command::Capabilities => Ok(CommandOutput {

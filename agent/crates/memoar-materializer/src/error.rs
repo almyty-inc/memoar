@@ -30,4 +30,6 @@ pub enum MaterializeError {
     Database(#[from] rusqlite::Error),
     #[error("bundle contract version {0} is not supported")]
     ContractVersion(String),
+    #[error("a project memory conversion needs the workspace its files belong to")]
+    MissingWorkspace,
 }

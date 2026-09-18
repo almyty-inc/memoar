@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TenantContext } from "../archive-store.js";
 import { requireReviewed } from "../memory/memory-redaction.js";
+import { currentText } from "../memory/memory-revisions.js";
 import { MEMORY_SCOPES } from "../memory/memory.dto.js";
 import { MemoryService } from "../memory/memory.service.js";
 import { parseToolArguments } from "./arguments.js";
@@ -102,16 +103,8 @@ export class McpMemoryTools implements McpToolGroup {
     requireReviewed(document);
     const maxChars = request.maxChars ?? DEFAULT_MAX_CHARS;
     // The current text is the revision the document points at, not the newest
-    // one. A file edited and then reverted reuses the revision already recorded
-    // for that text — deliberately, because it is the same text — and that row
-    // keeps its original `capturedAt`. So after A, then B, then back to A, the
-    // history reads [B, A] newest-first while the document says A, and taking
-    // the head returned B's text beside A's hash: two different versions
-    // presented as one.
-    const current = revisions.find((revision) => revision.contentHash === document.contentHash)
-      ?? revisions.at(0)
-      ?? null;
-    const text = current?.text ?? "";
+    // one — see `currentText`, which conversion reads through as well.
+    const text = currentText(document, revisions);
     return {
       document,
       content: {

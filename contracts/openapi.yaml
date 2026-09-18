@@ -1342,6 +1342,44 @@ paths:
                     oneOf:
                       - { $ref: '#/components/schemas/MemoryRevision' }
                       - { type: 'null' }
+  /memory/conversions:
+    post:
+      tags: [Memory]
+      operationId: convertMemoryDocuments
+      summary: Port the instruction files one tool reads into another tool's dialect
+      description: >
+        A mechanical dialect port. The same text, written to the target tool's
+        path and filename, with nothing rewritten, no frontmatter invented and
+        no model involved: `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` are the same
+        intent in different dialects, and these are the user's own words, which
+        are expensive to recreate and not memoar's to reinterpret.
+
+        Where the target reads a single file and several captured files are
+        selected, they are concatenated in source-path order, each part
+        introduced by an HTML comment naming the file it came from. Where the
+        target reads a rules directory, each captured file keeps its own file
+        and is copied byte for byte.
+
+        `cursor` is accepted as a source and not as a target: Cursor reads
+        nothing from a `.mdc` without frontmatter, so the only way to write one
+        would be to invent frontmatter.
+
+        A document the secret scanner flagged is refused until a person has
+        reviewed it — conversion writes the text onto a disk, which is egress.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryConversionRequest' }
+      responses:
+        '200':
+          description: The files to write, and where
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryConversionBundle' }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { description: No captured file is read by that tool in that scope }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
   /memory/{documentId}:
     get:
       tags: [Memory]
@@ -1889,6 +1927,65 @@ components:
         readers: { type: array, items: { type: string } }
         text: { type: string }
         capturedAt: { type: string, format: date-time }
+    MemoryConversionRequest:
+      type: object
+      required: [source, target, scope]
+      properties:
+        source:
+          type: string
+          description: The tool whose files are being ported. Any tool memoar captures for.
+          enum: [antigravity-cli, claude-code, codex, copilot, crush, cursor, goose, kilo, opencode, roo, zed]
+        target:
+          type: string
+          description: The dialect to write. Cursor is absent by design; see the operation description.
+          enum: [antigravity-cli, claude-code, codex, copilot, crush, goose, kilo, opencode, roo, zed]
+        scope: { type: string, enum: [global, project] }
+        workspacePath:
+          type: string
+          description: Required when scope is project. Those files belong to one repository.
+        machineId: { $ref: '#/components/schemas/Uuid' }
+    MemoryConversionBundle:
+      type: object
+      description: >
+        Everything needed to write the ported files, and nothing else. There is
+        no job and no object store: a memory conversion is a few kilobytes of
+        text somebody typed by hand, where a session conversion renders every
+        turn.
+      required: [contractVersion, bundleVersion, kind, source, target, scope, files, report, bundleSha256]
+      properties:
+        contractVersion: { type: string }
+        bundleVersion: { type: string, enum: ['1'] }
+        kind: { type: string, enum: [memory] }
+        source: { type: string }
+        target: { type: string }
+        scope: { type: string, enum: [global, project] }
+        workspacePath: { type: string }
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, mediaType, base64, sha256, size, sources]
+            properties:
+              path:
+                type: string
+                description: >
+                  Prefixed `~/` for a global conversion and `./` for a project
+                  one, so the root it is relative to is never guessed.
+              mediaType: { type: string }
+              base64: { type: string }
+              sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+              size: { type: integer, minimum: 0 }
+              sources:
+                type: array
+                description: The captured files this file was built from, in the order they appear in it.
+                items: { type: string }
+        report:
+          type: object
+          required: [documents, concatenated]
+          properties:
+            documents: { type: integer, minimum: 0 }
+            concatenated: { type: boolean }
+        bundleSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
     Machine:
       type: object
       required: [id, name, platform, status, lastSeenAt, sources]

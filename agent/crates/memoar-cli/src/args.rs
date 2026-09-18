@@ -43,6 +43,11 @@ pub enum Command {
     View(ViewArgs),
     Pack(PackArgs),
     Convert(ConvertArgs),
+    /// Work with the standing instructions the agents on this account read.
+    Memory {
+        #[command(subcommand)]
+        command: MemoryCommand,
+    },
     /// Subscribe to the server command channel and materialize conversions on this machine.
     Listen(ListenArgs),
     Doctor,
@@ -157,6 +162,39 @@ pub struct PackArgs {
     pub freshness_policy: String,
     #[arg(long)]
     pub stale_after_days: Option<u16>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MemoryCommand {
+    /// Port the files one tool reads into another tool's dialect.
+    ///
+    /// The same text at the target tool's path: nothing is rewritten, no
+    /// frontmatter is invented, and no model is involved.
+    Convert(MemoryConvertArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct MemoryConvertArgs {
+    /// The tool whose files are being ported.
+    #[arg(long)]
+    pub source: String,
+    /// The dialect to write. Cursor is not one: it reads nothing from a `.mdc`
+    /// without frontmatter, and inventing frontmatter is not a port.
+    #[arg(long)]
+    pub target: String,
+    #[arg(long, default_value = "global")]
+    pub scope: String,
+    /// The repository whose instruction files to port, and the directory they
+    /// are written into. Required for `--scope project`, and one flag rather
+    /// than two because it is one thing.
+    #[arg(long, value_name = "PATH")]
+    pub workspace: Option<PathBuf>,
+    #[arg(long)]
+    pub machine_id: Option<String>,
+    /// Write the ported files onto this machine. Without it the bundle is
+    /// printed and nothing is touched.
+    #[arg(long)]
+    pub here: bool,
 }
 
 #[derive(Debug, Args)]

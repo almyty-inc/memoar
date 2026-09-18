@@ -4,6 +4,8 @@ import type { ListResponse, WireCollection, WireSessionSummary } from './wire';
 import type {
   Annotation,
   Collection,
+  MemoryConversionBundle,
+  MemoryDialect,
   MemoryDocument,
   MemoryRevision,
   SessionSummary,
@@ -34,6 +36,26 @@ export class MemoarApiClient extends TeamsApi {
 
   deleteMemory(documentId: string): Promise<void> {
     return this.request<void>(`/memory/${documentId}`, { method: 'DELETE' });
+  }
+
+  /**
+   * Ports the files one tool reads into another tool's dialect.
+   *
+   * Nothing is written here: the answer says what would be written and where,
+   * and `memoar memory convert --here` is what puts it on a machine. A file the
+   * scanner flagged is refused until somebody has reviewed it, which is the
+   * same gate the rest of this page is about.
+   */
+  convertMemory(input: {
+    source: string;
+    target: MemoryDialect;
+    scope: 'global' | 'project';
+    workspacePath?: string;
+  }): Promise<MemoryConversionBundle> {
+    return this.request<MemoryConversionBundle>('/memory/conversions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   listAnnotations(sessionId: string): Promise<ListResponse<Annotation>> {

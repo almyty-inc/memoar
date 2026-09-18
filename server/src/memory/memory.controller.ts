@@ -2,12 +2,17 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Qu
 import type { MemoryDocument, MemoryRevision } from "../../libs/canonical/src/generated.js";
 import type { TenantContext } from "../archive-store.js";
 import { RequireScopes, Tenant } from "../auth.js";
-import { CaptureMemoryDto, ListMemoryQueryDto, ReviewMemoryDto } from "./memory.dto.js";
+import type { MemoryConversionBundle } from "../convert/memory-conversion.js";
+import { MemoryConversionService } from "./memory-conversion.service.js";
+import { CaptureMemoryDto, ConvertMemoryDto, ListMemoryQueryDto, ReviewMemoryDto } from "./memory.dto.js";
 import { MemoryService } from "./memory.service.js";
 
 @Controller("memory")
 export class MemoryController {
-  constructor(private readonly memory: MemoryService) {}
+  constructor(
+    private readonly memory: MemoryService,
+    private readonly conversions: MemoryConversionService,
+  ) {}
 
   @Get()
   list(
@@ -31,6 +36,21 @@ export class MemoryController {
   @HttpCode(200)
   capture(@Tenant() context: TenantContext, @Body() body: CaptureMemoryDto): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> {
     return this.memory.capture(context, body);
+  }
+
+  /*
+    A mechanical port of standing instructions between tools.
+
+    Read-only on the archive despite being a POST — the request carries a body
+    describing what to port, and nothing about the archive changes — so the
+    scope asked for is `archive:read` rather than the `archive:write` a POST
+    would otherwise be taken to mean. The capture agent holds both.
+  */
+  @Post("conversions")
+  @RequireScopes("archive:read")
+  @HttpCode(200)
+  convert(@Tenant() context: TenantContext, @Body() body: ConvertMemoryDto): Promise<MemoryConversionBundle> {
+    return this.conversions.convert(context, body);
   }
 
   @Get(":documentId")

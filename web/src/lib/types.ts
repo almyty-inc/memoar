@@ -287,6 +287,45 @@ export interface MemoryDocument {
   redactionFindings: string[];
 }
 
+/**
+ * The dialects a conversion can be written into.
+ *
+ * Cursor is missing on purpose: it reads nothing from a `.cursor/rules/*.mdc`
+ * without frontmatter, and inventing frontmatter would not be the mechanical
+ * port this is. Held to the server's list by a test, because a target the page
+ * offers and the archive refuses is a button that does nothing.
+ */
+export const MEMORY_DIALECTS = [
+  'antigravity-cli',
+  'claude-code',
+  'codex',
+  'copilot',
+  'crush',
+  'goose',
+  'kilo',
+  'opencode',
+  'roo',
+  'zed',
+] as const;
+
+export type MemoryDialect = (typeof MEMORY_DIALECTS)[number];
+
+/**
+ * What the archive says it would write, and where.
+ *
+ * Which tools have no file in a given scope is the server's table, not this
+ * one: the page offers every dialect and renders the refusal when a pairing has
+ * nowhere to land. A fourth copy of that table is a fourth thing to drift.
+ */
+export interface MemoryConversionBundle {
+  source: string;
+  target: MemoryDialect;
+  scope: 'global' | 'project';
+  workspacePath?: string;
+  files: { path: string; size: number; sources: string[] }[];
+  report: { documents: number; concatenated: boolean };
+}
+
 export interface MemoryRevision {
   id: string;
   documentId: string;

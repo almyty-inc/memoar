@@ -1,0 +1,26 @@
+{
+  "contractVersion": "0.3.0",
+  "bundleVersion": "1",
+  "kind": "memory",
+  "source": "claude-code",
+  "target": "codex",
+  "scope": "global",
+  "files": [
+    {
+      "path": "~/.codex/AGENTS.md",
+      "mediaType": "text/markdown",
+      "base64": "PCEtLSBtZW1vYXI6IGZyb20gL1VzZXJzL3gvLmNsYXVkZS9DTEFVREUubWQgLS0+CgpTbWFsbCBmaWxlcy4gUmVhbCBjb3ZlcmFnZS4KCjwhLS0gbWVtb2FyOiBmcm9tIC9Vc2Vycy94Ly5jbGF1ZGUvcHJvamVjdHMvcC9tZW1vcnkvbm90ZS5tZCAtLT4KCkZyYW5lIHByZWZlcnMgZG9tYWluIG1vZHVsZXMuCg==",
+      "sha256": "15723567d90ff8479d2464a51d7163b28728e73fbda2c8428f78dfd6cb1bc86a",
+      "size": 175,
+      "sources": [
+        "/Users/x/.claude/CLAUDE.md",
+        "/Users/x/.claude/projects/p/memory/note.md"
+      ]
+    }
+  ],
+  "report": {
+    "documents": 2,
+    "concatenated": true
+  },
+  "bundleSha256": "8a28ff5e3ad7f504da9d8dedc7e686a825da2317f9e1f5ea015bb774f4a8ab63"
+}

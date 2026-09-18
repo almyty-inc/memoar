@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { memoarApi } from '../lib/api';
 import type { MemoryDocument, MemoryRevision } from '../lib/types';
 import { Badge, Button, EmptyState, formatDate, formatRelative, RedactionBadge } from '../components/ui';
+import { MemoryConvertPanel } from './MemoryConvert';
 import { MemoryRedactionPanel } from './MemoryRedaction';
 
 /** Global first, then one group per project, each sorted by path. */
@@ -156,6 +157,7 @@ export function MemoryView() {
               error={reviewError}
               onReview={() => void review(selected.document)}
             />
+            <MemoryConvertPanel document={selected.document} />
             <div className="memory-revisions">
               <h3><History size={14} /> {selected.revisions.length} {selected.revisions.length === 1 ? 'version' : 'versions'}</h3>
               {selected.revisions.map((entry, index) => (
