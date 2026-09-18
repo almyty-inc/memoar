@@ -1,7 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ParserRegistry } from "../libs/parsers/src/index.js";
+import { connectorTable } from "./helpers/connector-table.js";
 
 /**
  * Formats the server can import but no agent captures: they arrive as an upload
@@ -22,10 +21,7 @@ const IMPORT_ONLY = new Set(["canonical-bundle", "cass-export", "chatgpt-export"
  */
 describe("the agent and the server agree on what is supported", () => {
   it("captures nothing the server cannot parse", async () => {
-    const connectors = await readFile(
-      resolve(process.cwd(), "../agent/crates/memoar-connectors/src/lib.rs"),
-      "utf8",
-    );
+    const connectors = await connectorTable();
     const captured = [...connectors.matchAll(/^\s*id: "([a-z0-9-]+)",$/gmu)].map((match) => match[1]!);
     expect(captured.length, "no capture sources were found; has the table moved?").toBeGreaterThan(0);
 
@@ -35,10 +31,7 @@ describe("the agent and the server agree on what is supported", () => {
   });
 
   it("parses nothing that no agent captures and no user can upload", async () => {
-    const connectors = await readFile(
-      resolve(process.cwd(), "../agent/crates/memoar-connectors/src/lib.rs"),
-      "utf8",
-    );
+    const connectors = await connectorTable();
     const captured = new Set([...connectors.matchAll(/^\s*id: "([a-z0-9-]+)",$/gmu)].map((match) => match[1]!));
     const orphaned = Object.keys(new ParserRegistry().capabilities())
       .filter((source) => !captured.has(source) && !IMPORT_ONLY.has(source));

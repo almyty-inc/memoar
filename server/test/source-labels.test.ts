@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ParserRegistry } from "../libs/parsers/src/index.js";
 import { knownSourceLabels, sourceLabel } from "../src/source-labels.js";
+import { connectorTable } from "./helpers/connector-table.js";
 
 describe("what each source is called", () => {
   it("names every source the archive can parse", () => {
@@ -17,7 +18,7 @@ describe("what each source is called", () => {
   it("uses the names the capture agent uses, not near-misses", async () => {
     // The agent's connector table is where these names come from; two tables
     // disagreeing means the same tool is called two things in one product.
-    const connectors = await readFile(resolve(process.cwd(), "../agent/crates/memoar-connectors/src/lib.rs"), "utf8");
+    const connectors = await connectorTable();
     const captured = [...connectors.matchAll(/id: "([a-z0-9-]+)",\s*\n\s*display_name: "([^"]+)"/gu)];
     expect(captured.length, "no capture sources were found; has the table moved?").toBeGreaterThan(5);
 
