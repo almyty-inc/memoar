@@ -17,6 +17,12 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+/// Paths below the fixture home, written with forward slashes whatever the
+/// platform separator is.
+///
+/// Windows renders these with backslashes, so every expectation in this file
+/// read as a mismatch there — the discovery was right and the comparison was
+/// not.
 fn relative(home: &Path, files: &[PathBuf]) -> Vec<String> {
     files
         .iter()
@@ -24,7 +30,7 @@ fn relative(home: &Path, files: &[PathBuf]) -> Vec<String> {
             path.strip_prefix(home)
                 .unwrap()
                 .to_string_lossy()
-                .into_owned()
+                .replace('\\', "/")
         })
         .collect()
 }
