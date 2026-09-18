@@ -31,6 +31,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
   const [keyScopes, setKeyScopes] = useState<string[]>(['sessions:read', 'collections:read', 'pack:read']);
   const [keySaving, setKeySaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
   // Settings are loaded from and written back to the archive. These were local
   // useState only: every toggle appeared to work and nothing was ever saved.
   const [settings, setSettings] = useState<TenantSettings | null>(null);
@@ -44,14 +45,24 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
   const [distillationError, setDistillationError] = useState<string | null>(null);
   const [distillationSaving, setDistillationSaving] = useState(false);
 
+  /*
+    Revoking reports into the key list, not into the create-key dialog.
+
+    This wrote its failure to `keyError`, which is rendered in exactly one
+    place: inside the create-key modal. That modal is closed while you are
+    revoking from the list, so "API key could not be revoked" was set and never
+    shown to anybody — the row simply stopped being busy and the key stayed.
+    A credential you believe you have revoked and have not is the worst way for
+    this particular failure to be silent.
+  */
   const revokeKey = async (keyId: string) => {
     setRevoking(keyId);
-    setKeyError(null);
+    setRevokeError(null);
     try {
       await memoarApi.revokeApiKey(keyId);
       onKeyRevoked();
     } catch (error) {
-      setKeyError(error instanceof Error ? error.message : 'API key could not be revoked');
+      setRevokeError(error instanceof Error ? error.message : 'API key could not be revoked');
     } finally {
       setRevoking(null);
     }
@@ -151,6 +162,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
               mcpStatus={mcpStatus}
               revoking={revoking}
               revokeKey={revokeKey}
+              revokeError={revokeError}
               setCreateOpen={setCreateOpen}
             />
           ) : null}

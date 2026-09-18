@@ -66,9 +66,19 @@ export class SessionsApi extends ApiClientCore {
   }
 
   async search(query: string): Promise<SearchResponse> {
+    // An empty query used to be sent as the literal word "session", so asking
+    // for nothing returned results for something — the same shape as the page
+    // that opened with a developer's test query already executed. The caller
+    // guards against this too; a client that quietly substitutes a phrase
+    // nobody typed should not need one.
+    //
+    // Checked before the endpoint, because whether the argument makes sense
+    // does not depend on where it would have been sent.
+    const phrase = query.trim();
+    if (phrase === '') throw new Error('A search needs a phrase.');
     this.requireArchive();
     const response = await this.request<WireSearchResponse>(
-      `/search?q=${encodeURIComponent(query || 'session')}&mode=hybrid&limit=50`,
+      `/search?q=${encodeURIComponent(phrase)}&mode=hybrid&limit=50`,
     );
     const items = response.items.map(mapSession);
     return {

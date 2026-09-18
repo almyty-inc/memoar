@@ -161,6 +161,12 @@ export function App() {
         }
         return { ...current, timeline: [...byDate].map(([date, sessions]) => ({ date, sessions })), nextTimelineCursor: page.nextCursor };
       });
+    } catch (error) {
+      // Every other failure in this file sets `connectionError`; this one had
+      // no catch at all, and the callers invoke it as `void onLoadMore()`, so a
+      // failed page became an unhandled rejection and the spinner simply
+      // stopped. Scrolling produced nothing and said nothing.
+      setConnectionError(error instanceof Error ? error.message : 'More sessions could not be loaded');
     } finally {
       setLoadingMore(false);
     }

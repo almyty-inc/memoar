@@ -29,11 +29,12 @@ function mcpCommands(endpoint: string): { name: string; command: string }[] {
   ];
 }
 
-export function KeysAndMcpTab({ apiKeys, mcpEndpoint, mcpStatus, revoking, revokeKey, setCreateOpen }: {
+export function KeysAndMcpTab({ apiKeys, mcpEndpoint, mcpStatus, revoking, revokeError, revokeKey, setCreateOpen }: {
   apiKeys: ApiKey[];
   mcpEndpoint: string;
   mcpStatus: McpStatus | null;
   revoking: string | null;
+  revokeError: string | null;
   revokeKey: (keyId: string) => Promise<void>;
   setCreateOpen: (open: boolean) => void;
 }) {
@@ -56,6 +57,7 @@ export function KeysAndMcpTab({ apiKeys, mcpEndpoint, mcpStatus, revoking, revok
             </article>
           ))}
         </div>
+        {revokeError ? <p role="alert" className="error-note">{revokeError}</p> : null}
         <div className="key-warning"><LockKeyhole size={15} /><p>Secrets are shown once. Memoar stores only a salted hash and the visible prefix.</p></div>
       </section>
 

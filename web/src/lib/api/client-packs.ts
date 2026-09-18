@@ -78,6 +78,12 @@ export class PacksApi extends SessionsApi {
         }],
       }),
     });
+    // Reported as elapsed time rather than as a guess. This said "within 30
+    // seconds" after thirty rounds of two requests and a one-second sleep,
+    // which is never thirty seconds and is longer the slower the archive is —
+    // so the one number the message gave you was the one thing it could not
+    // know.
+    const startedAt = Date.now();
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       onProgress({ stage: 'processing', detail: `Waiting for canonical session (${attempt}/30)` });
       const page = await this.request<ListResponse<WireSessionSummary>>('/sessions?limit=100');
@@ -95,7 +101,8 @@ export class PacksApi extends SessionsApi {
       }
       await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
     }
-    throw new Error('Import was queued but no canonical session appeared within 30 seconds');
+    const waited = Math.round((Date.now() - startedAt) / 1000);
+    throw new Error(`Import was queued but no canonical session appeared in ${waited} seconds`);
   }
 
   /**
