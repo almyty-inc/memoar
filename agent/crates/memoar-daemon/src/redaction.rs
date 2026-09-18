@@ -139,3 +139,49 @@ pub(crate) fn contains_secret_lossy(bytes: &[u8], config: RedactionConfig) -> bo
     let probe = redact_bytes(text.as_bytes(), config);
     probe.replacements > 0
 }
+
+/// The same question asked of text stored two bytes to the character.
+///
+/// UTF-16 is the hole `contains_secret_lossy` does not cover. ASCII encoded as
+/// UTF-16 is *valid UTF-8* — every other byte is a NUL, and a NUL is a legal
+/// code point — so `redact_bytes` reports the artifact scanned, the patterns
+/// find nothing because every character is separated by a NUL, and the
+/// fail-closed check never runs because it only fires on bytes that are not
+/// UTF-8 at all. A key in a UTF-16 log went up verbatim under a receipt saying
+/// it had been scanned.
+///
+/// Only the ASCII range is decoded, because that is all a secret pattern
+/// matches, and this is a detector rather than a decoder: the answer feeds a
+/// refusal, never a rewrite.
+pub(crate) fn contains_secret_utf16(bytes: &[u8], config: RedactionConfig) -> bool {
+    [true, false].into_iter().any(|little_endian| {
+        let decoded: String = bytes
+            .chunks_exact(2)
+            .map(|pair| {
+                let unit = if little_endian {
+                    u16::from_le_bytes([pair[0], pair[1]])
+                } else {
+                    u16::from_be_bytes([pair[0], pair[1]])
+                };
+                if unit < 128 { unit as u8 as char } else { ' ' }
+            })
+            .collect();
+        redact_bytes(decoded.as_bytes(), config).replacements > 0
+    })
+}
+
+/// Whether these bytes are plausibly text stored two bytes to the character.
+///
+/// A byte-order mark settles it. Without one, a NUL is the tell: real UTF-8
+/// text does not contain them, and UTF-16 ASCII is half NULs.
+pub(crate) fn looks_like_utf16(bytes: &[u8]) -> bool {
+    if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+        return true;
+    }
+    let sample = &bytes[..bytes.len().min(4096)];
+    if sample.len() < 4 {
+        return false;
+    }
+    let nuls = sample.iter().filter(|byte| **byte == 0).count();
+    nuls * 4 >= sample.len()
+}

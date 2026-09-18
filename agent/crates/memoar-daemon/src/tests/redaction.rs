@@ -2,6 +2,7 @@ use std::fs;
 use std::io::{Cursor, Read, Write};
 
 use super::fake::token_fixture;
+use crate::artifact::redact_artifact;
 use crate::enqueue::sha256_bytes;
 use crate::error::DaemonError;
 use crate::queue::OfflineQueue;
@@ -173,4 +174,78 @@ fn reports_redaction_only_when_something_was_replaced() {
         !stored.contains(&token_fixture()),
         "the secret reached the queue"
     );
+}
+
+/// A secret written two bytes to the character must not sail through.
+///
+/// ASCII encoded as UTF-16 is *valid UTF-8* — every other byte is a NUL, and a
+/// NUL is a legal code point. So the artifact was reported scanned, no pattern
+/// could match across the NULs, and the fail-closed check never ran, because it
+/// only fires on bytes that are not UTF-8 at all. The key went up verbatim
+/// under a receipt saying it had been scanned, which is the one outcome
+/// redaction is supposed to make impossible.
+#[test]
+fn a_secret_stored_two_bytes_to_the_character_is_refused() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = RedactionConfig {
+        secrets: true,
+        email_addresses: false,
+        home_paths: false,
+    };
+
+    for (name, bom, little_endian) in [
+        ("log-le.txt", [0xFF_u8, 0xFE], true),
+        ("log-be.txt", [0xFE_u8, 0xFF], false),
+        // No mark at all: half the bytes being NUL is the other tell.
+        ("log-bare.txt", [b'a', 0x00], true),
+    ] {
+        let plain = "deploy with api_key=sk-live-not-for-the-archive";
+        let mut bytes = if name == "log-bare.txt" {
+            Vec::new()
+        } else {
+            bom.to_vec()
+        };
+        for unit in plain.encode_utf16() {
+            bytes.extend_from_slice(&if little_endian {
+                unit.to_le_bytes()
+            } else {
+                unit.to_be_bytes()
+            });
+        }
+        // The premise: these bytes really are valid UTF-8, which is why the
+        // existing check could never see them.
+        assert!(
+            String::from_utf8(bytes.clone()).is_ok() || name != "log-bare.txt",
+            "{name} should be valid UTF-8, which is the whole problem",
+        );
+
+        let path = temp.path().join(name);
+        std::fs::write(&path, &bytes).unwrap();
+        let error = redact_artifact(&path, &bytes, config)
+            .expect_err("a secret it cannot rewrite must be refused, not uploaded");
+        assert!(
+            matches!(error, DaemonError::UnscannableSecret { .. }),
+            "{name}: {error:?}",
+        );
+    }
+}
+
+/// And ordinary UTF-16 with nothing to hide is still captured.
+#[test]
+fn utf16_text_without_a_secret_is_still_captured() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = RedactionConfig {
+        secrets: true,
+        email_addresses: false,
+        home_paths: false,
+    };
+    let mut bytes = vec![0xFF, 0xFE];
+    for unit in "the build finished in four seconds".encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    let path = temp.path().join("quiet.txt");
+    std::fs::write(&path, &bytes).unwrap();
+
+    let redacted = redact_artifact(&path, &bytes, config).expect("nothing here to refuse");
+    assert_eq!(redacted.bytes, bytes, "untouched bytes for untouched text");
 }

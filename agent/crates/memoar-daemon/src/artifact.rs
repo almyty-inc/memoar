@@ -4,7 +4,10 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::error::DaemonError;
-use crate::redaction::{RedactedBytes, RedactionConfig, contains_secret_lossy, redact_bytes};
+use crate::redaction::{
+    RedactedBytes, RedactionConfig, contains_secret_lossy, contains_secret_utf16, looks_like_utf16,
+    redact_bytes,
+};
 
 pub(crate) fn redact_artifact(
     path: &Path,
@@ -33,6 +36,17 @@ pub(crate) fn redact_artifact(
         return redact_zip(path, bytes, config);
     }
     let redacted = redact_bytes(bytes, config);
+    // Text stored two bytes to the character defeats the check below, because
+    // it is valid UTF-8: every other byte is a NUL, which is a legal code
+    // point, so the artifact is reported scanned while no pattern could match
+    // across the NULs. Decoding it is only ever used to refuse — rewriting
+    // UTF-16 in place is not something this does.
+    if redacted.replacements == 0 && looks_like_utf16(bytes) && contains_secret_utf16(bytes, config)
+    {
+        return Err(DaemonError::UnscannableSecret {
+            path: path.to_path_buf(),
+        });
+    }
     if !redacted.scanned && contains_secret_lossy(bytes, config) {
         // The bytes are not valid UTF-8, so no pattern could be applied to
         // them, and a lossy read shows something that should have been
