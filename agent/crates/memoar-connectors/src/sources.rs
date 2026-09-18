@@ -11,18 +11,29 @@ pub static SOURCES: &[SourceSpec] = &[
         tier: 1,
         format: "JSONL parentUuid stream",
         stability: Stability::Internal,
-        common_paths: &[".claude/projects/*/*.jsonl", ".claude/history.jsonl"],
-        linux_paths: NONE,
         // The transcripts, not the trees the sessions built beside them. These
         // were bare directories, and a bare directory means everything beneath
         // it: on one machine that was 5,392 files — markdown, TypeScript,
         // Python, JPEGs and node_modules the agent had written into its own
         // working directory — offered to the uploader by a source that promises
         // session stores and nothing else.
-        macos_paths: &[
-            "Library/Application Support/Claude/claude-code-sessions/*/*/local_*.json",
-            "Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*.json",
-        ],
+        common_paths: &[".claude/projects/*/*.jsonl", ".claude/history.jsonl"],
+        linux_paths: NONE,
+        // `claude-code-sessions/*/*/local_*.json` and its local-agent-mode twin
+        // held no conversation. They are the desktop app's per-session
+        // settings: model, permission mode, allowed egress domains, the
+        // rendered system prompt, `accountName` and `emailAddress`. Checked on
+        // this machine, 22 files matched the two patterns and not one contained
+        // a message, a `parentUuid` or a transcript — the parser reads JSONL
+        // records carrying `uuid` and `message`, so every one was uploaded and
+        // came back `unknown_format`, carrying an email address with it.
+        //
+        // The conversation those files describe is the CLI transcript named by
+        // their own `cliSessionId`, which `.claude/projects/*/*.jsonl` above
+        // already captures when it is on this host. For a local-agent-mode
+        // session it is not: that runs in a VM, and nothing on this side of it
+        // is a transcript.
+        macos_paths: NONE,
         windows_paths: NONE,
         environment_override: None,
         environment_roots: NONE,
@@ -46,11 +57,21 @@ pub static SOURCES: &[SourceSpec] = &[
         tier: 1,
         format: "brain directory",
         stability: Stability::Internal,
-        common_paths: &[
-            ".gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl",
-            ".gemini/antigravity-cli/brain/*/conversations/*.db",
-            ".gemini/antigravity-cli/brain/*/*.md",
-        ],
+        // The transcript log, which is the only thing the parser reads: it
+        // takes JSON lines and has no SQLite branch at all, whatever its own
+        // "requires a native SQLite trajectory database" diagnostic says.
+        //
+        // `brain/*/conversations/*.db` named a directory that does not exist.
+        // On the machine that runs this tool the conversation databases are one
+        // level up, in `.gemini/antigravity-cli/conversations/*.db`, and
+        // `brain/<id>/` holds only `.system_generated` and `.user_uploaded`.
+        // Pointing the pattern at the real databases would not help while the
+        // parser cannot open one; that is a server-side gap, recorded in
+        // contracts/fixtures/PROVENANCE.md rather than papered over here.
+        //
+        // `brain/*/*.md` matched nothing on that machine either, and markdown
+        // is not a transcript: the parser refuses anything that is not JSONL.
+        common_paths: &[".gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl"],
         linux_paths: NONE,
         macos_paths: NONE,
         windows_paths: NONE,

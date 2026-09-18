@@ -929,6 +929,146 @@ paths:
               schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Collection' } } } }
         '403': { $ref: '#/components/responses/ProblemResponse' }
         '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/optins:
+    get:
+      tags: [Teams]
+      operationId: listTeamShareOptins
+      description: >-
+        This account's standing consent to share into the team. Nobody reads anybody else's:
+        the rows returned are the caller's own tenant's. An empty list is the default — creating
+        a team, or joining one, shares nothing by itself.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: The caller's enrolments for this team
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TeamShareOptin' } }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+    put:
+      tags: [Teams]
+      operationId: createTeamShareOptin
+      description: >-
+        Enrols this account's capture in the team: sessions captured from here on are written
+        with team visibility instead of private. Requires the sharing:write scope, because it
+        decides what other people may read. Not retroactive — sessions already archived keep the
+        visibility they have, and a teammate who imports a copy holds it in their own archive
+        permanently, beyond any later revocation. Only sessions whose redaction scan came back
+        clear are widened automatically; one with findings stays private until a human reviews it.
+        Idempotent: enrolling twice returns the enrolment already in force.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                machineId:
+                  allOf:
+                    - $ref: '#/components/schemas/Uuid'
+                  description: One machine of this account. Omit to enrol every machine, including ones added later.
+      responses:
+        '200':
+          description: Enrolment in force
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamShareOptin' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+        '409':
+          description: This account already shares into a different team; a session can name only one.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /teams/{teamId}/optins/{machineId}:
+    delete:
+      tags: [Teams]
+      operationId: deleteTeamShareOptin
+      description: >-
+        Withdraws consent, so nothing captured from here on is widened. Sessions already widened
+        keep their visibility unless revokePast is set, which walks this account's own sessions
+        and puts them back to private. Requires the sharing:write scope.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - name: machineId
+          in: path
+          required: true
+          description: A machine id, or the literal "all" for the enrolment covering every machine.
+          schema: { type: string }
+        - { name: revokePast, in: query, schema: { type: string, enum: ["true"] } }
+      responses:
+        '200':
+          description: Enrolment removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [teamId, machineId, revokedSessions]
+                properties:
+                  teamId: { $ref: '#/components/schemas/Uuid' }
+                  machineId: { type: [string, 'null'], format: uuid }
+                  revokedSessions: { type: integer, description: Sessions put back to private, zero unless revokePast was set. }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/search:
+    get:
+      tags: [Teams]
+      operationId: searchTeamSessions
+      description: >-
+        Searches every accepted member's archive for sessions widened to this team, and returns
+        the same body as GET /search. Each member's tenant is searched in its own single-tenant
+        query and the ranked lists are fused by reciprocal rank, so results from different
+        archives are merged by position rather than by scores that are not comparable. A private
+        session is never a result, whoever owns it. At most 25 member tenants; beyond that the
+        request is refused. If any member's semantic leg fails, the whole request reports
+        realizedMode lexical rather than mixing two ranking regimes.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: mode, in: query, schema: { type: string, enum: [hybrid, lexical, semantic], default: hybrid } }
+        - $ref: '#/components/parameters/Limit'
+        - { name: agent, in: query, schema: { type: string } }
+        - { name: workspace, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Team-visible results across member archives
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/sessions/{sessionId}:
+    get:
+      tags: [Teams]
+      operationId: getTeamSession
+      description: >-
+        One teammate's session, in the same chunked shape as GET /sessions/{sessionId}. Resolved
+        through the member fan-out: the id is not the permission, and a session that is not
+        widened to this team answers 404 whether it exists or not. Read only — no route here
+        writes to a teammate's archive.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - $ref: '#/components/parameters/SessionId'
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: chunkSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Canonical session chunk
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionChunk' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
   /settings:
     get:
       tags: [Settings]
@@ -1591,6 +1731,18 @@ components:
         orgId: { $ref: '#/components/schemas/Uuid' }
         name: { type: string }
         memberCount: { type: integer, minimum: 1 }
+    TeamShareOptin:
+      type: object
+      description: >-
+        Standing consent to share into one team. No row means no sharing; the default is off.
+      required: [teamId, machineId, createdAt]
+      properties:
+        teamId: { $ref: '#/components/schemas/Uuid' }
+        machineId:
+          type: [string, 'null']
+          format: uuid
+          description: One machine of the account, or null for every machine of it.
+        createdAt: { type: string, format: date-time }
     Collection:
       type: object
       required: [id, name, sessionCount, updatedAt]
