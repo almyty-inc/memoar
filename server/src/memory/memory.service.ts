@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { MemoryDocument, MemoryRevision } from "../../libs/canonical/src/generated.js";
-import type { MemoryStore, SettingsStore, TenantContext } from "../archive-store.js";
+import type { MachineStore, MemoryStore, SettingsStore, TenantContext } from "../archive-store.js";
 import { ARCHIVE_STORE } from "../tokens.js";
 import { scanMemoryText } from "./memory-redaction.js";
 import { matchesMemoryFilter, type MemoryDocumentFilter } from "./memory-filter.js";
@@ -9,7 +9,7 @@ import type { CaptureMemoryDto } from "./memory.dto.js";
 
 @Injectable()
 export class MemoryService {
-  constructor(@Inject(ARCHIVE_STORE) private readonly store: MemoryStore & SettingsStore) {}
+  constructor(@Inject(ARCHIVE_STORE) private readonly store: MemoryStore & SettingsStore & MachineStore) {}
 
   async list(context: TenantContext, filter: { machineId?: string; scope?: string }): Promise<{ items: MemoryDocument[] }> {
     return { items: await this.store.listMemoryDocuments(context, filter) };
@@ -57,8 +57,19 @@ export class MemoryService {
    * not later: a memory file is where people write "the staging key is sk-…",
    * and nobody re-reads one before it is passed on. Captured and never scanned
    * is how these were stored until now.
+   *
+   * The machine is resolved before anything is written. `machineId` is a third
+   * of a document's identity — `memory_documents` is unique on tenant, machine
+   * and path — and the guard pins it only for machine credentials, so a browser
+   * session or an API key holding `ingest:write` could file under any uuid it
+   * typed. A wrong one mints a parallel set of documents that no machine owns
+   * and that `?machineId=` can never reconcile. Tenant-scoped, so another
+   * account's machine is refused exactly as a missing one is, in the same words.
    */
   async capture(context: TenantContext, input: CaptureMemoryDto): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> {
+    if (!await this.store.getMachine(context, input.machineId)) {
+      throw new NotFoundException("No machine of this account with that id");
+    }
     const settings = await this.store.getTenantSettings(context);
     return this.store.captureMemoryDocument(context, {
       ...input,

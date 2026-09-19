@@ -117,9 +117,22 @@ export class ConversionService {
     return { url: await this.objects.signedDownloadUrl(objectKey, 300) };
   }
 
+  /**
+   * Queues the bundle for one machine to write to disk.
+   *
+   * The machine is resolved first. A command addressed to a machine that does
+   * not exist is never polled for, so it is never delivered and never acked: it
+   * sits `pending` for ever with no dead-letter, and the caller is told 202. The
+   * lookup is tenant-scoped, so another account's machine is as invalid as a
+   * missing one and the refusal does not distinguish them — whether a uuid names
+   * somebody else's machine is not something this caller gets to learn.
+   */
   async materialize(context: TenantContext, jobId: string, machineId: string): Promise<void> {
     const job = await this.store.getJob(context, jobId);
     if (job?.status !== "ready") throw new NotFoundException("Conversion is not ready");
+    if (!await this.store.getMachine(context, machineId)) {
+      throw new NotFoundException("No machine of this account with that id");
+    }
     // The command carries a pre-signed URL so the agent needs no archive
     // scope: machine credentials stay restricted to ingest and their own
     // command channel.

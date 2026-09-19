@@ -4,7 +4,7 @@ import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { MemoryConversionService } from "../src/memory/memory-conversion.service.js";
 import { MemoryService } from "../src/memory/memory.service.js";
 import type { CaptureMemoryDto, ConvertMemoryDto } from "../src/memory/memory.dto.js";
-import { TEST_CONTEXT } from "./fixtures/archive.js";
+import { seedMachine, TEST_CONTEXT } from "./fixtures/archive.js";
 
 const MACHINE = "0191cafe-0000-7000-8000-0000000000c1";
 
@@ -12,10 +12,11 @@ let store: DevArchiveStore;
 let memory: MemoryService;
 let conversions: MemoryConversionService;
 
-beforeEach(() => {
+beforeEach(async () => {
   store = new DevArchiveStore();
   memory = new MemoryService(store);
   conversions = new MemoryConversionService(store);
+  await seedMachine(store, TEST_CONTEXT, MACHINE, "conversion-suite");
 });
 
 function capture(overrides: Partial<CaptureMemoryDto>) {

@@ -4,19 +4,29 @@ import type { TenantContext } from "../src/archive-store.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { McpMemoryTools } from "../src/mcp/memory-tools.js";
 import { MemoryService } from "../src/memory/memory.service.js";
-import { TEST_CONTEXT } from "./fixtures/archive.js";
+import { seedMachine, TEST_CONTEXT } from "./fixtures/archive.js";
 
 const MACHINE = "0191cafe-0000-7000-8000-0000000000b1";
 const SECRET = "The staging key is sk_live_0123456789abcdefghij and it works.";
+
+/** A second account, which registers the same machine id as this one. */
+const OTHER_CONTEXT: TenantContext = {
+  tenantId: "0191cafe-0000-7000-8000-0000000000b2",
+  userId: "0191cafe-0000-7000-8000-0000000000b3",
+  scopes: ["*"],
+  authType: "dev",
+};
 
 let store: DevArchiveStore;
 let memory: MemoryService;
 let tools: McpMemoryTools;
 
-beforeEach(() => {
+beforeEach(async () => {
   store = new DevArchiveStore();
   memory = new MemoryService(store);
   tools = new McpMemoryTools(memory);
+  await seedMachine(store, TEST_CONTEXT, MACHINE, "redaction-suite");
+  await seedMachine(store, OTHER_CONTEXT, MACHINE, "redaction-suite");
 });
 
 /**
@@ -154,12 +164,7 @@ describe("a flagged memory file over MCP", () => {
   });
 
   it("does not let one tenant's review unlock another tenant's file", async () => {
-    const other: TenantContext = {
-      tenantId: "0191cafe-0000-7000-8000-0000000000b2",
-      userId: "0191cafe-0000-7000-8000-0000000000b3",
-      scopes: ["*"],
-      authType: "dev",
-    };
+    const other = OTHER_CONTEXT;
     // The same path in both accounts on purpose: a leak reads as a collision.
     const mine = await capture(SECRET);
     const theirs = await capture(SECRET, {}, other);

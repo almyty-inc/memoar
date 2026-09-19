@@ -310,6 +310,27 @@ for (const implementation of implementations) {
       expect(await store.removeTeamMember(team.id, bob.userId)).toBe(false);
     });
 
+    /*
+      `getMachine` is an authorization check, not just a read: capturing a
+      memory file and queuing a materialize command both resolve the machine id
+      they were handed and refuse what does not come back. A store that answered
+      by id alone would hand one account another account's machine and turn both
+      checks into no-ops, so the scoping is pinned here, where both stores are
+      held to it rather than only the one the service tests happen to run on.
+    */
+    it("resolves a machine only within the tenant that owns it", async () => {
+      const store = implementation.create();
+      const machineId = "0191cafe-0000-7000-8000-0000000c000e";
+      await store.saveMachine(alice, {
+        id: machineId, tenantId: alice.tenantId, name: `scoped-${implementation.name}`,
+        platform: "darwin", agentVersion: null, sourceSettings: {}, lastSeenAt: null,
+      });
+
+      expect((await store.getMachine(alice, machineId))?.id).toBe(machineId);
+      expect(await store.getMachine(bob, machineId), "bob must not resolve alice's machine").toBeNull();
+      expect(await store.getMachine(alice, "0191cafe-0000-7000-8000-0000000c000f")).toBeNull();
+    });
+
     it("queues, replays, and acknowledges machine commands", async () => {
       const store = implementation.create();
       const machineId = "0191cafe-0000-7000-8000-0000000c000a";
