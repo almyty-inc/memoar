@@ -198,6 +198,33 @@ suite("backing up and restoring the archive", () => {
       .toThrow(/no successful backup/u);
   });
 
+  it("moves its alarm when the schedule moves", () => {
+    // The window was a flat day and a half, beside a schedule that is a
+    // variable. The two only agree while the schedule is daily, and the
+    // disagreement is silent in the direction that loses an archive: on an
+    // hourly schedule, thirty-five consecutive failures still read as healthy
+    // because thirty-five hours is inside a thirty-six hour window.
+    const dir = "/tmp/memoar-hourly";
+    shellInContainer(`mkdir -p ${dir} && expr $(date -u +%s) - 126000 > ${dir}/last-success`);
+
+    expect(
+      () => shellInContainer(`MEMOAR_BACKUP_DIR=${dir} MEMOAR_BACKUP_INTERVAL_SECONDS=3600 sh /backup-check.sh`),
+      "thirty-five missed hourly backups reported as healthy",
+    ).toThrow(/older than 5400s/u);
+
+    // And the other direction, which is how a working schedule ends up
+    // permanently red — a signal that is always red is one people stop reading.
+    const weekly = shellInContainer(
+      `MEMOAR_BACKUP_DIR=${dir} MEMOAR_BACKUP_INTERVAL_SECONDS=604800 sh /backup-check.sh`,
+    );
+    expect(JSON.parse(weekly) as { maxAgeSeconds: number }).toMatchObject({ maxAgeSeconds: 907200 });
+
+    // A deployment that knows better still says so for itself.
+    expect(() => shellInContainer(
+      `MEMOAR_BACKUP_DIR=${dir} MEMOAR_BACKUP_INTERVAL_SECONDS=604800 MEMOAR_BACKUP_MAX_AGE_SECONDS=60 sh /backup-check.sh`,
+    )).toThrow(/older than 60s/u);
+  });
+
   it("refuses to dump with a client of the wrong major version", () => {
     // pg_dump writes its own version's settings into the file: an 18 client
     // emits `SET transaction_timeout`, which a 16 server rejects part-way

@@ -11,9 +11,29 @@
 set -eu
 
 BACKUP_DIR=${MEMOAR_BACKUP_DIR:-/backups}
-# A day and a half by default, so a daily schedule that slips by an hour does
-# not cry wolf and a schedule that stopped is caught on the second night.
-MAX_AGE_SECONDS=${MEMOAR_BACKUP_MAX_AGE_SECONDS:-129600}
+
+# How old the last success may be before this is a problem.
+#
+# Derived from the schedule rather than fixed beside it. A flat day and a half
+# is only right while the schedule is daily, and it is wrong in both directions
+# the moment somebody changes MEMOAR_BACKUP_INTERVAL_SECONDS — which is a
+# supported thing to change, and the only one of the pair the compose stack
+# exposes:
+#
+#   - Shortened to an hour, a fixed 36-hour window lets thirty-five consecutive
+#     backups fail before anything says so. That is the direction that loses an
+#     archive, and it is silent the whole way.
+#   - Lengthened to a week, the window is permanently exceeded, the container
+#     is unhealthy on a schedule that is working perfectly, and a signal that is
+#     always red is a signal people stop reading — which puts us back where this
+#     script was written to get us out of.
+#
+# One and a half intervals: enough slack for a run that starts late or takes a
+# while, and short enough that a schedule which has stopped is caught on the
+# next one rather than eventually. An explicit MEMOAR_BACKUP_MAX_AGE_SECONDS
+# still wins, for a deployment that knows better.
+INTERVAL_SECONDS=${MEMOAR_BACKUP_INTERVAL_SECONDS:-86400}
+MAX_AGE_SECONDS=${MEMOAR_BACKUP_MAX_AGE_SECONDS:-$((INTERVAL_SECONDS + INTERVAL_SECONDS / 2))}
 
 stamp="$BACKUP_DIR/last-success"
 if [ ! -f "$stamp" ]; then

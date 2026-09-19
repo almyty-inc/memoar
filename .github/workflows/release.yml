@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       build_binaries:
-        description: Build the five platform binaries (skip for a launcher-only npm publish)
+        description: Build every platform binary the launcher can ask for (skip for a launcher-only npm publish)
         type: boolean
         default: false
       publish_release:
@@ -47,7 +47,7 @@ jobs:
   # Only when binaries are actually wanted.
   #
   # This ran unconditionally, so publishing the launcher to npm — which needs
-  # no binary at all — compiled five targets first, two of them on macOS
+  # no binary at all — compiled every target first, two of them on macOS
   # runners, which bill at ten times the Linux rate. Three npm attempts failed
   # at the publish step having built all of it for nothing.
   build:
@@ -72,6 +72,14 @@ jobs:
             linker: aarch64-linux-gnu-gcc
             apt: gcc-aarch64-linux-gnu
           - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # Windows on ARM. `lib/platform.js` has mapped win32-arm64 here since
+          # the launcher was written and nothing ever built it: v0.3.0 shipped
+          # five assets, and `npx memoar` on an ARM Windows machine asked for
+          # memoar-aarch64-pc-windows-msvc.exe and got a 404. Cross-compiled on
+          # the x64 runner, whose Visual Studio image carries the ARM64
+          # toolchain — and so, like aarch64 Linux, not runnable where built.
+          - target: aarch64-pc-windows-msvc
             os: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,8 +131,11 @@ jobs:
           cat "${asset}.sha256"
           echo "name=${asset}" >> "$GITHUB_OUTPUT"
 
+      # The natively-built ones only: a cross-compiled binary cannot run on the
+      # runner that produced it. Named explicitly rather than matched by
+      # substring, which would silently start skipping the wrong target.
       - name: The binary must run on the machine that built it
-        if: "!contains(matrix.target, 'aarch64-unknown-linux')"
+        if: matrix.target != 'aarch64-unknown-linux-gnu' && matrix.target != 'aarch64-pc-windows-msvc'
         shell: bash
         run: ./dist/${{ steps.asset.outputs.name }} --version
 
@@ -147,6 +158,42 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: assets
+
+      # The step below resolves through the launcher on *this* runner, which is
+      # linux-x64, so it says nothing about the other five platforms the
+      # launcher claims to serve — which is how win32-arm64 sat in `TARGETS`
+      # for a release with nothing building it. Comparing the two lists is the
+      # only check that covers a platform no runner here happens to be.
+      - name: Every platform the launcher offers was actually built
+        shell: bash
+        run: |
+          set -euo pipefail
+          find assets -type f ! -name '*.sha256' -exec basename {} \; | sort > built.txt
+          echo "built:"; cat built.txt
+          node -e '
+            const fs = require("node:fs");
+            const { assetName } = require("./packages/npx/lib/platform");
+            const built = new Set(fs.readFileSync("built.txt", "utf8").split("\n").filter(Boolean));
+            // Every pair the launcher will answer for, taken from the launcher
+            // itself rather than restated here — a copy of the list is a second
+            // thing to keep in step, and this check exists because two lists
+            // drifted.
+            const pairs = [
+              ["darwin", "arm64"], ["darwin", "x64"],
+              ["linux", "arm64"], ["linux", "x64"],
+              ["win32", "arm64"], ["win32", "x64"],
+            ];
+            const missing = pairs
+              .map(([platform, architecture]) => [`${platform}-${architecture}`, assetName(platform, architecture)])
+              .filter(([, asset]) => !built.has(asset));
+            if (missing.length > 0) {
+              for (const [pair, asset] of missing) {
+                console.error(`${pair}: the launcher downloads ${asset}, which this release does not contain`);
+              }
+              process.exit(1);
+            }
+            console.log(`all ${pairs.length} platforms the launcher offers have an asset`);
+          '
 
       # Serving the assets the way a release does, and resolving through the
       # real launcher, is the only way to know the names, the layout and the

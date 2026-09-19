@@ -71,6 +71,10 @@ services:
       MEMOAR_BACKUP_URL: postgres://memoar:memoar@postgres:5432/memoar
       MEMOAR_BACKUP_INTERVAL_SECONDS: ${MEMOAR_BACKUP_INTERVAL_SECONDS:-86400}
       MEMOAR_BACKUP_KEEP: ${MEMOAR_BACKUP_KEEP:-14}
+      # The health check below reads the interval and allows one and a half of
+      # them, so changing the schedule moves the alarm with it. Set this only to
+      # override that.
+      MEMOAR_BACKUP_MAX_AGE_SECONDS: ${MEMOAR_BACKUP_MAX_AGE_SECONDS:-}
     volumes:
       - ./backup.sh:/backup.sh:ro
       - ./backup-cron.sh:/backup-cron.sh:ro
@@ -89,6 +93,19 @@ services:
       retries: 2
       start_period: 120s
 
+  # The half of the archive that backup.sh deliberately does not copy.
+  #
+  # Postgres holds the parsed sessions; this holds the raw bytes they were
+  # parsed from, and docs/backup.md says those are protected by bucket
+  # versioning rather than by a nightly dump — because they are
+  # content-addressed and immutable, so what they need is protection from
+  # deletion rather than a copy of yesterday's copy.
+  #
+  # That protection was written down and never turned on. `mc mb` alone leaves
+  # the bucket un-versioned, and an un-versioned delete is final: restoring the
+  # database then gives an archive whose sessions all point at objects that are
+  # gone. Enabling it here costs nothing and makes the stack match the only
+  # thing anybody was told about it. Idempotent, like the bucket creation.
   minio-create-bucket:
     image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
     depends_on:
@@ -96,7 +113,7 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - "mc alias set local http://minio:9000 memoar-local memoar-local-secret && mc mb --ignore-existing local/memoar-raw"
+      - "mc alias set local http://minio:9000 memoar-local memoar-local-secret && mc mb --ignore-existing local/memoar-raw && mc version enable local/memoar-raw"
 
   api:
     restart: unless-stopped

@@ -1,6 +1,18 @@
 name: Agent distribution (non-publishing)
 
+# A pull-request-only trigger is how this workflow stayed broken on two of its
+# three runners for a fortnight: `ci.yml` and `build-publish.yml` both run on
+# pushes to main, work lands on main directly, and a job that only ever runs on
+# a pull request is a job that reports nothing about what is actually shipped.
+# The same paths gate both triggers, so a push that touches neither the agent
+# nor the launcher still costs nothing.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "packages/npx/**"
+      - ".github/workflows/agent-distribution.yml"
   pull_request:
     paths:
       - "agent/**"
@@ -10,6 +22,15 @@ on:
 
 permissions:
   contents: read
+
+# This workflow holds two macOS and two Windows runners for most of eight
+# minutes, and macOS bills at ten times the Linux rate. Two pushes to the same
+# branch inside that window ran both matrices to completion for one answer;
+# superseding the older one is the difference. Never cancelled on main, where
+# the run is the record of what was shipped rather than feedback on a draft.
+concurrency:
+  group: agent-distribution-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   native-rust:
@@ -27,6 +48,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # Without this the whole dependency graph is compiled from scratch, four
+      # times over (check, clippy, test, release build), on three runners —
+      # two of which are the expensive ones. `ci.yml` and `release.yml` both
+      # cache; this job was the one that did not, and it is the one that runs
+      # the most compilers.
+      #
+      # Keyed per OS because the matrix shares a cache namespace otherwise and
+      # a macOS target would keep evicting the Windows one.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+          key: ${{ matrix.os }}
       - name: Record native target
         run: rustc -vV
       - name: Check formatting
