@@ -43,26 +43,6 @@ const PARSER_SRC = resolve(root, 'server/libs/parsers/src');
 const UNSETTLED = [
   {
     source: 'copilot',
-    pattern: '.copilot/session-state/*.json',
-    settledBy: 'Copilot CLI writes session-state/<id>/workspace.yaml and checkpoints/index.md — no JSON was found there on the one machine with the CLI installed. Confirm on a machine with recorded exchanges whether any .json appears, and drop the pattern if none does.',
-  },
-  {
-    source: 'copilot',
-    pattern: '.copilot/session-state/*/*.json',
-    settledBy: 'Same directory, one level deeper. Same question.',
-  },
-  {
-    source: 'copilot',
-    pattern: '.copilot/history-session-state/*.json',
-    settledBy: 'No such directory exists on the machine with the CLI installed. Confirm it is ever written.',
-  },
-  {
-    source: 'copilot',
-    pattern: '.copilot/history-session-state/*/*.json',
-    settledBy: 'Same directory, one level deeper. Same question.',
-  },
-  {
-    source: 'copilot',
     pattern: 'Code/User/workspaceStorage/*/chatSessions/*.json',
     settledBy: 'These exist and hold VS Code Copilot Chat sessions: {version, requests[], sessionId, creationDate}. The copilot parser reads a CLI SQLite schema and refuses them. Settled by a parser branch for the chatSessions envelope, or by dropping the pattern; the pattern alone can never produce a session.',
   },
@@ -125,17 +105,14 @@ async function connectorSources() {
  * The bytes each parser will accept, read off the parser's own guards.
  *
  * `!isSqliteBytes` is a refusal of everything else and says so; a bare
- * `isSqliteBytes` is a branch with a fallback behind it.
- */
-/**
- * The readers a parser calls, which is how its accepted byte shapes are known.
+ * `isSqliteBytes` is a branch with a fallback behind it. The readers are named
+ * as constants so the failure below can say what it looked for.
  *
- * Named here rather than inline so the failure below can say what it looked
- * for. A parser that starts reading JSON lines through some third function
- * will read as accepting nothing, and the message has to be enough to act on
- * — `parseJsonLines` was renamed to `readJsonLines` in one parser and this
- * check went red saying only "have its guards changed?", which is a true
- * statement that tells you nothing about what to do.
+ * A parser that starts reading JSON lines through some third function will read
+ * as accepting nothing, and the message has to be enough to act on —
+ * `parseJsonLines` was renamed to `readJsonLines` in one parser and this check
+ * went red saying only "have its guards changed?", which is a true statement
+ * that tells you nothing about what to do.
  */
 const JSON_LINE_READERS = /\b(?:parse|read)JsonLines\(/u;
 const WHOLE_JSON_READER = /JSON\.parse\(Buffer\.from\(request\.raw\)/u;

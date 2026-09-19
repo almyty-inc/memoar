@@ -73,6 +73,16 @@ moves the mistake.
 | `opencode` | `storage/**` JSON, which is configuration: a config file uploaded on every sync, refused every time | `opencode.db` |
 | `claude-code` | `claude-code-sessions/*/*/local_*.json` and its local-agent-mode twin. 22 files matched on one machine and not one held a message, a `parentUuid` or a transcript. They are the desktop app's settings — model, permission mode, allowed egress, the rendered system prompt, `accountName` and `emailAddress` — so each sync uploaded an email address for an artifact that could only come back `unknown_format` | nothing: the conversation is the CLI transcript those files name in `cliSessionId`, which `.claude/projects/*/*.jsonl` already takes |
 | `antigravity-cli` | `brain/*/conversations/*.db` and `brain/*/*.md`. The first names a directory that does not exist — the conversation databases are one level above `brain/` — and the parser has no SQLite branch at all, only a diagnostic claiming one. The second is markdown, which is not JSONL | the transcript log, which is all the parser reads |
+| `claude-code` | `.claude/history.jsonl`, which is the prompt history the CLI's up-arrow reads, not a conversation: 10,619 lines on this machine, every one valid JSON, every one `{display, pastedContents, timestamp, project, sessionId}`, not one carrying `uuid` or `message`. Named `.jsonl`, so the agreement check — which compares extensions — never saw it, and 2.8 MB of every prompt ever typed went up on every sync and came back `unknown_format` | nothing: the conversation it indexes is the transcript named by its own `sessionId`, which `.claude/projects/*/*.jsonl` already takes |
+| `copilot` | the four `.copilot/{session-state,history-session-state}/**.json` patterns. Checked against GitHub Copilot CLI 1.0.59 with a recorded session: `session-state/<id>/` holds `workspace.yaml`, `checkpoints/index.md` and two empty directories, with no `.json` at any depth, and `history-session-state/` does not exist. The only JSON under `~/.copilot` is `config.json` and `command-history-state.json`, which are settings and which those patterns never named | `session-store.db`, which is what the parser opens |
+
+`claude-code` had also stopped taking the subagent transcripts. They are
+written a directory below the session that spawned them — and some two further
+down, under `subagents/workflows/<id>/` — so `projects/*/*.jsonl` reached none
+of them: 233 files on this machine carrying 58,467 lines with both `uuid` and
+`message`, against 15 top-level transcripts. Each depth is named now, and only
+`.jsonl` at that depth: `subagents/*.meta.json` and `tool-results/**` sit beside
+them and are not transcripts.
 
 The mismatch that made all four possible — a pattern naming a file shape the
 parser refuses — is now a build failure. `scripts/check-capture-parser-agreement.mjs`
@@ -90,11 +100,14 @@ deliberate, so a parser written later can still read them; so each open one is
 declared in that script with what would settle it, and the check fails both when
 an undeclared mismatch appears and when a declaration outlives its defect.
 
-Two are open, both waiting on somebody who runs the tool:
+Two are open, both waiting on somebody who runs the tool. The four
+`.copilot/**.json` patterns that used to be a third came off the list when the
+CLI was installed and asked: they are in the table above now, with what was
+found in the directory they named.
 
 | Source | Pattern | Parser accepts | Why it is still there |
 | --- | --- | --- | --- |
-| `copilot` | the five `*.json` patterns, including VS Code `chatSessions/*.json` | native SQLite only | The chatSessions files are real and hold Copilot Chat sessions — `{version, requests[], sessionId}` — and the parser reads a CLI SQLite schema instead. Either the parser grows a branch for that envelope or the pattern goes; guessing which would replace a known-wrong answer with an unknown one. |
+| `copilot` | VS Code `chatSessions/*.json`, on all three platforms | native SQLite only | The chatSessions files are real and hold Copilot Chat sessions — `{version, requests[], sessionId}` — and the parser reads a CLI SQLite schema instead. Either the parser grows a branch for that envelope or the pattern goes; guessing which would replace a known-wrong answer with an unknown one. Dropping it is not the cheap half: there is no SQLite equivalent for VS Code Copilot Chat, so the pattern is the only place those conversations exist and the bytes would be gone rather than kept for a later parser. Five are collected on this machine today and every one of them has `requests: []` — panels opened and never used — so this machine cannot show what a populated one maps to either. |
 | `goose` | `sessions/*.jsonl`, common and Windows | native SQLite only | The source calls itself "SQLite or legacy JSONL" and the parser implements only the SQLite half. Whether anything still writes `.jsonl` — and if so what shape it is — is a question for a machine with goose on it; nothing here can answer it. |
 
 `kilo` and `roo` are not on that list, because `tasks/*/*.json` and a parser
@@ -120,7 +133,7 @@ the failure this whole file exists to prevent.
 | --- | --- |
 | `cursor` | Install Cursor, hold one conversation with the agent, quit Cursor so it flushes `state.vscdb`, run the script. The parser reads `composerData:` rows for the order and `bubbleId:` rows for the content, both in `cursorDiskKV`; a green line with turns means both halves were found. |
 | `copilot` | Partly done, and the rest needs a populated CLI. `~/.copilot/session-store.db` on this machine has the exact `sessions` and `turns` schema the parser selects, and the parser opens it — but `turns` is empty, so the script prints `empty` and only the session row is verified. Install GitHub Copilot CLI, hold a conversation that records exchanges, re-run. Separately: the VS Code `chatSessions/*.json` the patterns collect are a different format the parser refuses outright (see the mismatch table above). |
-| `goose` | `brew install block-goose-cli`, one session, run the script. While there, list `~/.local/share/goose/sessions`: if anything still writes `.jsonl`, the parser needs a branch; if nothing does, the pattern goes. |
+| `goose` | `brew install block-goose-cli`, one session, run the script. While there, list `~/.local/share/goose/sessions`: if anything still writes `.jsonl`, the parser needs a branch; if nothing does, the pattern goes. Still nothing here to ask: neither `~/.local/share/goose` nor `~/Library/Application Support/Block` exists on this machine and `goose` is not on the path. |
 | `kilo` | VS Code with Kilo Code, one task, run the script. Also list one `tasks/<id>` directory and say which files are in it: the parser reads `api_conversation_history.json`, the pattern takes every `*.json` beside it, and `ui_messages.json` is a different shape that may parse into nonsense rather than be refused. |
 | `roo` | VS Code with Roo Code, one task. Same directory listing as Kilo; they share the format and the question. |
 | `chatgpt-export` | A genuine ChatGPT data export — no software to install, just the export ChatGPT emails you. Not in the script: it arrives as an upload, not as a store on disk. |
