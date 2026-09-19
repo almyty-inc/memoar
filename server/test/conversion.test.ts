@@ -41,8 +41,16 @@ describe("conversion writers", () => {
     try {
       expect(database.prepare("PRAGMA integrity_check").get()).toMatchObject({ integrity_check: "ok" });
       const tables = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[];
-      expect(tables.map((row) => row.name)).toEqual(["conversations", "messages"]);
-      expect(database.prepare("SELECT id, workspace_path FROM conversations").get()).toMatchObject({
+      // The schema Antigravity itself opens, which is also the one the
+      // materializer validates: it reads `trajectory_meta` and refuses a brain
+      // database without it. This used to be `conversations` and `messages`,
+      // invented here, and every conversion died on the user's machine.
+      expect(tables.map((row) => row.name)).toEqual([
+        "battle_mode_infos", "executor_metadata", "gen_metadata", "memoar_conversion",
+        "parent_references", "steps", "trajectory_meta", "trajectory_metadata_blob",
+      ]);
+      expect(database.prepare("SELECT trajectory_id FROM trajectory_meta").get()).toMatchObject({ trajectory_id: TEST_SESSION.id });
+      expect(database.prepare("SELECT id, workspace_path FROM memoar_conversion").get()).toMatchObject({
         id: TEST_SESSION.id,
         workspace_path: TEST_SESSION.workspace.path,
       });
@@ -89,6 +97,39 @@ describe("conversion writers", () => {
     expect(tight.report.dropped[0]!.reason).toBe("injection_token_budget_exceeded");
     expect(tightMarkdown).toContain("Omitted turns");
     expect(tightMarkdown.length).toBeLessThan(Buffer.from(generous.files[0]!.bytes).byteLength + 1);
+  });
+
+  it("does not wrap a prelude it already wrote", () => {
+    // A prelude is pasted into another tool, captured from it, and converted
+    // again. Marking plain text `[Memoar text]` meant the second pass marked
+    // the marker, and the third marked that, with nothing counting the layers.
+    const session = {
+      ...TEST_SESSION,
+      turns: [{
+        id: "0191cafe-0000-7000-8000-00000000e001", ordinal: 0, parentId: null, role: "user" as const,
+        createdAt: TEST_SESSION.createdAt,
+        blocks: [
+          { id: "0191cafe-0000-7000-8000-00000000e002", kind: "text" as const, text: "Decide how the archive stores unknown formats." },
+          // `artifact` is a real ContentBlockKind and is the one that carries an
+          // artifactRef. A made-up kind would make this test prove nothing: the
+          // prelude's fallback is keyed on the kind, so a kind the canonical
+          // model does not have cannot reach the branch being tested.
+          { id: "0191cafe-0000-7000-8000-00000000e003", kind: "artifact" as const, artifactRef: "sha256:c0ffee" },
+        ],
+      }],
+    };
+    const writer = new InjectionFallbackWriter();
+    const first = Buffer.from(writer.write(session, "unknown-agent").files[0]!.bytes).toString("utf8");
+    expect(first).toContain("Decide how the archive stores unknown formats.");
+    expect(first).not.toContain("[Memoar text]");
+    // The shape it genuinely cannot show still says so, and says what it had.
+    expect(first).toContain("[Memoar artifact] sha256:c0ffee");
+
+    // The prelude comes back as an ordinary text turn on the next capture.
+    const rearchived = { ...session, turns: [{ ...session.turns[0]!, blocks: [{ id: "0191cafe-0000-7000-8000-00000000e004", kind: "text" as const, text: first }] }] };
+    const second = Buffer.from(writer.write(rearchived, "unknown-agent").files[0]!.bytes).toString("utf8");
+    const count = (text: string) => [...text.matchAll(/\[Memoar artifact\]/gu)].length;
+    expect(count(second), "a second pass must not add a layer of its own").toBe(count(first));
   });
 
   /** A long conversation: 4000 turns of 400 characters, the odd short one. */
@@ -148,7 +189,7 @@ describe("conversion writers", () => {
     const prelude = Buffer.from(bundle.files[0]!.bytes);
 
     expect(bundle.report.dropped, "omissions are reported as ranges").toEqual([
-      { reference: "turns:1-3962", reason: "injection_token_budget_exceeded" },
+      { reference: "turns:1-3960", reason: "injection_token_budget_exceeded" },
     ]);
     expect(serializedBundleObject(bundle).files, "the payload is the bundle").toBeDefined();
     expect(JSON.stringify(bundle.report).length, "the report stays a fraction of the excerpt").toBeLessThan(prelude.byteLength / 4);

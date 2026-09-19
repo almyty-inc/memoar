@@ -1,4 +1,4 @@
-import type { Session, Turn } from "../../libs/canonical/src/generated.js";
+import type { ContentBlock, Session, Turn } from "../../libs/canonical/src/generated.js";
 import { bytes, freshReport, textForDegraded, type ConversionBundle, type ConversionReport } from "./types.js";
 
 /** A turn rendered for the prelude, with the cost of including it. */
@@ -7,8 +7,22 @@ interface Section {
   text: string;
 }
 
+/**
+ * One block as the prelude shows it.
+ *
+ * A marker means the prelude could not show the block's shape, which is never
+ * true of plain text. Every block used to get one, so a paragraph came out as
+ * `[Memoar text] …` — and a prelude is pasted into another tool, captured from
+ * it, and converted again, so the next pass wrapped the wrapper:
+ * `[Memoar text] [Memoar text] …`, growing a layer per round with nothing
+ * counting it as degraded.
+ */
+function excerpt(block: ContentBlock): string {
+  return block.kind === "text" ? block.text ?? "" : textForDegraded(block);
+}
+
 function render(session: Session, turn: Turn): Section {
-  return { turn, text: `## [${session.id} turn ${turn.ordinal}] ${turn.role}\n${turn.blocks.map(textForDegraded).join("\n")}\n` };
+  return { turn, text: `## [${session.id} turn ${turn.ordinal}] ${turn.role}\n${turn.blocks.map(excerpt).join("\n")}\n` };
 }
 
 /** "38", or "38-3961" — an omission is reported as a range, not turn by turn. */

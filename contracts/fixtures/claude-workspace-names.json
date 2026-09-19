@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {
+      "workspace": "/Users/person/workspace/memoar",
+      "encoded": "-Users-person-workspace-memoar"
+    },
+    {
+      "workspace": "",
+      "encoded": "memoar-imports"
+    },
+    {
+      "workspace": "C:\\Users\\me\\proj:1",
+      "encoded": "C--Users-me-proj-1"
+    },
+    {
+      "workspace": "/Users/persön/prøject",
+      "encoded": "-Users-pers-n-pr-ject"
+    },
+    {
+      "workspace": "/Users/person/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/project",
+      "encoded": "6af4857760c4-ectory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-project"
+    },
+    {
+      "workspace": "/Users/someone-else/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/nested-directory/project",
+      "encoded": "76cfff534147-ectory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-nested-directory-project"
+    },
+    {
+      "workspace": "/Users/person/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/ディレクトリ/project",
+      "encoded": "8c31d4d92ea8-----------------------------------------------------------------------------------------------------------------------------------------------------------------project"
+    }
+  ]
+}
