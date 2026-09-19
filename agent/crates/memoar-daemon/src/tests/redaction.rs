@@ -6,7 +6,7 @@ use crate::artifact::redact_artifact;
 use crate::enqueue::sha256_bytes;
 use crate::error::DaemonError;
 use crate::queue::OfflineQueue;
-use crate::redaction::RedactionConfig;
+use crate::redaction::{RedactionConfig, redact_bytes};
 
 #[test]
 fn client_redaction_happens_before_hashing_and_snapshot() {
@@ -248,4 +248,59 @@ fn utf16_text_without_a_secret_is_still_captured() {
 
     let redacted = redact_artifact(&path, &bytes, config).expect("nothing here to refuse");
     assert_eq!(redacted.bytes, bytes, "untouched bytes for untouched text");
+}
+
+/// Redacting a transcript must leave a transcript, not a broken one.
+///
+/// A capture is JSON lines, and a line holds a shell command as a JSON-encoded
+/// string — so a quote inside that command is stored as `\"`. The value classes
+/// in the secret rules exclude `"` but not `\`, so the match ran on through the
+/// backslash and the replacement dropped it, leaving a bare `"` that closed the
+/// JSON string early. The line stopped being JSON.
+///
+/// That is not a cosmetic loss. Sixteen lines corrupted this way, out of 26,462
+/// in one 71 MB transcript, were enough for the archive's parser to refuse the
+/// file whole and throw away 14,042 turns — and 33 artifacts holding 257 MB
+/// were refused for exactly this, by the agent that captured them.
+#[test]
+fn redacting_a_json_line_leaves_it_parseable() {
+    let config = RedactionConfig {
+        secrets: true,
+        email_addresses: false,
+        home_paths: true,
+    };
+
+    // Built rather than spelled: serde writes the escapes, so the fixture is
+    // whatever a real capture would actually contain, not an approximation.
+    let secret = format!("{}_{}", "sk", "a1b2c3d4e5f6g7h8i9j0k1l2");
+    for command in [
+        format!(r#"curl -s "https://example.invalid/v1?apikey={secret}" | head -c 400"#),
+        format!("export API_KEY={secret} && echo \"done\""),
+        format!(r#"Authorization: Bearer {secret}" >> /Users/someone/notes.txt"#),
+    ] {
+        let line = serde_json::to_string(&serde_json::json!({
+            "type": "user",
+            "uuid": "0191cafe-0000-7000-8000-00000000000a",
+            "message": { "content": command },
+        }))
+        .unwrap();
+        // The fixture has to be valid before the redactor sees it, or the test
+        // would pass by feeding in something already broken.
+        serde_json::from_str::<serde_json::Value>(&line).expect("the fixture must start as JSON");
+
+        let redacted = redact_bytes(line.as_bytes(), config);
+        assert!(redacted.scanned, "a JSON line is text and must be scanned");
+        assert!(
+            redacted.replacements > 0,
+            "nothing was redacted, so this fixture proves nothing: {line}"
+        );
+        let out = String::from_utf8(redacted.bytes).expect("redaction must leave valid UTF-8");
+        assert!(
+            !out.contains(&secret),
+            "the secret survived redaction: {out}"
+        );
+        serde_json::from_str::<serde_json::Value>(&out).unwrap_or_else(|error| {
+            panic!("redaction broke the JSON line ({error}): {out}");
+        });
+    }
 }
