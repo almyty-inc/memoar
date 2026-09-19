@@ -105,6 +105,73 @@ describe("direct transfer", () => {
   });
 });
 
+describe("a transfer offer is answered once, on terms that still hold", () => {
+  async function offered(store: DevArchiveStore): Promise<{ sharing: SharingService; transferId: string }> {
+    await store.saveSession(sender, TEST_SESSION);
+    const sharing = new SharingService(store);
+    const review = await sharing.completeReview(sender, TEST_SESSION.id);
+    const transfer = await sharing.requestTransfer(
+      sender,
+      { sessionId: TEST_SESSION.id, recipientEmail: RECIPIENT_EMAIL, redactionReviewId: review.id },
+      "sender@example.test",
+    );
+    return { sharing, transferId: transfer.id };
+  }
+
+  /*
+    An offer sits until the recipient acts on it, and the session it names keeps
+    growing in the meantime — the agent appends to a transcript it has already
+    uploaded and the archive updates the same row. The sender reviewed what was
+    there when they offered it; accepting copied whatever was there by then.
+  */
+  it("refuses an accept once the session has grown past the sender's review", async () => {
+    const store = new DevArchiveStore();
+    const { sharing, transferId } = await offered(store);
+
+    const session = (await store.getSession(sender, TEST_SESSION.id))!;
+    session.turns.push({
+      id: "0191cafe-0000-7000-8000-00000000f001",
+      ordinal: 2,
+      parentId: session.turns.at(-1)!.id,
+      role: "user",
+      createdAt: "2026-08-18T09:00:00.000Z",
+      blocks: [{ id: "0191cafe-0000-7000-8000-00000000f002", kind: "text", text: `unreviewed ${LIVE_KEY_FIXTURE}` }],
+    });
+    session.updatedAt = "2026-08-18T09:00:00.000Z";
+    await store.saveSession(sender, session);
+
+    const refusal: unknown = await sharing.acceptTransfer(recipient, transferId).catch((error: unknown) => error);
+    expect(refusal, "an unreviewed session must not be accepted into another tenant").toBeInstanceOf(Error);
+    expect((await store.listSessions(recipient, { limit: 50 })).items, "nothing crossed the boundary").toHaveLength(0);
+    const problem = refusal as { getStatus: () => number; getResponse: () => { code?: string } };
+    expect(problem.getStatus()).toBe(409);
+    expect(problem.getResponse().code).toBe("redaction_review_required");
+    // The offer is not spent by the refusal: reviewing it again lets the same
+    // offer be accepted, rather than stranding it as permanently unanswerable.
+    await sharing.completeReview(sender, session.id);
+    const summary = await sharing.acceptTransfer(recipient, transferId);
+    expect(summary.id).toBeTypeOf("string");
+  });
+
+  /*
+    Two clicks on Accept, or a retry after a slow response. Both calls read the
+    offer as pending and both wrote a copy, because the status was only
+    overwritten after the copy had landed.
+  */
+  it("copies once when the same offer is accepted twice at once", async () => {
+    const store = new DevArchiveStore();
+    const { sharing, transferId } = await offered(store);
+
+    const outcomes = await Promise.allSettled([
+      sharing.acceptTransfer(recipient, transferId),
+      sharing.acceptTransfer(recipient, transferId),
+    ]);
+
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect((await store.listSessions(recipient, { limit: 50 })).items, "one accept, one copy").toHaveLength(1);
+  });
+});
+
 describe("declining a transfer", () => {
   it("moves the offer off pending for both sides and copies nothing", async () => {
     const store = new DevArchiveStore();

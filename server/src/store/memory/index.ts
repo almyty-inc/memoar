@@ -66,6 +66,7 @@ export class DevArchiveStore implements ArchiveStore {
   saveCollection(context: TenantContext, collection: CollectionRecord): Promise<void> { return this.collectionStore.saveCollection(context, collection); }
 
   getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null> { return this.sharingStore.getReview(context, reviewId); }
+  getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null> { return this.sharingStore.getCurrentReview(context, sessionId, contentDigest); }
   saveReview(context: TenantContext, review: RedactionReviewRecord): Promise<void> { return this.sharingStore.saveReview(context, review); }
   listShareGrants(context: TenantContext): Promise<ShareGrantRecord[]> { return this.sharingStore.listShareGrants(context); }
   saveShareGrant(context: TenantContext, grant: ShareGrantRecord): Promise<void> { return this.sharingStore.saveShareGrant(context, grant); }

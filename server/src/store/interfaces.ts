@@ -140,6 +140,17 @@ export interface CollectionStore {
 
 export interface SharingStore {
   getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null>;
+  /**
+   * A completed review of this session whose digest still describes the session
+   * as it is now, if there is one.
+   *
+   * The mint-time gate is not the whole gate. A share token names a session,
+   * not a snapshot, and a session grows: the agent appends to the transcript it
+   * has already uploaded and the archive updates the same row. So every read
+   * that leaves the tenant asks this again, against the content it is about to
+   * serve, rather than trusting the review that authorized the link last week.
+   */
+  getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null>;
   saveReview(context: TenantContext, review: RedactionReviewRecord): Promise<void>;
   listShareGrants(context: TenantContext): Promise<ShareGrantRecord[]>;
   saveShareGrant(context: TenantContext, grant: ShareGrantRecord): Promise<void>;

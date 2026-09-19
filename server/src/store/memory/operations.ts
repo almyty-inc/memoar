@@ -162,14 +162,20 @@ export class MemorySettingsStore implements SettingsStore, RetentionStore {
       settings.monthlySpentCents = 0;
       settings.budgetWindowStartedAt = new Date().toISOString();
     }
-    const remainingCents = Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents);
     if (!settings.enabled || settings.monthlySpentCents + costCents > settings.monthlyBudgetCents) {
       this.tables.distillation.set(context.tenantId, settings);
-      return { reserved: false, remainingCents };
+      return { reserved: false, remainingCents: Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents) };
     }
     settings.monthlySpentCents += costCents;
     this.tables.distillation.set(context.tenantId, settings);
-    return { reserved: true, remainingCents };
+    /*
+      What is left *after* this reservation, which is what Postgres returns from
+      `RETURNING budget - spent` on the row it just charged. Returning the budget
+      as it stood before meant every test saw a wider ceiling than production:
+      the number becomes `maxTokens: min(4000, remaining * 400)` in the distiller,
+      so the model was capped tighter live than anything under test ever was.
+    */
+    return { reserved: true, remainingCents: Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents) };
   }
 
   async settleDistillationSpend(context: TenantContext, deltaCents: number): Promise<void> {

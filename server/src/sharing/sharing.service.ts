@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import type { Visibility } from "../../libs/canonical/src/generated.js";
+import { sessionContentDigest } from "../store/review-digest.js";
 import type {
   AnnotationStore, ArchivedSession, RedactionReviewRecord, SessionStore, SettingsStore,
   ShareGrantRecord, SharingStore, ShareTokenLookup, TeamStore, TenantContext, TransferRecord,
@@ -12,16 +13,7 @@ import { canonicalProjection, sessionSummary } from "../sessions.js";
 import { ARCHIVE_STORE } from "../tokens.js";
 import type { CreateShareLinkDto, RequestTransferDto, UpdateVisibilityDto } from "./sharing.dto.js";
 
-/** Digest of the content a redaction review was completed against. */
-export function sessionContentDigest(session: ArchivedSession): string {
-  const captured = {
-    id: session.id,
-    updatedAt: session.updatedAt,
-    turns: session.turns,
-    redactionStatus: session.redactionStatus,
-  };
-  return createHash("sha256").update(JSON.stringify(captured)).digest("hex");
-}
+export { sessionContentDigest };
 
 @Injectable()
 export class SharingService {
@@ -144,12 +136,21 @@ export class SharingService {
   private async resolveShareToken(token: string): Promise<{ grant: ShareTokenLookup; session: ArchivedSession; ownerContext: TenantContext }> {
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const grant = await this.store.getShareGrantByTokenHash(tokenHash);
-    if (!grant || grant.status !== "active" || (grant.expiresAt && grant.expiresAt < new Date().toISOString())) {
+    if (!grant || grant.status !== "active" || expired(grant.expiresAt)) {
       throw new NotFoundException("Share link not found");
     }
     const ownerContext: TenantContext = { tenantId: grant.tenantId, userId: grant.tenantId, scopes: ["archive:read"], authType: "machine" };
     const session = await this.store.getSession(ownerContext, grant.sessionId);
     if (!session) throw new NotFoundException("Share link not found");
+    // The scope of a share is re-derived here rather than trusted from when it
+    // was minted. `createLink` refuses to mint without a review of the content
+    // as it then stood — but the token names a session, not a snapshot, and the
+    // agent keeps appending to transcripts it has already uploaded. Without
+    // this, a link granted over a reviewed conversation went on serving every
+    // turn added to it afterwards, unreviewed, for as long as the link lived.
+    if (!await this.store.getCurrentReview(ownerContext, grant.sessionId, sessionContentDigest(session))) {
+      throw new NotFoundException("Share link not found");
+    }
     return { grant, session, ownerContext };
   }
 
@@ -204,6 +205,23 @@ export class SharingService {
   }
 }
 
+/**
+ * Whether an expiry has passed, by instant rather than by string.
+ *
+ * `expiresAt` is whatever the client sent, and `IsDateString` accepts an offset:
+ * `2026-09-19T12:00:00+02:00` is ten in the morning UTC, and compared as text
+ * against `new Date().toISOString()` it sorts *after* eleven — so a link that
+ * expired an hour ago read as active. The Postgres store normalizes on the way
+ * in and hid this; the in-memory store keeps what it was given, and the check
+ * lives here, above both of them. An unparseable value expires, rather than
+ * living for ever.
+ */
+function expired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  const deadline = Date.parse(expiresAt);
+  return !(deadline > Date.now());
+}
+
 /** Maps store-level transfer errors onto the contract's status codes. */
 function transferFailure(error: unknown): Error {
   const message = error instanceof Error ? error.message : "";
@@ -212,6 +230,15 @@ function transferFailure(error: unknown): Error {
   }
   if (message === "transfer_not_addressed_to_caller") {
     return new ForbiddenException("Transfer is addressed to a different account");
+  }
+  if (message === "transfer_review_stale") {
+    return new ConflictException({
+      type: "https://memoar.dev/problems/redaction-review-required",
+      title: "Redaction review required",
+      status: 409,
+      code: "redaction_review_required",
+      detail: "The session has changed since the sender reviewed it. The sender must review it again before this transfer can be accepted.",
+    });
   }
   return error instanceof Error ? error : new Error(message);
 }

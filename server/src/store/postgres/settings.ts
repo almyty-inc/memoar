@@ -119,26 +119,39 @@ export class PostgresSettingsStore implements SettingsStore, RetentionStore {
         `DELETE FROM sessions WHERE "tenantId" = $1 AND "capturedUpdatedAt" < $2 ${exemptClause} RETURNING id`,
         [context.tenantId, cutoffIso],
       ) as unknown as [{ id: string }[], number];
-      const deletedSessions = deletedRaw[0].length;
+      const deletedSessionIds = deletedRaw[0].map((row) => row.id);
+      if (deletedSessionIds.length === 0) return { deletedSessions: 0, deletedArtifacts: 0 };
+      /*
+        Only what this sweep's own deletes left behind.
+
+        `artifact_sessions` has no foreign key to `sessions` and `deleteSession`
+        leaves the join row in place, so "every join fails to resolve to a live
+        session" is also true of an artifact whose session someone deleted by
+        hand a minute ago. Bounded by the cutoff, that artifact is retained; this
+        statement used to destroy it anyway and count it as retention's doing.
+        The bytes are kept on purpose — a parser written later can still read
+        them — so the artifact goes only when retention took every session it
+        produced. The memory store has always scoped it this way.
+      */
       const artifactsRaw = await manager.query(
         `DELETE FROM raw_artifacts r WHERE r."tenantId" = $1
            AND EXISTS (SELECT 1 FROM artifact_sessions j WHERE j."tenantId" = $1 AND j."artifactId" = r.id)
            AND NOT EXISTS (
              SELECT 1 FROM artifact_sessions j
-             JOIN sessions s ON s."tenantId" = $1 AND s.id = j."sessionId"
              WHERE j."tenantId" = $1 AND j."artifactId" = r.id
+               AND NOT (j."sessionId" = ANY($2::uuid[]))
            )
          RETURNING r.id`,
-        [context.tenantId],
+        [context.tenantId, deletedSessionIds],
       ) as unknown as [{ id: string }[], number];
-      const deletedArtifactIds = artifactsRaw[0].map((row) => row.id);
-      if (deletedArtifactIds.length > 0) {
-        await manager.query(
-          `DELETE FROM artifact_sessions WHERE "tenantId" = $1 AND "artifactId" = ANY($2::uuid[])`,
-          [context.tenantId, deletedArtifactIds],
-        );
-      }
-      return { deletedSessions, deletedArtifacts: deletedArtifactIds.length };
+      // Every join of a deleted artifact points at a session this sweep took,
+      // so pruning by session id clears those rows and the surviving artifacts'
+      // stale halves in one statement.
+      await manager.query(
+        `DELETE FROM artifact_sessions WHERE "tenantId" = $1 AND "sessionId" = ANY($2::uuid[])`,
+        [context.tenantId, deletedSessionIds],
+      );
+      return { deletedSessions: deletedSessionIds.length, deletedArtifacts: artifactsRaw[0].length };
     });
   }
 }

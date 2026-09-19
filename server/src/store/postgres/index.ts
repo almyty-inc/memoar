@@ -85,6 +85,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   saveCollection(context: TenantContext, collection: CollectionRecord): Promise<void> { return this.collections.saveCollection(context, collection); }
 
   getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null> { return this.sharing.getReview(context, reviewId); }
+  getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null> { return this.sharing.getCurrentReview(context, sessionId, contentDigest); }
   saveReview(context: TenantContext, review: RedactionReviewRecord): Promise<void> { return this.sharing.saveReview(context, review); }
   listShareGrants(context: TenantContext): Promise<ShareGrantRecord[]> { return this.sharing.listShareGrants(context); }
   saveShareGrant(context: TenantContext, grant: ShareGrantRecord): Promise<void> { return this.sharing.saveShareGrant(context, grant); }
