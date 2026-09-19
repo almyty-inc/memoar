@@ -38,13 +38,18 @@ export class SessionsApi extends ApiClientCore {
     const timeline = await this.loadTimelinePage();
     const sessions = timeline.groups.flatMap((group) => group.sessions);
     const sessionTitles = new Map(sessions.map((session) => [session.id, session.title]));
-    const [collections, grants, transfers, machines, apiKeys] = await Promise.all([
+    const [collections, grants, transfers, machines, apiKeys, account] = await Promise.all([
       this.request<ListResponse<WireCollection>>('/collections'),
       this.request<ListResponse<WireShareGrant>>('/sharing/links'),
       this.request<ListResponse<WireTransfer>>('/sharing/transfers'),
       this.request<ListResponse<WireMachine>>('/machines'),
       this.request<ListResponse<ApiKey>>('/auth/api-keys'),
+      // Who is signed in decides which way a transfer points. An identity this
+      // request cannot get leaves every transfer outgoing, which is what the
+      // page already did; it must not cost the rest of the dashboard.
+      this.currentUser().catch(() => null),
     ]);
+    const self = account?.email.toLocaleLowerCase() ?? null;
     return {
       timeline: timeline.groups,
       archivedSessions: timeline.total,
@@ -58,7 +63,14 @@ export class SessionsApi extends ApiClientCore {
       transfers: transfers.items.map((transfer) => ({
         ...transfer,
         sessionTitle: sessionTitles.get(transfer.sessionId) ?? transfer.sessionId,
-        direction: transfer.recipientEmail.endsWith('@local.invalid') ? 'incoming' : 'outgoing',
+        /*
+          A transfer addressed to this account is one coming in. This tested
+          for `@local.invalid`, a domain that exists only in a development
+          fixture, so a real incoming transfer rendered as outgoing — "To
+          bob@…", no Accept button — and the accept and decline branch could
+          never appear for anybody.
+        */
+        direction: self !== null && transfer.recipientEmail.toLocaleLowerCase() === self ? 'incoming' : 'outgoing',
       })),
       machines: machines.items.map(mapMachine),
       apiKeys: apiKeys.items,

@@ -158,7 +158,10 @@ export function mapMachine(machine: WireMachine): Machine {
         id: sourceId,
         label: source.label ?? sourceLabel(sourceId),
         enabled,
-        state: source.state ?? (enabled ? 'synced' : 'disabled'),
+        // Only when the archive says so. `enabled ? 'synced' : 'disabled'`
+        // turned a line in the agent's config into a report on how capture was
+        // going, and the answer was "Synced" on every row of every machine.
+        ...(source.state ? { state: source.state } : {}),
         sessionCount: source.sessionCount ?? 0,
         lastSyncAt: source.lastSyncAt ?? null,
       }];

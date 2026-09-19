@@ -37,6 +37,23 @@ export class ApiClientCore {
     return this.accessToken() !== null;
   }
 
+  /**
+   * When this browser session stops being accepted, in epoch milliseconds, or
+   * null when there is no session or it carries no expiry.
+   *
+   * Tokens live an hour and are not refreshed, so the moment is knowable well
+   * in advance. Nothing read it: the first anyone heard about it was a 401 on
+   * the request they had just made, which evicted them to the sign-in screen
+   * and took whatever they had typed with it.
+   */
+  get expiresAt(): number | null {
+    if (!this.authenticated) return null;
+    const at = this.session?.expiresAt;
+    if (!at) return null;
+    const value = new Date(at).valueOf();
+    return Number.isFinite(value) ? value : null;
+  }
+
   get mcpEndpoint(): string {
     return `${this.baseUrl.replace(/\/v1$/, '')}/mcp`;
   }

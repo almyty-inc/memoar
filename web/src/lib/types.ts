@@ -207,9 +207,17 @@ export interface UnparsedSource {
 
 export interface MachineSource {
   id: SourceId;
-  label: string;
+  /** Whether the agent on that machine is configured to read this store. */
   enabled: boolean;
-  state: 'synced' | 'syncing' | 'attention' | 'disabled';
+  label: string;
+  /**
+   * How capture is going for this source, when the archive reports one.
+   *
+   * Optional because today nothing does. It used to be derived from `enabled`,
+   * so every source anybody had switched on read "Synced" for ever — a column
+   * of a status nobody had measured, beside a last-sync time of "Never".
+   */
+  state?: 'synced' | 'syncing' | 'attention' | 'disabled';
   sessionCount: number;
   lastSyncAt: string | null;
 }
