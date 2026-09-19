@@ -127,12 +127,25 @@ async function connectorSources() {
  * `!isSqliteBytes` is a refusal of everything else and says so; a bare
  * `isSqliteBytes` is a branch with a fallback behind it.
  */
+/**
+ * The readers a parser calls, which is how its accepted byte shapes are known.
+ *
+ * Named here rather than inline so the failure below can say what it looked
+ * for. A parser that starts reading JSON lines through some third function
+ * will read as accepting nothing, and the message has to be enough to act on
+ * — `parseJsonLines` was renamed to `readJsonLines` in one parser and this
+ * check went red saying only "have its guards changed?", which is a true
+ * statement that tells you nothing about what to do.
+ */
+const JSON_LINE_READERS = /\b(?:parse|read)JsonLines\(/u;
+const WHOLE_JSON_READER = /JSON\.parse\(Buffer\.from\(request\.raw\)/u;
+
 function acceptedShapes(text) {
   const shapes = new Set();
   if (/isSqliteBytes\(/u.test(text)) shapes.add('sqlite');
   if (/!isSqliteBytes\(/u.test(text)) return shapes;
-  if (/parseJsonLines\(/u.test(text)) shapes.add('jsonl');
-  if (/JSON\.parse\(Buffer\.from\(request\.raw\)/u.test(text)) shapes.add('json');
+  if (JSON_LINE_READERS.test(text)) shapes.add('jsonl');
+  if (WHOLE_JSON_READER.test(text)) shapes.add('json');
   return shapes;
 }
 
@@ -178,7 +191,11 @@ for (const { id, patterns } of sources) {
     continue;
   }
   if (accepted.size === 0) {
-    failures.push(`${id}: the parser's accepted byte shapes could not be read; have its guards changed?`);
+    failures.push(
+      `${id}: the parser calls none of the readers this check knows, so what it accepts cannot be told.`
+      + ` It looks for ${JSON_LINE_READERS.source} (jsonl), ${WHOLE_JSON_READER.source} (json)`
+      + " and isSqliteBytes( (sqlite). If the parser now reads its bytes another way, add that reader here.",
+    );
     continue;
   }
   for (const { platform, pattern } of patterns) {
