@@ -34,6 +34,15 @@ class TestAuthGuard implements CanActivate {
 })
 class TestIngestModule {}
 
+/** Narrows what the upload endpoint answers with, since supertest types it `any`. */
+function acknowledgement(body: unknown): { id: string; status: string } {
+  const { id, status } = (body ?? {}) as { id?: unknown; status?: unknown };
+  if (typeof id !== "string" || typeof status !== "string") {
+    throw new Error(`expected an id and a status, got ${JSON.stringify(body)}`);
+  }
+  return { id, status };
+}
+
 function httpServer(application: INestApplication): Server {
   const candidate = application.getHttpServer() as Server | undefined;
   if (!(candidate instanceof Server)) throw new Error("Nest HTTP server was not initialized");
@@ -67,6 +76,37 @@ describe("binary raw ingest HTTP", () => {
     const storage = app.get<ObjectStorage>(OBJECT_STORAGE);
     const persisted = await storage.get(`tenants/0191cafe-0000-7000-8000-000000000002/raw/${sha256}`);
     expect(Buffer.from(persisted).equals(bytes)).toBe(true);
+  });
+
+  /*
+    An artifact is identified by (tenant, sha256) and the store enforces it, so
+    re-offering the same bytes stores nothing new. The id the endpoint reports
+    has to be the id of the row that is held — it was minted per request, so a
+    duplicate answered with a uuid naming nothing, and a different one each
+    time. The agent re-uploads a transcript on every append, which is how one
+    artifact came to have been announced under dozens of ids.
+  */
+  it("reports the held artifact's own id when the same bytes are offered again", async () => {
+    const bytes = Buffer.from("the same conversation, offered twice");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const endpoint = `/v1/ingest/artifacts/${sha256}`;
+    const headers = {
+      "content-type": "application/octet-stream",
+      "x-memoar-source": "claude-code",
+      "x-memoar-source-path": "/tmp/twice.jsonl",
+    };
+    const offer = async (expected: number): Promise<{ id: string; status: string }> => {
+      const response = await request(httpServer(app)).put(endpoint).set(headers).send(bytes).expect(expected);
+      return acknowledgement(response.body);
+    };
+
+    const stored = await offer(201);
+    const again = await offer(208);
+    expect(again.status).toBe("duplicate");
+    expect(again.id, "a duplicate names the artifact already held, not a new one").toBe(stored.id);
+
+    // And a third offer agrees with both, rather than inventing a third id.
+    expect((await offer(208)).id).toBe(stored.id);
   });
 
   it("rejects manifests referencing artifacts that were never uploaded with a 422 problem", async () => {

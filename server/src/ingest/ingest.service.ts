@@ -61,7 +61,16 @@ export class IngestService {
     // capture has quietly stopped moving.
     artifactsIngested.inc({ result: created ? "stored" : "duplicate" });
     if (created) ingestBytes.inc(bytes.byteLength);
-    return { created, artifact };
+    if (created) return { created, artifact };
+    // The row that is actually held, not the one minted for this request.
+    // An artifact is identified by (tenant, sha256) and the store enforces it,
+    // so a re-offer of the same bytes stores nothing — but the id above was
+    // freshly generated a few lines up, and returning it handed the caller a
+    // uuid naming no row, different on every re-offer of one artifact. The
+    // agent re-offers a growing transcript on every append, so the identity the
+    // API reported for one artifact changed dozens of times.
+    const stored = await this.store.getRawArtifact(context, sha256);
+    return { created, artifact: stored ?? artifact };
   }
 
   /**
