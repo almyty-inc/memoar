@@ -109,6 +109,35 @@ describe("binary raw ingest HTTP", () => {
     expect((await offer(208)).id).toBe(stored.id);
   });
 
+  /*
+    The receipt counted the request, not the work. `accepted` was the length of
+    the artifact list and `duplicate` was the literal 0, while the queue is
+    keyed by (tenant, parse, sha256) and collapses repeats — so a manifest that
+    named one file twice, which the agent produces whenever two watched patterns
+    resolve to the same path, was acknowledged as two accepted parses and no
+    duplicates, and one job existed.
+  */
+  it("counts a manifest receipt from the jobs it queued, not from the list it was sent", async () => {
+    const bytes = Buffer.from("one transcript, named twice in one manifest");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    await request(httpServer(app))
+      .put(`/v1/ingest/artifacts/${sha256}`)
+      .set({ "content-type": "application/octet-stream", "x-memoar-source": "claude-code", "x-memoar-source-path": "/tmp/twice-in-manifest.jsonl" })
+      .send(bytes)
+      .expect(201);
+    const entry = { sha256, size: bytes.byteLength, source: "claude-code@v1", sourcePath: "/tmp/twice-in-manifest.jsonl", modifiedAt: "2026-08-19T00:00:00.000Z" };
+
+    const response = await request(httpServer(app))
+      .post("/v1/ingest/manifests")
+      .send({ machineId: "0191cafe-0000-7000-8000-000000000002", batchId: "1191cafe-0000-7000-8000-000000000009", artifacts: [entry, entry] })
+      .expect(202);
+
+    const queue = app.get<InMemoryJobQueue>(JOB_QUEUE);
+    const parses = queue.jobs.filter((job) => job.name === "parse" && job.data.sha256 === sha256);
+    expect(parses, "the queue collapses the repeat, so the receipt must too").toHaveLength(1);
+    expect(response.body).toMatchObject({ accepted: 1, duplicate: 1 });
+  });
+
   it("rejects manifests referencing artifacts that were never uploaded with a 422 problem", async () => {
     const ghost = "b".repeat(64);
     const response = await request(httpServer(app))

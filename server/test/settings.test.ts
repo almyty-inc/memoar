@@ -71,7 +71,7 @@ describe("retention sweep", () => {
 
     await service.update(TEST_CONTEXT, { retention: { policy: "days", days: 365 } });
     const result = await runRetentionSweep(store, now);
-    expect(result).toEqual({ sweptTenants: 1, deletedSessions: 1, deletedArtifacts: 1 });
+    expect(result).toEqual({ sweptTenants: 1, deletedSessions: 1, deletedArtifacts: 1, failedTenants: [] });
 
     expect(await store.getSession(TEST_CONTEXT, stale.id)).toBeNull();
     expect(await store.getSession(TEST_CONTEXT, fresh.id)).not.toBeNull();
@@ -80,6 +80,34 @@ describe("retention sweep", () => {
     const shared = await store.getRawArtifact(TEST_CONTEXT, "b".repeat(64));
     expect(shared).not.toBeNull();
     expect(shared!.sessionIds).toEqual([fresh.id]);
+  });
+
+  it("keeps sweeping past an account it cannot sweep, and names the one it missed", async () => {
+    // The loop had no guard, so the first tenant that threw ended the sweep and
+    // the worker retried an hour later from the top of the same list in the
+    // same order. Every account behind the broken one kept sessions it had
+    // asked to have deleted, for as long as that account stayed broken, and
+    // nothing said which accounts those were.
+    const store = new DevArchiveStore();
+    const broken = "0191cafe-0000-7000-8000-0000000000b1";
+    const healthy = { ...TEST_CONTEXT };
+    const stale = structuredClone(TEST_SESSION);
+    stale.updatedAt = new Date(Date.now() - 400 * DAY_MS).toISOString();
+    await store.saveSession(healthy, stale);
+    await new SettingsService(store).update(healthy, { retention: { policy: "days", days: 365 } });
+
+    const failing = Object.create(store) as DevArchiveStore;
+    failing.listTenantIds = (): Promise<string[]> => Promise.resolve([broken, healthy.tenantId]);
+    failing.getTenantSettings = (context) => context.tenantId === broken
+      ? Promise.reject(new Error("deadlock detected"))
+      : DevArchiveStore.prototype.getTenantSettings.call(store, context);
+
+    const result = await runRetentionSweep(failing);
+
+    expect(result.deletedSessions, "the accounts behind the broken one must still be swept").toBe(1);
+    expect(result.sweptTenants).toBe(1);
+    expect(result.failedTenants).toEqual([{ tenantId: broken, error: "deadlock detected" }]);
+    expect(await store.getSession(healthy, stale.id)).toBeNull();
   });
 
   it("does nothing for indefinite retention", async () => {
