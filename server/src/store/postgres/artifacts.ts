@@ -97,10 +97,28 @@ export class PostgresArtifactStore implements ArtifactStore {
    * answer is one row per tool and the question gets asked by `doctor`.
    */
   async countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]> {
+    // The diagnostic is the commonest one, not the alphabetically last.
+    //
+    // `max(diagnostic)` picks by sort order, which has nothing to do with how
+    // often a reason occurs. On a real archive it chose a five-row "session
+    // persistence failed: duplicate key" over the twelve-hundred-row "no parser
+    // for claude-code@unknown" that was the actual story — so the one line a
+    // person reads to find out why their capture is not being read pointed at a
+    // database bug instead of at the pattern collecting the wrong files. A
+    // count is a finding; so is the reason beside it.
     return this.runner.inTenant(context, async (manager) => manager.query(
-      `SELECT source, count(*)::int AS artifacts, max(diagnostic) AS diagnostic
-         FROM raw_artifacts
-        WHERE "tenantId" = $1 AND status IN ('unknown_format', 'failed')
+      `WITH reasons AS (
+         SELECT source, diagnostic, count(*)::int AS reason_count
+           FROM raw_artifacts
+          WHERE "tenantId" = $1 AND status IN ('unknown_format', 'failed')
+          GROUP BY source, diagnostic
+       )
+       SELECT source,
+              sum(reason_count)::int AS artifacts,
+              -- Ties break by the reason itself, so the answer does not depend
+              -- on the order rows happened to arrive in.
+              (ARRAY_AGG(diagnostic ORDER BY reason_count DESC, diagnostic))[1] AS diagnostic
+         FROM reasons
         GROUP BY source
         ORDER BY artifacts DESC`,
       [context.tenantId],

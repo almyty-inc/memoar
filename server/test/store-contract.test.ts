@@ -387,6 +387,45 @@ for (const implementation of implementations) {
       checks into no-ops, so the scoping is pinned here, where both stores are
       held to it rather than only the one the service tests happen to run on.
     */
+    /*
+      The reason beside the count is the commonest one, not an arbitrary one.
+
+      This is the single line a person reads to learn why their capture is not
+      being read, and all three implementations of it disagreed: Postgres took
+      `max(diagnostic)`, which sorts alphabetically and has nothing to do with
+      how often a reason occurs, and the memory store took whichever row it
+      happened to read last. On the real archive that meant a five-row "session
+      persistence failed" was reported over the twelve-hundred-row "no parser
+      for claude-code@unknown" — the signal fired correctly and named the wrong
+      cause, sending the reader after a database bug instead of a capture
+      pattern collecting the wrong files.
+    */
+    it("names the commonest reason an artifact went unread, in both stores", async () => {
+      const store = implementation.create();
+      const unread = (sha: string, diagnostic: string) => ({
+        ...artifact(sha, []), status: "unknown_format" as const, diagnostic,
+      });
+      // The shas differ in their first five characters because `artifact()`
+      // builds the row id out of those; sharing them would collapse all four
+      // into one row and the count would prove nothing.
+      //
+      // The rare reason is written last and sorts last, so it is what both old
+      // implementations would have reported: Postgres by `max(diagnostic)`,
+      // which sorts, and the memory store by keeping whichever it read last.
+      // Writing it first would let the memory store pass by luck.
+      for (const sha of ["b0de0002", "c0de0003", "d0de0004"]) {
+        await store.saveRawArtifact(alice, unread(sha, "aaa common reason"));
+      }
+      await store.saveRawArtifact(alice, unread("a0de0001", "zzz rare reason"));
+
+      const [row] = await store.countUnparsedArtifactsBySource(alice);
+      expect(row?.artifacts, "every unread artifact counts, whatever its reason").toBe(4);
+      expect(
+        row?.diagnostic,
+        "the reason reported must be the one most artifacts actually gave",
+      ).toBe("aaa common reason");
+    });
+
     it("resolves a machine only within the tenant that owns it", async () => {
       const store = implementation.create();
       const machineId = "0191cafe-0000-7000-8000-0000000c000e";

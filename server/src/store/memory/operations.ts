@@ -40,15 +40,28 @@ export class MemoryArtifactStore implements ArtifactStore {
   }
 
   async countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]> {
-    const bySource = new Map<string, { source: string; artifacts: number; diagnostic: string | null }>();
+    // The commonest reason, matching Postgres. This took whichever diagnostic
+    // it happened to read last, which is a third answer again — the two stores
+    // and the doctor check all described the same pile differently.
+    const bySource = new Map<string, Map<string | null, number>>();
     for (const artifact of await this.listRawArtifacts(context)) {
       if (artifact.status !== "unknown_format" && artifact.status !== "failed") continue;
-      const seen = bySource.get(artifact.source) ?? { source: artifact.source, artifacts: 0, diagnostic: null };
-      seen.artifacts += 1;
-      seen.diagnostic = artifact.diagnostic ?? seen.diagnostic;
-      bySource.set(artifact.source, seen);
+      const reasons = bySource.get(artifact.source) ?? new Map<string | null, number>();
+      const reason = artifact.diagnostic ?? null;
+      reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+      bySource.set(artifact.source, reasons);
     }
-    return [...bySource.values()].sort((left, right) => right.artifacts - left.artifacts);
+    return [...bySource.entries()]
+      .map(([source, reasons]) => ({
+        source,
+        artifacts: [...reasons.values()].reduce((total, count) => total + count, 0),
+        // Ties break by the reason itself, so the answer does not depend on
+        // the order rows happened to arrive in.
+        diagnostic: [...reasons.entries()].sort(
+          (left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])),
+        )[0]![0],
+      }))
+      .sort((left, right) => right.artifacts - left.artifacts);
   }
 
   async listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> {
