@@ -19,7 +19,7 @@ function results(items: SessionSummary[]): SearchResponse {
   return {
     items,
     nextCursor: null,
-    aggregations: { agents: [], workspaces: [], dates: [] },
+    aggregations: { agents: [], workspaces: [] },
     meta: { requestedMode: 'hybrid', realizedMode: 'hybrid', tookMs: 12, semanticFailure: null },
   };
 }

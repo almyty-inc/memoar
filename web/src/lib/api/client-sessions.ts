@@ -87,7 +87,6 @@ export class SessionsApi extends ApiClientCore {
       aggregations: {
         agents: mapAggregation(response.aggregations.agents, sourceLabel),
         workspaces: mapAggregation(response.aggregations.workspaces),
-        dates: mapAggregation(response.aggregations.dates),
       },
       meta: response.meta,
     };

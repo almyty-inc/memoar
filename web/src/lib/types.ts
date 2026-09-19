@@ -109,10 +109,15 @@ export interface SearchAggregation {
 export interface SearchResponse {
   items: SessionSummary[];
   nextCursor: string | null;
+  /**
+   * What the archive actually aggregates. `dates` was declared here and read
+   * by the filter panel, but no server has ever sent it; the wire type is an
+   * open record, so the two sides were never compared and the panel showed an
+   * empty Date facet for every query.
+   */
   aggregations: {
     agents: SearchAggregation[];
     workspaces: SearchAggregation[];
-    dates: SearchAggregation[];
   };
   meta: {
     requestedMode: 'hybrid' | 'lexical' | 'semantic';
