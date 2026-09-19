@@ -3,9 +3,19 @@ import ReactMarkdown from 'react-markdown';
 import type { ContentBlock } from '../../lib/types';
 import { Badge, IconButton, cn } from '../../components/ui';
 
-export function BlockView({ block, showThinking }: { block: ContentBlock; showThinking: boolean }) {
+export function BlockView({ block, showThinking, onShowThinking }: {
+  block: ContentBlock;
+  showThinking: boolean;
+  /** Reveals thinking for the whole conversation, the way the toolbar does. */
+  onShowThinking: () => void;
+}) {
   if (block.kind === 'thinking') {
-    if (!showThinking) return <button type="button" className="thinking-hidden"><EyeOff size={14} /> Thinking hidden · click “Show thinking” above</button>;
+    /*
+      This was a <button> with no handler that told you to go and press a
+      different control — focusable, announced as a button, and doing nothing
+      at all when anybody pressed it. It does what it says instead.
+    */
+    if (!showThinking) return <button type="button" className="thinking-hidden" onClick={onShowThinking}><EyeOff size={14} /> Thinking hidden — show it</button>;
     return <div className="thinking-block"><span><Sparkles size={14} /> Thinking</span><p>{block.text}</p></div>;
   }
   if (block.kind === 'text') {

@@ -40,15 +40,28 @@ export class MemoryArtifactStore implements ArtifactStore {
   }
 
   async countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]> {
-    const bySource = new Map<string, { source: string; artifacts: number; diagnostic: string | null }>();
+    // The commonest reason, matching Postgres. This took whichever diagnostic
+    // it happened to read last, which is a third answer again — the two stores
+    // and the doctor check all described the same pile differently.
+    const bySource = new Map<string, Map<string | null, number>>();
     for (const artifact of await this.listRawArtifacts(context)) {
       if (artifact.status !== "unknown_format" && artifact.status !== "failed") continue;
-      const seen = bySource.get(artifact.source) ?? { source: artifact.source, artifacts: 0, diagnostic: null };
-      seen.artifacts += 1;
-      seen.diagnostic = artifact.diagnostic ?? seen.diagnostic;
-      bySource.set(artifact.source, seen);
+      const reasons = bySource.get(artifact.source) ?? new Map<string | null, number>();
+      const reason = artifact.diagnostic ?? null;
+      reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+      bySource.set(artifact.source, reasons);
     }
-    return [...bySource.values()].sort((left, right) => right.artifacts - left.artifacts);
+    return [...bySource.entries()]
+      .map(([source, reasons]) => ({
+        source,
+        artifacts: [...reasons.values()].reduce((total, count) => total + count, 0),
+        // Ties break by the reason itself, so the answer does not depend on
+        // the order rows happened to arrive in.
+        diagnostic: [...reasons.entries()].sort(
+          (left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])),
+        )[0]![0],
+      }))
+      .sort((left, right) => right.artifacts - left.artifacts);
   }
 
   async listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> {
@@ -84,6 +97,13 @@ export class MemoryMachineStore implements MachineStore {
 
   async getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null> {
     const machine = this.tables.machines.get(key(context.tenantId, machineId));
+    return machine ? copy(machine) : null;
+  }
+
+  async findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> {
+    const machine = [...this.tables.machines.values()].find(
+      (candidate) => candidate.tenantId === context.tenantId && candidate.installationId === installationId,
+    );
     return machine ? copy(machine) : null;
   }
 
@@ -155,14 +175,20 @@ export class MemorySettingsStore implements SettingsStore, RetentionStore {
       settings.monthlySpentCents = 0;
       settings.budgetWindowStartedAt = new Date().toISOString();
     }
-    const remainingCents = Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents);
     if (!settings.enabled || settings.monthlySpentCents + costCents > settings.monthlyBudgetCents) {
       this.tables.distillation.set(context.tenantId, settings);
-      return { reserved: false, remainingCents };
+      return { reserved: false, remainingCents: Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents) };
     }
     settings.monthlySpentCents += costCents;
     this.tables.distillation.set(context.tenantId, settings);
-    return { reserved: true, remainingCents };
+    /*
+      What is left *after* this reservation, which is what Postgres returns from
+      `RETURNING budget - spent` on the row it just charged. Returning the budget
+      as it stood before meant every test saw a wider ceiling than production:
+      the number becomes `maxTokens: min(4000, remaining * 400)` in the distiller,
+      so the model was capped tighter live than anything under test ever was.
+    */
+    return { reserved: true, remainingCents: Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents) };
   }
 
   async settleDistillationSpend(context: TenantContext, deltaCents: number): Promise<void> {

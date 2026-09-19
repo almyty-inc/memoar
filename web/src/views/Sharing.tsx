@@ -89,7 +89,11 @@ export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfe
 
       <div className="tabs" role="tablist" aria-label="Sharing sections">
         <button role="tab" aria-selected={tab === 'links'} className={cn(tab === 'links' && 'active')} onClick={() => setTab('links')} type="button"><Link2 size={15} /> Share links <Badge>{grants.length}</Badge></button>
-        <button role="tab" aria-selected={tab === 'transfers'} className={cn(tab === 'transfers' && 'active')} onClick={() => setTab('transfers')} type="button"><Users size={15} /> Transfers <Badge>{stats.pendingTransfers}</Badge></button>
+        {/* Both badges count what the tab holds. This one counted pending
+            transfers only, so the tab read "Transfers 0" over a panel listing
+            three of them. How many are pending is said once, in the stats
+            below, where it is labelled. */}
+        <button role="tab" aria-selected={tab === 'transfers'} className={cn(tab === 'transfers' && 'active')} onClick={() => setTab('transfers')} type="button"><Users size={15} /> Transfers <Badge>{transfers.length}</Badge></button>
       </div>
 
       {tab === 'links' ? (

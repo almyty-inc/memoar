@@ -703,6 +703,12 @@ paths:
     post:
       tags: [Sharing]
       operationId: acceptTransfer
+      description: >-
+        Copies the offered session into the caller's archive. The sender's
+        redaction review is re-read against the session as it stands now, not as
+        it stood when the offer was sent, so an offer whose session has changed
+        since is refused until the sender reviews it again. An offer is answered
+        once: a second accept finds it spent.
       parameters:
         - { name: transferId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
       responses:
@@ -711,11 +717,14 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionSummary' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+        '409': { $ref: '#/components/responses/RedactionReviewRequired' }
   /shares/{token}:
     get:
       tags: [Sharing]
       operationId: consumeShare
-      description: Public, unauthenticated read of a shared session through an active share link. The response is the redaction-projected canonical session; masked literals and raw tool payloads are removed. Revoked, expired, or unknown tokens return 404.
+      description: Public, unauthenticated read of a shared session through an active share link. The response is the redaction-projected canonical session; masked literals and raw tool payloads are removed. Revoked, expired, and unknown tokens return 404, as does a link whose session has changed since the review that authorized it — the owner must review it again.
       security: []
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
@@ -1237,11 +1246,31 @@ paths:
     post:
       tags: [Machines]
       operationId: registerMachine
+      description: >-
+        Enrols this machine. Idempotent per installationId: a client that sends
+        one is given the machine it already registered rather than a second one,
+        which is what stops every re-login from duplicating the account's memory
+        documents. A request without installationId always creates, because the
+        archive will not infer identity from a name or a platform — the agent's
+        fallback name is a constant, so unrelated machines share it.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [name, platform], properties: { name: { type: string }, platform: { type: string }, agentVersion: { type: string } } }
+            schema:
+              type: object
+              required: [name, platform]
+              properties:
+                name: { type: string }
+                platform: { type: string }
+                agentVersion: { type: string }
+                installationId:
+                  type: string
+                  minLength: 16
+                  maxLength: 128
+                  description: >-
+                    Stable opaque id for the agent installation, generated once and kept
+                    for the life of its config directory. Compared, never parsed.
       responses:
         '201':
           description: Machine registered

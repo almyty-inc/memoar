@@ -17,6 +17,17 @@ pub(crate) struct Config {
     pub(crate) contract_version: String,
     pub(crate) endpoint: String,
     pub(crate) machine_id: String,
+    /// Which installation of the agent this config directory is.
+    ///
+    /// Generated once, on the first `login` that writes this file, and carried
+    /// forward by every later one. It is what lets the archive recognise a
+    /// re-registration as the machine it already has, without the server
+    /// guessing from a hostname that half the fleet reports as the same
+    /// fallback string.
+    ///
+    /// Empty when the file was written by an agent from before this existed.
+    #[serde(default)]
+    pub(crate) installation_id: String,
     pub(crate) disabled_sources: BTreeSet<String>,
     #[serde(default)]
     pub(crate) redaction: RedactionConfig,

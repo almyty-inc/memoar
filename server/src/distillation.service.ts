@@ -10,6 +10,26 @@ import { ARCHIVE_STORE, DISTILLATION_PROVIDER } from "./tokens.js";
 import type { DistillationProvider, DistillationResult } from "./distillation.types.js";
 import { AnthropicDistillationProvider, AnthropicMessagesClient, DisabledDistillationProvider } from "./distillation.providers.js";
 
+/** The window the store enforces a budget over, in milliseconds. */
+export const BUDGET_WINDOW_MS = 30 * 24 * 3600 * 1000;
+
+/**
+ * What this account has spent against the budget it is under right now.
+ *
+ * The reset lives in `reserveDistillationBudget`, which is the only thing that
+ * ever ran it: the stored counter keeps last window's total until the next
+ * distillation is attempted. The settings endpoint read that stale counter
+ * straight out of the row, so an account that spent its budget in August and
+ * came back in October was shown `remainingCents: 0` and told its budget was
+ * gone, while a distillation would have been reserved and run. The number a
+ * person is shown has to be the number that is enforced.
+ */
+export function spentInCurrentWindow(settings: DistillationSettings, now = Date.now()): number {
+  const startedAt = new Date(settings.budgetWindowStartedAt).getTime();
+  if (!Number.isFinite(startedAt)) return settings.monthlySpentCents;
+  return startedAt < now - BUDGET_WINDOW_MS ? 0 : settings.monthlySpentCents;
+}
+
 @Injectable()
 export class DistillationService {
   constructor(
@@ -27,6 +47,7 @@ export class DistillationService {
    */
   private toWire(settings: DistillationSettings): Record<string, unknown> {
     const key = settings.sealedApiKey ? openCredential(settings.sealedApiKey) : null;
+    const spent = spentInCurrentWindow(settings);
     return {
       enabled: settings.enabled,
       provider: settings.provider,
@@ -34,8 +55,8 @@ export class DistillationService {
       keySet: settings.sealedApiKey !== null,
       keyHint: key ? credentialHint(key) : null,
       monthlyBudgetCents: settings.monthlyBudgetCents,
-      monthlySpentCents: settings.monthlySpentCents,
-      remainingCents: Math.max(0, settings.monthlyBudgetCents - settings.monthlySpentCents),
+      monthlySpentCents: spent,
+      remainingCents: Math.max(0, settings.monthlyBudgetCents - spent),
       budgetWindowStartedAt: settings.budgetWindowStartedAt,
     };
   }

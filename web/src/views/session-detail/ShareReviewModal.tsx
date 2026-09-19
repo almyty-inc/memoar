@@ -33,11 +33,18 @@ function findingLabel(kind: string): string {
   return kind.replaceAll('_', ' ').replace(/^./u, (first) => first.toUpperCase());
 }
 
-export function ShareReviewModal({ open, approved, link, busy, sessionId, onApprove, onCreate, onClose }: {
+export function ShareReviewModal({ open, approved, link, busy, error, sessionId, onApprove, onCreate, onClose }: {
   open: boolean;
   approved: boolean;
   link: string | null;
   busy: boolean;
+  /**
+   * Why the last attempt did not work. Approving and minting both wrote their
+   * failure to a page-level banner this dialog covers, so pressing "Approve
+   * redactions" against a refusal left the reader looking at an unchanged
+   * dialog with nothing to read and nothing to do.
+   */
+  error: string | null;
   sessionId: string;
   onApprove: () => void;
   onCreate: (permission: ShareGrant['permission'], expiresAt: string | null) => void;
@@ -92,6 +99,7 @@ export function ShareReviewModal({ open, approved, link, busy, sessionId, onAppr
               <Badge className="redaction-findings">{findings?.length ? 'Review required' : 'Review'}</Badge>
             </div>
             {findingsError ? <p role="alert" className="error-note">{findingsError}</p> : null}
+            {error ? <p role="alert" className="error-note">{error}</p> : null}
 
             {/*
               Read-only on purpose: the server masks every finding and the
@@ -127,6 +135,7 @@ export function ShareReviewModal({ open, approved, link, busy, sessionId, onAppr
               toggle wired to nothing, which read as an option to turn it off.
             */}
             <p className="redaction-safe"><ShieldCheck size={15} /><span>The reviewed redaction mask is applied for as long as this link is active.</span></p>
+            {error ? <p role="alert" className="error-note">{error}</p> : null}
             {link ? <div className="share-link-result"><CopyButton value={link} label="Copy share link" /><code>{link}</code></div> : null}
           </div>
           <footer className="modal-actions">

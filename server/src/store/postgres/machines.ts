@@ -40,6 +40,13 @@ export class PostgresMachineStore implements MachineStore {
     });
   }
 
+  async findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> {
+    return this.runner.inTenant(context, async (manager) => {
+      const row = await manager.getRepository(MachineEntity).findOneBy({ installationId, tenantId: context.tenantId });
+      return row ? { ...row, lastSeenAt: row.lastSeenAt?.toISOString() ?? null } : null;
+    });
+  }
+
   async saveMachine(context: TenantContext, machine: MachineRecord): Promise<void> {
     if (machine.tenantId !== context.tenantId) throw new Error("tenant_mismatch");
     await this.runner.inTenant(context, async (manager) => {

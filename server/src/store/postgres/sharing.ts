@@ -3,11 +3,20 @@ import type { ArchivedSession, TenantContext } from "../context.js";
 import type { SharingStore } from "../interfaces.js";
 import type { RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TransferRecord } from "../records.js";
 import { redactionPatterns, reviewedMasks } from "../../redaction.js";
+import { sessionContentDigest } from "../review-digest.js";
 import { copyTransferredSession } from "../transfer-copy.js";
 import type { PostgresAnnotationStore } from "./annotations.js";
 import type { PostgresSettingsStore } from "./settings.js";
 import { TenantRunner } from "./runner.js";
 import type { PostgresSessionStore } from "./sessions.js";
+
+function reviewRecord(row: RedactionReviewEntity): RedactionReviewRecord {
+  return {
+    id: row.id, tenantId: row.tenantId, sessionId: row.sessionId, reviewerUserId: row.reviewerUserId,
+    status: row.status, contentDigest: row.contentDigest, masks: row.masks ?? [],
+    completedAt: row.completedAt?.toISOString() ?? null,
+  };
+}
 
 export class PostgresSharingStore implements SharingStore {
   constructor(
@@ -20,11 +29,15 @@ export class PostgresSharingStore implements SharingStore {
   async getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null> {
     return this.runner.inTenant(context, async (manager) => {
       const row = await manager.getRepository(RedactionReviewEntity).findOneBy({ id: reviewId, tenantId: context.tenantId });
-      return row ? {
-        id: row.id, tenantId: row.tenantId, sessionId: row.sessionId, reviewerUserId: row.reviewerUserId,
-        status: row.status, contentDigest: row.contentDigest, masks: row.masks ?? [],
-        completedAt: row.completedAt?.toISOString() ?? null,
-      } : null;
+      return row ? reviewRecord(row) : null;
+    });
+  }
+
+  async getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null> {
+    return this.runner.inTenant(context, async (manager) => {
+      const row = await manager.getRepository(RedactionReviewEntity)
+        .findOneBy({ tenantId: context.tenantId, sessionId, contentDigest, status: "completed" });
+      return row ? reviewRecord(row) : null;
     });
   }
 
@@ -75,10 +88,41 @@ export class PostgresSharingStore implements SharingStore {
     }); });
   }
 
+  /**
+   * What this account sent, and what it was offered.
+   *
+   * The `transfers` table is under RLS and holds the sender's row only, so a
+   * tenant-scoped read of it answers half the question the contract asks
+   * ("Incoming and outgoing transfers") — and the half it left out is the half
+   * with the buttons on it. A recipient saw nothing, so there was no id to
+   * accept or decline in the app at all, and the in-memory store's single
+   * shared table hid it by matching the recipient's address as well.
+   *
+   * The incoming half comes from `transfer_offers`, which is cross-tenant by
+   * design and addressed by email.
+   */
   async listTransfers(context: TenantContext): Promise<TransferRecord[]> {
-    return this.runner.inTenant(context, async (manager) => (await manager.getRepository(TransferEntity).findBy({ tenantId: context.tenantId })).map((row) => ({
+    const sent = await this.runner.inTenant(context, async (manager) => (await manager.getRepository(TransferEntity).findBy({ tenantId: context.tenantId })).map((row) => ({
       ...row, createdAt: row.createdAt.toISOString(),
     })));
+    const recipient = await this.runner.dataSource.getRepository(UserEntity).findOneBy({ id: context.userId });
+    if (!recipient) return sent;
+    const offers = await this.runner.dataSource.getRepository(TransferOfferEntity).findBy({ recipientEmail: recipient.email });
+    const senderEmails = new Map<string, string>();
+    const incoming: TransferRecord[] = [];
+    for (const offer of offers) {
+      if (offer.senderTenantId === context.tenantId) continue;
+      if (!senderEmails.has(offer.senderUserId)) {
+        const sender = await this.runner.dataSource.getRepository(UserEntity).findOneBy({ id: offer.senderUserId });
+        senderEmails.set(offer.senderUserId, sender?.email ?? "");
+      }
+      incoming.push({
+        id: offer.id, tenantId: offer.senderTenantId, sessionId: offer.sessionId,
+        senderEmail: senderEmails.get(offer.senderUserId)!, recipientEmail: offer.recipientEmail,
+        status: offer.status, createdAt: offer.createdAt.toISOString(),
+      });
+    }
+    return [...sent, ...incoming];
   }
 
   async getTransfer(context: TenantContext, transferId: string): Promise<TransferRecord | null> {
@@ -117,7 +161,10 @@ export class PostgresSharingStore implements SharingStore {
     if (!recipient || recipient.email.toLowerCase() !== offer.recipientEmail.toLowerCase()) {
       throw new Error("transfer_not_addressed_to_caller");
     }
-    await offerRepository.update({ id: offer.id }, { status: "declined" });
+    // Compare-and-swap, for the reason acceptTransferOffer does it: two callers
+    // that both read the offer as pending must not both get to answer it.
+    const declined = await offerRepository.update({ id: offer.id, status: "pending" }, { status: "declined" });
+    if ((declined.affected ?? 0) === 0) throw new Error("transfer_not_found");
     const senderContext: TenantContext = {
       tenantId: offer.senderTenantId,
       userId: offer.senderUserId,
@@ -146,20 +193,42 @@ export class PostgresSharingStore implements SharingStore {
       scopes: ["archive:read"],
       authType: "machine",
     };
-    const source = await this.sessions.getSession(senderContext, offer.sessionId);
-    if (!source) throw new Error("transfer_session_missing");
-    // The sender completed a redaction review before offering this, so the
-    // copy leaves their tenant through the same projection a share link uses.
-    const [senderSettings, senderAnnotations] = await Promise.all([
-      this.settings.getTenantSettings(senderContext),
-      this.annotations.listAnnotations(senderContext, offer.sessionId),
-    ]);
-    const copy = copyTransferredSession(source, offer.id, context.userId, "transfer", {
-      patterns: redactionPatterns(senderSettings.redaction),
-      masks: reviewedMasks(senderAnnotations),
-    });
-    await this.sessions.saveSession(context, copy);
-    await offerRepository.update({ id: offer.id }, { status: "accepted" });
+    // Claimed before anything is read or copied. Two accepts of one offer used
+    // to race through the pending read above and both write a copy, because the
+    // status was only overwritten at the end; this update is the
+    // compare-and-swap that makes exactly one of them the accepting one.
+    const claimed = await offerRepository.update({ id: offer.id, status: "pending" }, { status: "accepted" });
+    if ((claimed.affected ?? 0) === 0) throw new Error("transfer_not_found");
+    let copy: ArchivedSession;
+    try {
+      const source = await this.sessions.getSession(senderContext, offer.sessionId);
+      if (!source) throw new Error("transfer_session_missing");
+      // The review that authorized the offer described the session as it was
+      // then. An offer sits until the recipient acts on it, and the transcript
+      // it names keeps growing in the meantime.
+      if (!await this.getCurrentReview(senderContext, offer.sessionId, sessionContentDigest(source))) {
+        throw new Error("transfer_review_stale");
+      }
+      // The sender completed a redaction review before offering this, so the
+      // copy leaves their tenant through the same projection a share link uses.
+      const [senderSettings, senderAnnotations] = await Promise.all([
+        this.settings.getTenantSettings(senderContext),
+        this.annotations.listAnnotations(senderContext, offer.sessionId),
+      ]);
+      copy = copyTransferredSession(source, offer.id, context.userId, "transfer", {
+        patterns: redactionPatterns(senderSettings.redaction),
+        masks: reviewedMasks(senderAnnotations),
+      });
+      await this.sessions.saveSession(context, copy);
+    } catch (error) {
+      // Nothing landed in the recipient's tenant, so the offer goes back to
+      // pending rather than being spent on a copy that never happened — a
+      // sender who reviews the session again must be able to have it accepted.
+      // Past this point it stays accepted whatever fails: the recipient holds
+      // the session, and a second accept would hand them a second copy.
+      await offerRepository.update({ id: offer.id, status: "accepted" }, { status: "pending" });
+      throw error;
+    }
     await this.runner.inTenant(senderContext, async (manager) => {
       await manager.getRepository(TransferEntity).update(
         { id: offer.id, tenantId: offer.senderTenantId },

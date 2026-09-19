@@ -9,6 +9,7 @@ import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackServic
 /** Stands in for BullMQ: records what was queued without needing Redis. */
 class RecordingQueue extends BullMqQueueAdapter {
   readonly queued: PipelineJob[] = [];
+  readonly options: Record<string, unknown>[] = [];
   constructor() {
     super({
       add: (name, data, options) => {
@@ -16,6 +17,7 @@ class RecordingQueue extends BullMqQueueAdapter {
         // one lets a job id through here that the real queue rejects with a 500.
         if (options.jobId.includes(":")) return Promise.reject(new Error("Custom Id cannot contain :"));
         this.queued.push({ name, data });
+        this.options.push({ ...options });
         return Promise.resolve(undefined);
       },
     });
@@ -63,6 +65,29 @@ describe("queued pipeline jobs", () => {
     const finished = await conversions.get(TEST_CONTEXT, accepted.id as string);
     expect(finished.status).toBe("ready");
     expect(finished.resumeCommand).toContain("codex");
+  });
+
+  it("lets a job that spent every attempt fall out of Redis, so its id can be used again", async () => {
+    /*
+      Every job here is given a deterministic id, so that an agent re-offering a
+      growing transcript queues one parse rather than fifty. BullMQ implements
+      that by refusing to add a job whose key already exists — and a job that
+      has exhausted its attempts keeps its key just as much as a running one
+      does. With `removeOnFail` unset, which is to say kept for ever, the
+      artifact behind a five-times-failed parse becomes permanently unqueueable:
+      the agent goes on sending manifests, the receipt goes on saying accepted,
+      and nothing runs for that transcript again while the Redis instance lives.
+    */
+    const { conversions, queue, store } = services();
+    await store.saveSession(TEST_CONTEXT, TEST_SESSION);
+    await conversions.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "codex", fallback: "injection" });
+
+    const options = queue.options[0]!;
+    expect(options.attempts, "a job with no attempts has nothing to exhaust").toBeTruthy();
+    const removeOnFail = options.removeOnFail as { age?: number; count?: number } | undefined;
+    expect(removeOnFail, "a failed job kept for ever holds its own id hostage").toBeDefined();
+    expect(removeOnFail!.age).toBeGreaterThan(0);
+    expect(removeOnFail!.age, "and kept too briefly, nobody ever sees why it failed").toBeLessThanOrEqual(7 * 86_400);
   });
 
   it("acts for the tenant that queued the job, never for the worker", () => {

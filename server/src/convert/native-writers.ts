@@ -1,9 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { type Session } from "../../libs/canonical/src/generated.js";
+import { antigravityDatabaseBytes } from "./antigravity-database.js";
 import { bytes, freshReport, nativeBlocks, type ConversionBundle, type NativeWriter } from "./types.js";
+import { encodeClaudeWorkspace } from "./workspace-name.js";
 
 export class ClaudeCodeWriter implements NativeWriter {
   readonly target = "claude-code" as const;
@@ -22,7 +20,7 @@ export class ClaudeCodeWriter implements NativeWriter {
       timestamp: turn.createdAt,
       memoar: { sourceSessionId: session.id },
     }));
-    const encodedWorkspace = session.workspace.path.replaceAll(/[^A-Za-z0-9._-]/gu, "-") || "memoar-imports";
+    const encodedWorkspace = encodeClaudeWorkspace(session.workspace.path);
     return {
       target: this.target,
       sessionId: session.id,
@@ -95,41 +93,13 @@ export class AntigravityCliWriter implements NativeWriter {
       `Mapped blocks: ${report.mapped}`,
       `Degraded blocks: ${report.degraded.length}`,
     ].join("\n");
-    const temporaryDirectory = mkdtempSync(join(tmpdir(), "memoar-antigravity-"));
-    const databasePath = join(temporaryDirectory, `${session.id}.db`);
-    const database = new DatabaseSync(databasePath);
-    let closed = false;
-    let databaseBytes: Uint8Array;
-    try {
-      database.exec(`
-        PRAGMA journal_mode = DELETE;
-        PRAGMA foreign_keys = ON;
-        CREATE TABLE conversations (
-          id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace_path TEXT NOT NULL,
-          source_tool TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, schema_version INTEGER NOT NULL
-        );
-        CREATE TABLE messages (
-          id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-          parent_id TEXT, ordinal INTEGER NOT NULL, role TEXT NOT NULL, parts_json TEXT NOT NULL, created_at TEXT NOT NULL
-        );
-      `);
-      database.prepare("INSERT INTO conversations VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-        session.id, session.title, session.workspace.path, session.source.tool, session.createdAt, session.updatedAt, 1,
-      );
-      const insertMessage = database.prepare("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?)");
-      messages.forEach((message, ordinal) => insertMessage.run(
-        message.id, session.id, message.parentId, ordinal, message.role, JSON.stringify(message.parts), message.createdAt,
-      ));
-      const integrity = database.prepare("PRAGMA integrity_check").get() as { integrity_check?: string };
-      if (integrity.integrity_check !== "ok") throw new Error("antigravity_sqlite_integrity_failed");
-      database.exec("VACUUM");
-      database.close();
-      closed = true;
-      databaseBytes = readFileSync(databasePath);
-    } finally {
-      if (!closed) { try { database.close(); } catch {} }
-      rmSync(temporaryDirectory, { recursive: true, force: true });
-    }
+    const databaseBytes = antigravityDatabaseBytes({
+      id: session.id,
+      workspacePath: session.workspace.path,
+      title: session.title,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    });
     return {
       target: this.target,
       sessionId: session.id,

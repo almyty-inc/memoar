@@ -67,6 +67,61 @@ suite("row level security is enforced for the runtime role", () => {
     team_share_optins: "standing consent is read before a tenant is pinned, and holds no session content",
   };
 
+  /**
+   * Tables that carry no tenantId at all, and so are not tenant data.
+   *
+   * The check below reasons about tables that have the column. A table without
+   * one is invisible to it: no tenantId, no policy required, nothing to notice.
+   * That is the wrong way round — a table holding session content keyed only by
+   * sessionId would have no tenant column, no row level security, no policy,
+   * and this suite would stay green while every tenant read every row.
+   *
+   * So the absence is what has to be declared. Each entry says why this table
+   * is not tenant data, and a new table that carries none has to be argued for
+   * here rather than simply not appearing.
+   */
+  const TENANT_FREE_TABLES: Record<string, string> = {
+    migrations: "schema history, written by the owner and read by nobody at runtime",
+    // Identity is not tenancy. A person exists before any tenant is chosen and
+    // may belong to several; which tenant a request runs in comes from the
+    // credential, not from this row.
+    users: "a person exists before a tenant is chosen and may belong to several",
+    auth_sessions: "a browser session is resolved from its token to find the user, before a tenant is known",
+    // The point of these three is to span tenants. A team whose row were
+    // scoped to one tenant could not have members from another, which is the
+    // only thing a team is for.
+    organizations: "an organization spans the tenants beneath it",
+    teams: "a team spans tenants by definition; membership is the boundary, not tenancy",
+    transfer_offers: "an offer is made to another tenant and redeemed by its recipient",
+  };
+
+  it("names every table that carries no tenant, rather than passing over it in silence", async () => {
+    const tenantFree = await queryRows<{ table: string }>(
+      appRole!,
+      `SELECT c.relname AS "table"
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r'
+          AND NOT EXISTS (
+            SELECT 1 FROM information_schema.columns col
+             WHERE col.table_schema = 'public' AND col.table_name = c.relname
+               AND col.column_name = 'tenantId')`,
+    );
+    const names = tenantFree.map((row) => row.table);
+
+    expect(
+      names.filter((table) => !(table in TENANT_FREE_TABLES)),
+      "these tables carry no tenantId, so no policy applies to them and every tenant can read every row; "
+        + "if that is right, say why in TENANT_FREE_TABLES, and if it is not, give the table a tenantId",
+    ).toEqual([]);
+    // A stale entry is as bad as a missing one: it would excuse a table that
+    // has since gained a tenantId, or been renamed into something unchecked.
+    expect(
+      Object.keys(TENANT_FREE_TABLES).filter((table) => !names.includes(table)),
+      "these tables now carry a tenantId, or no longer exist, so their exemption is stale",
+    ).toEqual([]);
+  });
+
   it("protects every table that carries a tenant, not just the ones named here", async () => {
     // These cases used to name their tables one at a time, so a table added
     // later — memory documents, say — could be created without a policy and

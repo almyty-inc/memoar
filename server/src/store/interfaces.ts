@@ -140,6 +140,17 @@ export interface CollectionStore {
 
 export interface SharingStore {
   getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null>;
+  /**
+   * A completed review of this session whose digest still describes the session
+   * as it is now, if there is one.
+   *
+   * The mint-time gate is not the whole gate. A share token names a session,
+   * not a snapshot, and a session grows: the agent appends to the transcript it
+   * has already uploaded and the archive updates the same row. So every read
+   * that leaves the tenant asks this again, against the content it is about to
+   * serve, rather than trusting the review that authorized the link last week.
+   */
+  getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null>;
   saveReview(context: TenantContext, review: RedactionReviewRecord): Promise<void>;
   listShareGrants(context: TenantContext): Promise<ShareGrantRecord[]>;
   saveShareGrant(context: TenantContext, grant: ShareGrantRecord): Promise<void>;
@@ -256,6 +267,14 @@ export interface RetentionStore {
 export interface MachineStore {
   listMachines(context: TenantContext): Promise<MachineRecord[]>;
   getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null>;
+  /**
+   * The machine this agent installation already enrolled, if it has one.
+   *
+   * Scoped to the tenant like every other lookup: one account's installation id
+   * must never resolve to another account's machine, or registering would hand
+   * the caller a machine it does not own.
+   */
+  findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null>;
   saveMachine(context: TenantContext, machine: MachineRecord): Promise<void>;
   createMachineCommand(context: TenantContext, input: { machineId: string; kind: string; payload: Record<string, unknown> }): Promise<MachineCommandRecord>;
   listUnackedMachineCommands(context: TenantContext, machineId: string): Promise<MachineCommandRecord[]>;

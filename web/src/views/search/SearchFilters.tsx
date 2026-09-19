@@ -1,8 +1,16 @@
-import { Bot, Calendar, CircleGauge, FolderGit2, X } from 'lucide-react';
+import { Bot, CircleGauge, FolderGit2, X } from 'lucide-react';
 import type { SearchResponse } from '../../lib/types';
 import { Button, cn } from '../../components/ui';
 
-const noAggregations: SearchResponse['aggregations'] = { agents: [], workspaces: [], dates: [] };
+/*
+  There was a third group here, "Date". The archive has never sent a `dates`
+  aggregation — it sends `agents` and `workspaces` — and the wire type is an
+  open record, so nothing compared the two sides. The panel rendered a Date
+  heading above "No values" for every query on every archive, permanently. A
+  facet that cannot populate is worse than an absent one: it reads as "this
+  archive has no dates".
+*/
+const noAggregations: SearchResponse['aggregations'] = { agents: [], workspaces: [] };
 
 
 const MODE_TITLES: Record<SearchResponse['meta']['realizedMode'], string> = {
@@ -17,12 +25,14 @@ const MODE_EXPLANATIONS: Record<SearchResponse['meta']['realizedMode'], string> 
   semantic: 'Ranked by meaning alone.',
 };
 
-export function SearchFilters({ filtersOpen, setFiltersOpen, response, activeSource, setActiveSource }: {
+export function SearchFilters({ filtersOpen, setFiltersOpen, response, activeSource, setActiveSource, activeWorkspace, setActiveWorkspace }: {
   filtersOpen: boolean;
   setFiltersOpen: (open: boolean) => void;
   response: SearchResponse | null;
   activeSource: string | null;
   setActiveSource: (value: string | null) => void;
+  activeWorkspace: string | null;
+  setActiveWorkspace: (value: string | null) => void;
 }) {
   return (
     <aside className={cn('aggregation-sidebar', filtersOpen && 'aggregation-open')} aria-label="Search filters">
@@ -37,8 +47,18 @@ export function SearchFilters({ filtersOpen, setFiltersOpen, response, activeSou
         activeValue={activeSource}
         onSelect={(value) => setActiveSource(activeSource === value ? null : value)}
       />
-      <AggregationGroup icon={<FolderGit2 size={14} />} title="Workspace" items={(response?.aggregations ?? noAggregations).workspaces} />
-      <AggregationGroup icon={<Calendar size={14} />} title="Date" items={(response?.aggregations ?? noAggregations).dates} />
+      {/*
+        Workspace rows were rendered as buttons with no handler: focusable,
+        announced as buttons, and doing nothing when pressed. They now filter
+        the way Source does.
+      */}
+      <AggregationGroup
+        icon={<FolderGit2 size={14} />}
+        title="Workspace"
+        items={(response?.aggregations ?? noAggregations).workspaces}
+        activeValue={activeWorkspace}
+        onSelect={(value) => setActiveWorkspace(activeWorkspace === value ? null : value)}
+      />
 
       {/*
         What the search actually did, which the server reports. This card

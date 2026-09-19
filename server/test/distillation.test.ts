@@ -103,6 +103,25 @@ describe("distillation", () => {
     await expect(service.run(context, TEST_SESSION.id)).rejects.toMatchObject({ response: { code: "distillation_not_opted_in" } });
   });
 
+  it("reports the budget it would actually enforce once the window has rolled", async () => {
+    // The reset lives in the reservation, which is the only thing that ran it.
+    // An account that spent its budget and came back after the window had
+    // rolled was shown remainingCents: 0 and told it had nothing left, while a
+    // distillation would have been reserved and run — the number on the page
+    // and the number enforced were a month apart.
+    const store = await seededStore(1000);
+    await store.saveDistillationSettings(context, {
+      ...(await store.getDistillationSettings(context)),
+      monthlySpentCents: 1000,
+      budgetWindowStartedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+    });
+    const service = new DistillationService(store, new AnthropicDistillationProvider(fakeClient(3)));
+
+    expect(await service.getSettings(context)).toMatchObject({ monthlySpentCents: 0, remainingCents: 1000 });
+    // And the enforcement agrees, which is why reporting the stale figure was wrong.
+    expect((await service.run(context, TEST_SESSION.id)).status).toBe("ready");
+  });
+
   it("round-trips settings through the wire shape with derived remainingCents", async () => {
     const store = await seededStore(1000);
     const service = new DistillationService(store, new AnthropicDistillationProvider(fakeClient(3)));

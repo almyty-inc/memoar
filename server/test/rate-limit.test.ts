@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MemoryRateLimitStore } from "../src/rate-limit.js";
+import { UnauthorizedException, type ExecutionContext } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { throwError } from "rxjs";
+import { CredentialFailureInterceptor, MemoryRateLimitStore, type RateLimitStore } from "../src/rate-limit.js";
 import { TEST_ACCOUNT, startTestApi, type TestApi } from "./helpers/http-app.js";
 
 let api: TestApi;
@@ -173,5 +176,50 @@ describe("MemoryRateLimitStore", () => {
     // Expired windows are swept, so a long-running process does not keep one
     // entry per caller for its whole life.
     expect(await store.hit("caller-0", 60)).toBe(1);
+  });
+});
+
+describe("recording a failure when the store cannot be reached", () => {
+  /** A store standing in for Redis being briefly unreachable. */
+  const unreachable: RateLimitStore = {
+    hit: () => Promise.reject(new Error("Stream isn't writeable and enableOfflineQueue options is false")),
+    peek: () => Promise.reject(new Error("Stream isn't writeable and enableOfflineQueue options is false")),
+  };
+
+  const credentialContext = {
+    getType: () => "http",
+    getHandler: () => undefined,
+    getClass: () => undefined,
+    switchToHttp: () => ({ getRequest: () => ({ method: "POST", path: "/v1/auth/login", body: { email: "someone@memoar.dev" } }) }),
+  } as unknown as ExecutionContext;
+
+  it("lets the refusal through instead of taking the process down", async () => {
+    // The count is written beside the response, not awaited in front of it, so
+    // its rejection is nobody's to handle unless it is caught here. Under
+    // Node's default an unhandled rejection is fatal: one unreachable store, at
+    // exactly the moment somebody is guessing passwords, and the API stops
+    // answering everyone.
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => { unhandled.push(reason); };
+    process.on("unhandledRejection", record);
+    try {
+      const reflector = { getAllAndOverride: () => "credential" } as unknown as Reflector;
+      const interceptor = new CredentialFailureInterceptor(reflector, unreachable);
+      const refused = new UnauthorizedException("Invalid credentials");
+
+      const observed = await new Promise<unknown>((resolve) => {
+        interceptor
+          .intercept(credentialContext, { handle: () => throwError(() => refused) })
+          .subscribe({ error: resolve });
+      });
+
+      // The caller still gets the 401 it earned.
+      expect(observed).toBe(refused);
+      // And the store's failure stays the store's failure.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(unhandled, "an unhandled rejection here kills the API process").toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
   });
 });

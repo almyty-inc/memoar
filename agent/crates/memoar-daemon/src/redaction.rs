@@ -89,8 +89,18 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
         // may carry the quote on either side. The value stops before the
         // closing quote, which is left where it was, so `"k": "v"` comes out as
         // well-formed JSON.
+        //
+        // The value class excludes the backslash as well as the quote, and that
+        // is not decoration. A capture is JSON lines, and a line holds a shell
+        // command as a JSON-encoded string, so the quote ending that command is
+        // stored as `\"`. Without the backslash excluded, the match ran on
+        // through it and the replacement dropped it, leaving a bare `"` that
+        // closed the JSON string early — the line stopped being JSON. Sixteen
+        // lines mangled this way out of 26,462 were enough for the archive to
+        // refuse a 71 MB transcript whole and lose 14,042 turns, and 33
+        // artifacts holding 257 MB were refused for exactly this.
         apply(
-            r#"(?i)([A-Za-z0-9_.-]{0,40}(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret)[A-Za-z0-9_.-]{0,40})(["']?[ \t]*[:=][ \t]*["']?)([^\s"',;{}\[\]]+)"#,
+            r#"(?i)([A-Za-z0-9_.-]{0,40}(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret)[A-Za-z0-9_.-]{0,40})(["']?[ \t]*[:=][ \t]*["']?)([^\s"',;{}\[\]\\]+)"#,
             "${1}${2}[REDACTED]",
         );
         // `Authorization: Bearer abcdef123456`, and the header's JSON form.
@@ -101,7 +111,7 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
         // other way round, the scheme word has to be stepped over explicitly or
         // the credential survives with only `Bearer` removed.
         apply(
-            r#"(?i)((?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)((?:bearer|basic|token)[ \t]+)?([^\s"',;{}\[\]]+)"#,
+            r#"(?i)((?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)((?:bearer|basic|token)[ \t]+)?([^\s"',;{}\[\]\\]+)"#,
             "${1}${2}[REDACTED]",
         );
         // The separator is `[_-]`, and the vendor list is the server's.
@@ -124,7 +134,11 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
         );
     }
     if config.home_paths {
-        apply(r#"/(?:Users|home)/[^/\s\"']+"#, "/home/[REDACTED_USER]");
+        // Backslash excluded for the same reason as the secret rules above: a
+        // path inside a JSON-encoded string is followed by `\"`, and eating the
+        // backslash leaves a quote that closes the string. This is why captured
+        // transcripts read `/home/[REDACTED_USER]/obt` and then stopped parsing.
+        apply(r#"/(?:Users|home)/[^/\s\"'\\]+"#, "/home/[REDACTED_USER]");
         apply(
             r#"(?i)[A-Z]:\\Users\\[^\\\s\"']+"#,
             "C:\\Users\\[REDACTED_USER]",

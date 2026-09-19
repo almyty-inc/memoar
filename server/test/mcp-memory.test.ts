@@ -3,7 +3,7 @@ import type { TenantContext } from "../src/archive-store.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { McpMemoryTools } from "../src/mcp/memory-tools.js";
 import { MemoryService } from "../src/memory/memory.service.js";
-import { TEST_CONTEXT } from "./fixtures/archive.js";
+import { seedMachine, TEST_CONTEXT } from "./fixtures/archive.js";
 
 const OTHER_CONTEXT: TenantContext = {
   tenantId: "0191cafe-0000-7000-8000-0000000000f1",
@@ -45,6 +45,11 @@ async function documentIdOf(path: string): Promise<string> {
 }
 
 beforeAll(async () => {
+  // Both accounts register the machine ids they file under: a capture resolves
+  // one now, so a fixture that invented one would be testing the refusal.
+  await seedMachine(store, TEST_CONTEXT, MACHINE, "workshop");
+  await seedMachine(store, TEST_CONTEXT, OTHER_MACHINE, "laptop");
+  await seedMachine(store, OTHER_CONTEXT, MACHINE, "their-workshop");
   await capture(TEST_CONTEXT, "/workspace/memoar/CLAUDE.md", "Rule one.", { capturedAt: "2026-08-18T00:00:00.000Z" });
   await capture(TEST_CONTEXT, "/workspace/memoar/CLAUDE.md", "Rule one. Rule two.", { capturedAt: "2026-08-19T00:00:00.000Z" });
   await capture(TEST_CONTEXT, "/workspace/memoar/AGENTS.md", "Small files.");

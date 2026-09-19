@@ -1,24 +1,65 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, mapParent, parseBlock, parseJsonLines, stringValue, turnId, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mapParent, parseBlock, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+
+/**
+ * How much of the artifact has to be JSON before it counts as JSON lines.
+ *
+ * A transcript is a file *of* JSON lines, not a file that happens to contain
+ * one. Real transcripts miss by a hair — the worst observed was 16 bad lines in
+ * 26,462 (0.06%), and a subagent transcript 1 in 58 (1.7%). A tool-result dump
+ * that quotes a transcript read 0 of 216. Nothing observed sits near a half, so
+ * the threshold does not have to be placed delicately.
+ */
+const MIN_JSON_SHARE = 0.5;
+
+/** What the artifact turned out to be, in the words of what was actually read. */
+function describeRefusal(read: JsonLinesReport): string {
+  if (read.total === 0) return "claude-code v1 found no lines at all: the artifact is empty";
+  const howMuch = `read ${read.total - read.invalid} of ${read.total} lines as JSON`;
+  const where = read.firstInvalid
+    ? `; first failure at line ${read.firstInvalid.line} (${read.firstInvalid.reason}), which begins: ${read.firstInvalid.sample}`
+    : "";
+  if (read.binary) return `claude-code v1 expects text JSON lines but the bytes are binary (they contain NUL); ${howMuch}${where}`;
+  return `claude-code v1 ${howMuch}${where}`;
+}
+
+/** The line shapes present, so "no messages" says what the file held instead. */
+function describeTypes(records: readonly Record<string, unknown>[]): string {
+  const seen = new Map<string, number>();
+  for (const record of records) {
+    const type = stringValue(record, "type") ?? "(no type field)";
+    seen.set(type, (seen.get(type) ?? 0) + 1);
+  }
+  const ranked = [...seen].sort((left, right) => right[1] - left[1]).slice(0, 6);
+  return ranked.map(([type, count]) => `${type}×${count}`).join(", ");
+}
 
 export class ClaudeCodeV1Parser implements VersionedParser {
   readonly source = "claude-code";
   readonly versions = ["v1"] as const;
 
   parse(request: ParseRequest): ParseResult {
-    const all = parseJsonLines(request.raw);
-    if (!all?.length) {
-      return { kind: "unknown", diagnostic: "claude-code v1 requires JSON lines", raw: request.raw };
+    // Line by line, because one corrupt line is not a corrupt transcript. A
+    // redaction pass that ate the backslash off an escaped quote left 16 broken
+    // lines in a 26,462-line session; reading all-or-nothing threw away the
+    // other 26,445 and reported only "requires JSON lines".
+    const read = readJsonLines(request.raw);
+    if (read.records.length === 0 || read.total - read.invalid < read.total * MIN_JSON_SHARE) {
+      return { kind: "unknown", diagnostic: describeRefusal(read), raw: request.raw };
     }
     // A real transcript interleaves conversation with bookkeeping Claude Code
     // keeps for itself: attachments, file-history snapshots and deltas, mode
     // and permission changes, generated titles, queued operations. Requiring
     // uuid and message on every line refused the whole file over lines that
     // were never meant to be messages.
-    const records = all.filter((record) => stringValue(record, "uuid") !== null && isRecord(record.message));
+    const records = read.records.filter((record) => stringValue(record, "uuid") !== null && isRecord(record.message));
     if (records.length === 0) {
-      return { kind: "unknown", diagnostic: "claude-code v1 found no message records among the JSONL lines", raw: request.raw };
+      return {
+        kind: "unknown",
+        raw: request.raw,
+        diagnostic: `claude-code v1 read ${read.records.length} of ${read.total} lines as JSON objects but none carried both "uuid" and "message"; saw ${describeTypes(read.records)}`,
+      };
     }
     // Blocks are numbered once for the whole session. Deriving them from
     // neighbouring record uuids produced 802 duplicate ids in a 4,369-turn
@@ -59,7 +100,7 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     const branch = stringValue(first, "gitBranch");
     return {
       kind: "parsed",
-      parser: "claude-code:v1:0.2.0",
+      parser: "claude-code:v1:0.3.0",
       sessions: [{
         ...request.seed,
         ...(nativeSessionId ? { source: { ...request.seed.source, nativeSessionId } } : {}),

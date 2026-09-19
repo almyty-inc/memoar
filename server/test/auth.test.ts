@@ -144,6 +144,43 @@ describe("api keys", () => {
     expect(str(invented.body, "detail")).toContain("billing:admin");
   });
 
+  it("does not let a key for one's own archive decide who is in a team", async () => {
+    // The guard infers a scope from the path, and /teams matched no branch, so
+    // every write there fell through to archive:write — the scope for writing
+    // one's own archive. Inviting somebody already carried @RequireScopes
+    // ("sharing:write") because it decides who may read the members' archives;
+    // removing them and accepting an invitation decide exactly the same thing
+    // and were inferred as the weaker scope. A key handed to a capture script
+    // could not add a member and could empty the team.
+    const team = await api.request("POST", "/teams", { body: { name: "scope-inference" } });
+    const teamId = str(team.body, "id");
+    const created = await api.request("POST", "/auth/api-keys", { body: { name: "archive-only", scopes: ["archive:read", "archive:write"] } });
+    const headers = { "x-memoar-key": str(created.body, "secret") };
+
+    // Refused by the guard, so it never reaches the service: a 404 here would
+    // mean the key was allowed in and merely found no invitation waiting.
+    const accepted = await api.request("POST", `/teams/invitations/${teamId}/accept`, { token: null, headers });
+    expect(accepted.status, "an archive-scoped key was let through to answer an invitation").toBe(403);
+
+    // Left until last because without the guard this one succeeds.
+    const removed = await api.request("DELETE", `/teams/${teamId}/members/${api.context.userId}`, { token: null, headers });
+    expect(removed.status, "an archive-scoped key removed a team member").toBe(403);
+  });
+
+  it("answers a sign-out from a caller who has no session to end", async () => {
+    // The handler sliced the Authorization header unconditionally, and a caller
+    // authenticated by `x-memoar-key` sends none: signing out with an API key
+    // in hand threw a TypeError and answered 500. There is nothing to end, and
+    // that is not an error — signing out is idempotent everywhere else.
+    const created = await api.request("POST", "/auth/api-keys", { body: { name: "sign-out", scopes: ["archive:read", "archive:write"] } });
+    const headers = { "x-memoar-key": str(created.body, "secret") };
+
+    const response = await api.request("POST", "/auth/logout", { token: null, headers });
+    expect(response.status, "a 500 here is the header being sliced when it is not there").toBe(204);
+    // And the key is untouched: there was no session, so none was ended.
+    expect((await api.request("GET", "/sessions", { token: null, headers })).status).toBe(200);
+  });
+
   it("refuses a key that would outrank the person creating it", async () => {
     // A signed-in person holds PASSWORD_SCOPES; materialize:read belongs to a
     // machine credential. Delegation can only narrow.
@@ -194,5 +231,32 @@ describe("oauth", () => {
   it("refuses a callback whose state was not signed by this server", async () => {
     const callback = await fetch(`${api.baseUrl}/v1/auth/oauth/github/callback?code=abc&state=forged`, { redirect: "manual" });
     expect(callback.status).toBe(401);
+  });
+
+  it("gives the browser its half of the state, and refuses a callback that cannot show it", async () => {
+    process.env.GITHUB_CLIENT_ID = "a-client-id";
+    process.env.GITHUB_CLIENT_SECRET = "a-client-secret";
+    try {
+      const begun = await fetch(`${api.baseUrl}/v1/auth/oauth/github`, { redirect: "manual" });
+      expect(begun.status).toBe(302);
+      const cookie = begun.headers.get("set-cookie") ?? "";
+      expect(cookie, "the browser was given nothing to prove it started this").toContain("memoar_oauth_state=");
+      expect(cookie).toContain("HttpOnly");
+      const state = new URL(begun.headers.get("location")!).searchParams.get("state")!;
+
+      // The state is real — this server minted it a moment ago. What the
+      // request does not have is the cookie that came with it, which is exactly
+      // the position a victim's browser is in when an attacker feeds it a
+      // callback from a sign-in the attacker began. Answering it would sign
+      // this browser in to the attacker's archive.
+      const forged = await fetch(
+        `${api.baseUrl}/v1/auth/oauth/github/callback?code=a-code&state=${encodeURIComponent(state)}`,
+        { redirect: "manual" },
+      );
+      expect(forged.status, "a callback with no cookie was let through to exchange the code").toBe(401);
+    } finally {
+      delete process.env.GITHUB_CLIENT_ID;
+      delete process.env.GITHUB_CLIENT_SECRET;
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { memoarApi } from '../lib/api';
 import { DEFAULT_PACK_TOKEN_BUDGET } from '../lib/limits';
@@ -180,6 +181,20 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
         openPack={openPack}
       />
 
+      {/*
+        Every failure on this page wrote to one state, and the only places that
+        rendered it were modals. Pinning and exporting happen with every modal
+        closed, so "Pin could not be updated" and "Export failed" were set and
+        shown to nobody: the button stopped being busy, the label did not
+        change, and nothing was said.
+      */}
+      {actionError ? (
+        <section className="privacy-banner banner-error" role="alert">
+          <span><TriangleAlert size={20} aria-hidden="true" /></span>
+          <div><strong>That did not go through</strong><p>{actionError}</p></div>
+        </section>
+      ) : null}
+
       <div className="session-layout">
         <ConversationColumn
           detail={detail}
@@ -207,10 +222,12 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
         approved={reviewId !== null}
         link={shareLink}
         busy={sharing}
+        error={actionError}
         onApprove={() => {
+          setActionError(null);
           void memoarApi.completeRedactionReview(session.id)
             .then((review) => setReviewId(review.id))
-            .catch(() => setActionError('Redaction review failed'));
+            .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Redaction review failed'));
         }}
         onCreate={(permission, expiresAt) => {
           if (!reviewId) return;

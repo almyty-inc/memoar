@@ -17,7 +17,31 @@ pub static SOURCES: &[SourceSpec] = &[
         // Python, JPEGs and node_modules the agent had written into its own
         // working directory — offered to the uploader by a source that promises
         // session stores and nothing else.
-        common_paths: &[".claude/projects/*/*.jsonl", ".claude/history.jsonl"],
+        //
+        // A session and the subagents it ran are one conversation. The
+        // subagent transcripts sit one directory below the session that spawned
+        // them, and `projects/*/*.jsonl` alone reaches none of them: on this
+        // machine that is 233 files holding 58,467 lines that carry both `uuid`
+        // and `message` — the two fields the parser turns into turns — against
+        // 15 top-level transcripts. Narrowing the sweep must not throw those
+        // away, so each depth they are written at is named, and only `.jsonl`
+        // at that depth: `subagents/*.meta.json` and `tool-results/**` sit
+        // beside them and are not transcripts.
+        //
+        // `.claude/history.jsonl` is not one either. It is the prompt history
+        // the CLI keeps for its own up-arrow: 10,619 lines on this machine,
+        // every one valid JSON, every one `{display, pastedContents, timestamp,
+        // project, sessionId}` and not one carrying `uuid` or `message`. The
+        // parser needs both, so all 2.8 MB of it was uploaded on every sync —
+        // it grows with every prompt typed — and came back `unknown_format`,
+        // carrying every prompt and every paste with it. The conversation it
+        // indexes is the transcript named by its own `sessionId`, which
+        // `.claude/projects/*/*.jsonl` already takes.
+        common_paths: &[
+            ".claude/projects/*/*.jsonl",
+            ".claude/projects/*/*/subagents/*.jsonl",
+            ".claude/projects/*/*/subagents/workflows/*/*.jsonl",
+        ],
         linux_paths: NONE,
         // `claude-code-sessions/*/*/local_*.json` and its local-agent-mode twin
         // held no conversation. They are the desktop app's per-session
@@ -129,13 +153,23 @@ pub static SOURCES: &[SourceSpec] = &[
         tier: 2,
         format: "VS Code JSON or CLI SQLite",
         stability: Stability::Internal,
-        common_paths: &[
-            ".copilot/session-state/*.json",
-            ".copilot/session-state/*/*.json",
-            ".copilot/history-session-state/*.json",
-            ".copilot/history-session-state/*/*.json",
-            ".copilot/session-store.db",
-        ],
+        // The CLI's session store, which is the only thing its parser opens.
+        //
+        // The four `*.json` patterns that stood here named directories the CLI
+        // does not write JSON into. Checked against GitHub Copilot CLI 1.0.59
+        // with a recorded session on disk: `~/.copilot/session-state/` holds one
+        // directory per session — `workspace.yaml`, `checkpoints/index.md`, and
+        // empty `files/` and `research/` — and no `.json` at any depth, while
+        // `~/.copilot/history-session-state/` does not exist at all. The only
+        // JSON under `~/.copilot` is `config.json` and
+        // `command-history-state.json` at the top level, which are settings and
+        // which those patterns never named anyway. So the patterns could only
+        // ever have collected something that is not a session, and the parser
+        // refuses everything that is not native SQLite.
+        //
+        // The VS Code `chatSessions/*.json` below are a different case and stay:
+        // see UNSETTLED in scripts/check-capture-parser-agreement.mjs.
+        common_paths: &[".copilot/session-store.db"],
         linux_paths: &[".config/Code/User/workspaceStorage/*/chatSessions/*.json"],
         macos_paths: &[
             "Library/Application Support/Code/User/workspaceStorage/*/chatSessions/*.json",
