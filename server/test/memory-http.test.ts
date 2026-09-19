@@ -124,4 +124,42 @@ describe("memory documents over HTTP", () => {
     expect((await api.request("GET", "/memory/not-a-uuid")).status).toBe(400);
     expect((await api.request("DELETE", "/memory/not-a-uuid")).status).toBe(400);
   });
+
+  /*
+    Reading your own memory file in your own archive is not egress: it is the
+    only place the review can happen. What the review endpoint has to do is be
+    performable, be about one version of the file, and refuse everything else.
+  */
+  it("lets a person review what the scanner found, for the version they read", async () => {
+    const path = "/workspace/memoar/SECRETS.md";
+    const leaky = "The staging key is sk_live_0123456789abcdefghij.";
+    const created = await api.request("POST", "/memory", { body: capture(leaky, { path }) });
+    const document = obj(created.body, "document");
+    const documentId = str(document, "id");
+    expect(document.redactionStatus, "a captured file is scanned, not merely stored").toBe("findings");
+    expect(document.redactionFindings).toEqual(["api_key"]);
+
+    // The owner can still read it: the gate is on what leaves, not on the
+    // archive the reviewer has to read in order to review.
+    const read = await api.request("GET", `/memory/${documentId}`);
+    expect(read.status).toBe(200);
+    expect(arr(read.body, "revisions")[0]!.text).toBe(leaky);
+
+    const contentHash = str(document, "contentHash");
+    for (const body of [{}, { contentHash: "nope" }, { contentHash: "A".repeat(64) }]) {
+      expect((await api.request("POST", `/memory/${documentId}/redaction-reviews`, { body })).status,
+        `accepted ${JSON.stringify(body)}`).toBe(400);
+    }
+    // A hash that is well formed but names another version is a conflict, not a
+    // malformed request: the file moved while it was being read.
+    const stale = await api.request("POST", `/memory/${documentId}/redaction-reviews`, { body: { contentHash: "b".repeat(64) } });
+    expect(stale.status).toBe(409);
+
+    const reviewed = await api.request("POST", `/memory/${documentId}/redaction-reviews`, { body: { contentHash } });
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.redactionStatus).toBe("reviewed");
+    expect(str(obj((await api.request("GET", `/memory/${documentId}`)).body, "document"), "redactionStatus")).toBe("reviewed");
+
+    expect((await api.request("POST", "/memory/0191cafe-0000-7000-8000-0000000000da/redaction-reviews", { body: { contentHash } })).status).toBe(404);
+  });
 });

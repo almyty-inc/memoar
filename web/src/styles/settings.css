@@ -7,6 +7,10 @@
 .settings-nav button.active svg:first-child { color: var(--acid); }
 
 .settings-content { display: grid; gap: var(--sp-4); }
+/* A standing note inside a settings section: the same voice as the section
+   header's own copy, set where the section's padding is. */
+.settings-note { max-width: var(--measure); margin: 0; padding: var(--sp-4) var(--sp-4) 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); }
+
 .settings-section { overflow: hidden; background: var(--sidebar); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
 .settings-section > header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
 .settings-section h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-md); }

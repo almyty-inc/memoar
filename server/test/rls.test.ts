@@ -60,6 +60,11 @@ suite("row level security is enforced for the runtime role", () => {
     share_tokens: "a recipient in a different tenant redeems by token hash",
     // Which tenants a user belongs to has to be answerable before one is chosen.
     team_members: "membership is resolved by user id before a tenant is picked",
+    // Consent, not content. A team read has to know which tenants have agreed
+    // to share before it can pin itself to any one of them, and this table
+    // holds nothing but that agreement. The moment it gains a column carrying
+    // session content, this line is wrong and the table belongs under a policy.
+    team_share_optins: "standing consent is read before a tenant is pinned, and holds no session content",
   };
 
   it("protects every table that carries a tenant, not just the ones named here", async () => {

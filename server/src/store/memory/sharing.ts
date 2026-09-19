@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/require-await -- in-memory store methods intentionally satisfy the asynchronous production port. */
 import type { ArchivedSession, TenantContext } from "../context.js";
 import type { DirectoryStore, SharingStore, TeamStore } from "../interfaces.js";
-import type { CollectionRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TeamMember, TeamRecord, TransferRecord } from "../records.js";
+import type { CollectionRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord, TransferRecord } from "../records.js";
+import { redactionPatterns, reviewedMasks } from "../../redaction.js";
 import { copyTransferredSession } from "../transfer-copy.js";
 import { uuidV7 } from "../../ids.js";
+import { isTeamVisible } from "../team-visibility.js";
 import { copy, key, type MemoryTables } from "./tables.js";
 
 export class MemorySharingStore implements SharingStore {
@@ -81,7 +83,14 @@ export class MemorySharingStore implements SharingStore {
     assertAddressedTo(context, offer.recipientEmail);
     const source = this.tables.sessions.get(key(offer.senderTenantId, offer.sessionId));
     if (!source) throw new Error("transfer_session_missing");
-    const copied = copyTransferredSession(copy(source), offer.id, context.userId);
+    // The sender completed a redaction review before offering this. Copying it
+    // without applying what that review masked would make the review a
+    // formality on the transfer path exactly as it was on the share path.
+    const copied = copyTransferredSession(copy(source), offer.id, context.userId, "transfer", {
+      patterns: redactionPatterns(this.tables.tenantSettings.get(offer.senderTenantId)?.redaction),
+      masks: reviewedMasks([...this.tables.annotations.values()]
+        .filter((annotation) => annotation.tenantId === offer.senderTenantId && annotation.sessionId === offer.sessionId)),
+    });
     this.tables.sessions.set(key(context.tenantId, copied.id), copy(copied));
     offer.status = "accepted";
     const transfer = this.tables.transfers.get(key(offer.senderTenantId, transferId));
@@ -96,7 +105,7 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
   async createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord> {
     const team = { id: uuidV7(), orgId: input.orgId ?? uuidV7(), name: input.name };
     this.tables.teams.set(team.id, team);
-    this.tables.teamMembers.set(team.id, [copy(creator)]);
+    this.tables.teamMembers.set(team.id, [{ ...copy(creator), status: "active" }]);
     return { ...team, memberCount: 1 };
   }
 
@@ -104,20 +113,46 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
     const result: TeamRecord[] = [];
     for (const team of this.tables.teams.values()) {
       const members = this.tables.teamMembers.get(team.id) ?? [];
-      if (members.some((member) => member.userId === userId)) result.push({ ...team, memberCount: members.length });
+      if (members.some((member) => member.userId === userId && member.status === "active")) {
+        result.push({ ...team, memberCount: members.filter((member) => member.status === "active").length });
+      }
     }
     return result;
   }
 
   async isTeamMember(teamId: string, userId: string): Promise<boolean> {
-    return (this.tables.teamMembers.get(teamId) ?? []).some((member) => member.userId === userId);
+    return (this.tables.teamMembers.get(teamId) ?? []).some((member) => member.userId === userId && member.status === "active");
   }
 
-  async addTeamMember(teamId: string, member: TeamMember): Promise<void> {
+  async inviteTeamMember(teamId: string, member: TeamMember): Promise<void> {
     if (!this.tables.teams.has(teamId)) throw new Error("team_not_found");
     const members = this.tables.teamMembers.get(teamId) ?? [];
-    if (!members.some((existing) => existing.userId === member.userId)) members.push(copy(member));
+    if (!members.some((existing) => existing.userId === member.userId)) members.push({ ...copy(member), status: "invited" });
     this.tables.teamMembers.set(teamId, members);
+  }
+
+  async listTeamInvitations(userId: string): Promise<TeamInvitation[]> {
+    const invitations: TeamInvitation[] = [];
+    for (const team of this.tables.teams.values()) {
+      const members = this.tables.teamMembers.get(team.id) ?? [];
+      if (members.some((member) => member.userId === userId && member.status === "invited")) {
+        invitations.push({ teamId: team.id, teamName: team.name, orgId: team.orgId });
+      }
+    }
+    return invitations;
+  }
+
+  async listTeamMembers(teamId: string): Promise<TeamMemberSummary[]> {
+    return (this.tables.teamMembers.get(teamId) ?? [])
+      .map(({ userId, email, status }) => ({ userId, email, status }));
+  }
+
+  async acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> {
+    const pending = (this.tables.teamMembers.get(teamId) ?? [])
+      .find((member) => member.userId === userId && member.status === "invited");
+    if (!pending) return false;
+    pending.status = "active";
+    return true;
   }
 
   async removeTeamMember(teamId: string, userId: string): Promise<boolean> {
@@ -138,10 +173,32 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
     return null;
   }
 
+  async listTeamMemberTenants(teamId: string): Promise<string[]> {
+    const members = this.tables.teamMembers.get(teamId) ?? [];
+    return [...new Set(members.filter((member) => member.status === "active").map((member) => member.tenantId))];
+  }
+
+  /**
+   * Fans out over accepted members' tenants, exactly as the Postgres store
+   * does. It used to sweep every session in the table regardless of whose
+   * tenant it was in, which passed the same tests while modelling none of the
+   * boundary the real store depends on.
+   */
   async listTeamSessions(teamId: string): Promise<ArchivedSession[]> {
-    return [...this.tables.sessions.values()]
-      .filter((session) => session.visibility.scope === "team" && session.visibility.teamId === teamId)
+    const tenants = new Set(await this.listTeamMemberTenants(teamId));
+    return [...this.tables.sessions.entries()]
+      .filter(([entryKey]) => tenants.has(entryKey.slice(0, entryKey.indexOf(":"))))
+      .map(([, session]) => session)
+      .filter((session) => isTeamVisible(session.visibility, teamId))
       .map((session) => copy(session));
+  }
+
+  async getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null> {
+    for (const tenantId of await this.listTeamMemberTenants(teamId)) {
+      const session = this.tables.sessions.get(key(tenantId, sessionId));
+      if (session && isTeamVisible(session.visibility, teamId)) return copy(session);
+    }
+    return null;
   }
 
   async listTeamCollections(teamId: string): Promise<CollectionRecord[]> {

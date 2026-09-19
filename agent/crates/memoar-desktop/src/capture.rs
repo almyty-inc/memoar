@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use memoar_cli::{Cli, Command, LoginArgs, RuntimePaths, SyncArgs};
+use memoar_cli::{Cli, Command, LoginArgs, RedactionArgs, RuntimePaths, SyncArgs};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -70,6 +70,22 @@ pub struct Status {
     /// Sessions and memory files the last sync uploaded.
     pub last_uploaded: Option<u64>,
     pub last_memory_recorded: Option<u64>,
+    /// What is masked before anything is hashed and uploaded.
+    ///
+    /// The window shows it and can change it. It used to be decided once, at
+    /// sign-in, by three `false`s in this file that nothing in the application
+    /// could reach — so the reader could neither see what was being sent
+    /// unmasked nor do anything about it.
+    pub redaction: Option<Redaction>,
+}
+
+/// The three masks, as the window renders them.
+#[derive(Debug, Clone, Copy, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Redaction {
+    pub secrets: bool,
+    pub email_addresses: bool,
+    pub home_paths: bool,
 }
 
 /// The app's own record of how the last capture went.
@@ -92,6 +108,22 @@ fn number(value: &Value, path: &[&str]) -> Option<u64> {
         cursor = cursor.get(key)?;
     }
     cursor.as_u64()
+}
+
+fn flag(value: &Value, path: &[&str]) -> Option<bool> {
+    let mut cursor = value;
+    for key in path {
+        cursor = cursor.get(key)?;
+    }
+    cursor.as_bool()
+}
+
+fn redaction_of(value: &Value) -> Option<Redaction> {
+    Some(Redaction {
+        secrets: flag(value, &["redaction", "secrets"])?,
+        email_addresses: flag(value, &["redaction", "emailAddresses"])?,
+        home_paths: flag(value, &["redaction", "homePaths"])?,
+    })
 }
 
 fn text(value: &Value, path: &[&str]) -> Option<String> {
@@ -123,6 +155,7 @@ pub fn status(paths: &Paths, state: &State) -> Status {
             last_error: last.error.clone(),
             last_uploaded: last.uploaded,
             last_memory_recorded: last.memory_recorded,
+            redaction: redaction_of(&output.data),
         },
         // `status` fails when there is no configuration yet, which is the
         // ordinary state of a machine nobody has connected — not an error to
@@ -135,6 +168,35 @@ pub fn status(paths: &Paths, state: &State) -> Status {
     }
 }
 
+/// What a first-time sign-in from the window asks for.
+///
+/// Secret masking is on. This is the path somebody who does not use a terminal
+/// takes, and redaction cannot be applied backwards: whatever goes up unmasked
+/// is in the archive, and turning the setting on afterwards does nothing for it.
+/// The two outcomes are not comparable — a stray `[REDACTED]` in an archived
+/// transcript costs a little legibility, a leaked key costs a rotation at best —
+/// so the default is the one whose mistake is cheap.
+///
+/// Email addresses and home paths stay off. Those are ordinarily part of what
+/// makes a transcript readable later, and masking them by default would degrade
+/// every archived session to avert something much rarer than a pasted secret.
+///
+/// This is a default, not a decision: the three toggles are in the window, and
+/// `set_redaction` writes whatever the reader chooses. What changes here is only
+/// what a machine is doing before anybody has visited that screen.
+fn login_args(endpoint: &str, email: &str, password: &str) -> LoginArgs {
+    LoginArgs {
+        endpoint: endpoint.trim().to_owned(),
+        email: Some(email.trim().to_owned()),
+        password: Some(password.to_owned()),
+        token: None,
+        machine_id: None,
+        redact_secrets: true,
+        redact_email_addresses: false,
+        redact_home_paths: false,
+    }
+}
+
 /// # Errors
 /// When the archive refuses the credentials or cannot be reached.
 pub fn sign_in(
@@ -143,21 +205,31 @@ pub fn sign_in(
     email: &str,
     password: &str,
 ) -> Result<Status, String> {
-    let command = Command::Login(LoginArgs {
-        endpoint: endpoint.trim().to_owned(),
-        email: Some(email.trim().to_owned()),
-        password: Some(password.to_owned()),
-        token: None,
-        machine_id: None,
-        // Off by default here as in the CLI: masking before upload is a choice
-        // the archive cannot undo, so it is not made on somebody's behalf.
-        redact_secrets: false,
-        redact_email_addresses: false,
-        redact_home_paths: false,
-    });
+    let command = Command::Login(login_args(endpoint, email, password));
     memoar_cli::execute(&base_cli(command), &paths.runtime())
         .map_err(|error| error.message.clone())?;
     Ok(status(paths, &State::default()))
+}
+
+/// Changes what is masked before upload, after sign-in.
+///
+/// # Errors
+/// When this machine has no configuration to change yet.
+pub fn set_redaction(
+    paths: &Paths,
+    state: &State,
+    secrets: bool,
+    email_addresses: bool,
+    home_paths: bool,
+) -> Result<Status, String> {
+    let command = Command::Redaction(RedactionArgs {
+        secrets: Some(secrets),
+        email_addresses: Some(email_addresses),
+        home_paths: Some(home_paths),
+    });
+    memoar_cli::execute(&base_cli(command), &paths.runtime())
+        .map_err(|error| error.message.clone())?;
+    Ok(status(paths, state))
 }
 
 /// Captures and uploads once, recording the outcome for the window.
@@ -170,6 +242,7 @@ pub fn sync_now(paths: &Paths, state: &State, now: &str) -> Result<Status, Strin
         watch: false,
         interval_seconds: 60,
         debounce_seconds: 2,
+        max_cycles: 0,
     });
     let outcome = memoar_cli::execute(&base_cli(command), &paths.runtime());
     {
@@ -191,91 +264,8 @@ pub fn sync_now(paths: &Paths, state: &State, now: &str) -> Result<Status, Strin
     Ok(status(paths, state))
 }
 
+/// The tests live beside this file: `capture.rs` was over the size rule
+/// and its test module was why.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn scratch() -> (tempfile::TempDir, Paths) {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = Paths {
-            config_dir: temp.path().join("config"),
-            data_dir: temp.path().join("data"),
-            home: temp.path().join("home"),
-        };
-        (temp, paths)
-    }
-
-    #[test]
-    fn a_machine_that_has_never_signed_in_says_so() {
-        // Not an error dialog and not a page of zeros: an unconfigured machine
-        // is the ordinary state of one nobody has connected yet, and the window
-        // asks for credentials rather than reporting a healthy idle capture.
-        let (_temp, paths) = scratch();
-
-        let status = status(&paths, &State::default());
-
-        assert!(!status.signed_in);
-        assert!(status.endpoint.is_none());
-        assert!(status.machine_id.is_none());
-        assert!(status.queued.is_none());
-    }
-
-    #[test]
-    fn a_failed_capture_is_remembered_and_shown() {
-        // The window polls; if the failure were only returned to the caller of
-        // sync_now it would vanish on the next refresh and the app would look
-        // like it was capturing.
-        let (_temp, paths) = scratch();
-        let state = State::default();
-
-        let failure = sync_now(&paths, &state, "2026-09-04T10:00:00Z");
-
-        assert!(
-            failure.is_err(),
-            "syncing without a configured archive cannot succeed"
-        );
-        let status = status(&paths, &state);
-        assert!(
-            status.last_error.is_some(),
-            "the reason is kept for the window"
-        );
-    }
-
-    #[test]
-    fn reads_only_the_fields_the_archive_sends() {
-        // These paths are how the window learns what happened. Reading a field
-        // that is not there must yield nothing rather than a zero that looks
-        // like a measurement.
-        let payload = json!({
-            "endpoint": "https://archive.example/v1",
-            "machineId": "0191cafe-0000-7000-8000-00000000d001",
-            "queue": { "pending": 3, "retry": 0, "synced": 12 },
-        });
-
-        assert_eq!(
-            text(&payload, &["endpoint"]).as_deref(),
-            Some("https://archive.example/v1")
-        );
-        assert_eq!(number(&payload, &["queue", "pending"]), Some(3));
-        assert_eq!(number(&payload, &["queue", "missing"]), None);
-        assert_eq!(number(&payload, &["sync", "uploaded"]), None);
-        assert_eq!(
-            text(&payload, &["queue", "pending"]),
-            None,
-            "a number is not a string"
-        );
-    }
-
-    #[test]
-    fn uses_the_same_directories_the_cli_uses() {
-        // A machine set up with one is already set up for the other, and the
-        // offline queue is never duplicated between them.
-        let (_temp, paths) = scratch();
-        let runtime = paths.runtime();
-
-        assert_eq!(runtime.config_dir, paths.config_dir);
-        assert_eq!(runtime.data_dir, paths.data_dir);
-        assert_eq!(runtime.home, paths.home);
-    }
-}
+#[path = "capture_tests.rs"]
+mod tests;

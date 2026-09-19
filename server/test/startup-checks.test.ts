@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { hashSecret } from "../src/auth/tokens.js";
-import { assertNoPublishedAccountPasswords, assertProductionCredentials, productionCredentialProblems } from "../src/startup-checks.js";
+import { assertNoPublishedAccountPasswords, assertProductionCredentials, assertTenantIsolationEnforced, productionCredentialProblems } from "../src/startup-checks.js";
 
 /** The example file the README tells you to copy. */
 function exampleEnvironment(): NodeJS.ProcessEnv {
@@ -114,6 +114,34 @@ describe("what production refuses to start with", () => {
 
     // And an archive that never had the account is untouched.
     await expect(assertNoPublishedAccountPasswords(() => Promise.resolve(null), { NODE_ENV: "production" })).resolves.toBeUndefined();
+  });
+
+  it("refuses to serve on a database role that row-level security does not apply to", async () => {
+    /*
+      Every tenant policy in this schema is FORCE ROW LEVEL SECURITY, and
+      Postgres applies none of it to a superuser or to a role holding BYPASSRLS.
+      Nothing checked which role the process connected as, so setting
+      DATABASE_URL to the bootstrap superuser — the URL every local tool prints,
+      and the one MIGRATION_DATABASE_URL is for — turned every policy into a
+      no-op with no symptom at all: one tenant's queries simply returned
+      another's rows.
+    */
+    await expect(assertTenantIsolationEnforced(() =>
+      Promise.resolve({ name: "postgres", superuser: true, bypassRls: false })))
+      .rejects.toThrow(/"postgres" is a superuser/u);
+
+    await expect(assertTenantIsolationEnforced(() =>
+      Promise.resolve({ name: "memoar_rw", superuser: false, bypassRls: true })))
+      .rejects.toThrow(/holds BYPASSRLS/u);
+
+    // A role that cannot be identified is not a role that has been cleared.
+    await expect(assertTenantIsolationEnforced(() => Promise.resolve(null)))
+      .rejects.toThrow(/could not determine the database role/u);
+
+    // The least-privilege role the AppRole migration creates.
+    await expect(assertTenantIsolationEnforced(() =>
+      Promise.resolve({ name: "memoar_app", superuser: false, bypassRls: false })))
+      .resolves.toBeUndefined();
   });
 
   it("leaves development alone", () => {

@@ -16,6 +16,9 @@ import { ZedV1Parser } from "./zed.js";
 export * from "./types.js";
 export { isSqliteBytes } from "./sqlite.js";
 
+/** Parsers fed by an upload rather than by reading a store on a machine. */
+const UPLOAD_FORMATS = new Set(["canonical-bundle", "cass-export", "chatgpt-export"]);
+
 export class ParserRegistry {
   constructor(private readonly parsers: readonly VersionedParser[] = [
     new ClaudeCodeV1Parser(),
@@ -56,5 +59,29 @@ export class ParserRegistry {
 
   capabilities(): Record<string, readonly string[]> {
     return Object.fromEntries(this.parsers.map((parser) => [parser.source, parser.versions]));
+  }
+
+  /**
+   * The coding agents whose own stores the capture agent reads off a disk.
+   *
+   * Not every parser is one: a ChatGPT export, a CASS export and memoar's own
+   * bundle arrive by upload, and counting them would overstate what installing
+   * the agent gets you. The web app used to carry this number as an English
+   * literal — "Eleven agents' session stores" — kept in step with a Rust array
+   * in another repository by nobody.
+   */
+  connectors(): string[] {
+    return this.parsers
+      .map((parser) => parser.source)
+      .filter((source) => !UPLOAD_FORMATS.has(source))
+      .sort();
+  }
+
+  /** The formats a person uploads rather than the agent collecting them. */
+  uploadFormats(): string[] {
+    return this.parsers
+      .map((parser) => parser.source)
+      .filter((source) => UPLOAD_FORMATS.has(source))
+      .sort();
   }
 }

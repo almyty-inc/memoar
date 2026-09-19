@@ -49,14 +49,21 @@ export class MemoryAnnotationStore implements AnnotationStore {
     sessionId: string,
     kind: AnnotationKind,
     values: Record<string, unknown>[],
+    origin?: string,
   ): Promise<Annotation[]> {
     for (const [entry, annotation] of this.tables.annotations) {
-      if (annotation.tenantId === context.tenantId && annotation.sessionId === sessionId && annotation.kind === kind) {
-        this.tables.annotations.delete(entry);
-      }
+      if (annotation.tenantId !== context.tenantId || annotation.sessionId !== sessionId || annotation.kind !== kind) continue;
+      // Only this producer's own rows when it names itself: the scanner re-runs
+      // on every capture and must not carry away hand-placed masks.
+      if (origin !== undefined && annotation.value.origin !== origin) continue;
+      this.tables.annotations.delete(entry);
     }
     const created: Annotation[] = [];
-    for (const value of values) created.push(await this.createAnnotation(context, { sessionId, kind, value }));
+    for (const value of values) {
+      created.push(await this.createAnnotation(context, {
+        sessionId, kind, value: origin === undefined ? value : { ...value, origin },
+      }));
+    }
     return created;
   }
 

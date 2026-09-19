@@ -7,7 +7,7 @@ import { DataSource, IsNull } from "typeorm";
 import { AppModule } from "./app.module.js";
 import { AuthIdentityEntity } from "./entities.js";
 import { errorAggregator, persistErrors } from "./errors/error-aggregator.js";
-import { assertNoPublishedAccountPasswords, assertProductionCredentials } from "./startup-checks.js";
+import { assertNoPublishedAccountPasswords, assertProductionCredentials, assertTenantIsolationEnforced, type RuntimeRole } from "./startup-checks.js";
 
 /**
  * How many proxies sit in front of this process.
@@ -27,13 +27,35 @@ function trustedProxyHops(): number {
   return Number.isInteger(raw) && raw >= 0 ? raw : 0;
 }
 
+/**
+ * The largest artifact the archive accepts, in bytes.
+ *
+ * Mirrors MAX_ARTIFACT_BYTES in the capture agent (agent/crates/memoar-daemon).
+ * The two must agree: whichever is smaller is the real limit, and the client
+ * cannot tell "too big for this archive" from "we broke" unless the number it
+ * checked against is the number the server enforces.
+ */
+export const MAX_ARTIFACT_BYTES = 256 * 1024 * 1024;
+
 export function configureApp(app: INestApplication): void {
   // Express falls back to the socket address when the hop count is 0, so an
   // untrusted deployment ignores the header entirely.
   (app.getHttpAdapter().getInstance() as Express).set("trust proxy", trustedProxyHops());
+  /*
+    256 MiB, which is what the capture agent already believes: its
+    MAX_ARTIFACT_BYTES is 256 MiB and it refuses anything larger before it ever
+    sends. The default here was 64 MiB, so an artifact between the two was one
+    the agent queued, uploaded and had refused — with, until the problem
+    document was fixed, an "internal_error" body that gave it nothing to act on.
+    Two ceilings means one of them rejects what the other would take.
+
+    The ingress in front of this has a third, and it is not in this repository:
+    it must be at least this value or it refuses the upload before the API ever
+    sees it. .env.example says so next to the variable.
+  */
   app.use("/v1/ingest/artifacts", raw({
     type: "application/octet-stream",
-    limit: Number(process.env.MEMOAR_MAX_ARTIFACT_BYTES ?? 64 * 1024 * 1024),
+    limit: Number(process.env.MEMOAR_MAX_ARTIFACT_BYTES ?? MAX_ARTIFACT_BYTES),
   }));
   /*
     A manifest is metadata, not payload, but a batch of 256 artifacts with real
@@ -91,6 +113,15 @@ export function configureApp(app: INestApplication): void {
   app.enableShutdownHooks();
 }
 
+/** The connection's own role and the two attributes that switch RLS off. */
+export async function runtimeRole(dataSource: DataSource): Promise<RuntimeRole | null> {
+  const rows: { rolname: string; rolsuper: boolean; rolbypassrls: boolean }[] = await dataSource.query(
+    "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
+  );
+  const row = rows[0];
+  return row ? { name: row.rolname, superuser: row.rolsuper, bypassRls: row.rolbypassrls } : null;
+}
+
 /**
  * Where the web app runs when nobody has said otherwise.
  *
@@ -112,6 +143,9 @@ export async function bootstrap(): Promise<void> {
   // rather than of the environment.
   const dataSource: DataSource | null = app.get(DataSource, { strict: false });
   if (dataSource) {
+    // Before anything else asked of the database: whether the role it answers
+    // as is one the tenant policies apply to at all.
+    await assertTenantIsolationEnforced(() => runtimeRole(dataSource));
     await assertNoPublishedAccountPasswords(async (email) =>
       dataSource.getRepository(AuthIdentityEntity).findOneBy({ kind: "password", lookupKey: email, revokedAt: IsNull() }));
   }

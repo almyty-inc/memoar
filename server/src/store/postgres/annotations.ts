@@ -55,13 +55,21 @@ export class PostgresAnnotationStore implements AnnotationStore {
     sessionId: string,
     kind: AnnotationKind,
     values: Record<string, unknown>[],
+    origin?: string,
   ): Promise<Annotation[]> {
     return this.runner.inTenant(context, async (manager) => {
       const repository = manager.getRepository(AnnotationEntity);
       // One delete and one multi-row insert, whatever the count: the delete has
       // to happen even when there is nothing to write, or a session that was
       // cleaned up keeps the findings from the capture before it.
-      await repository.delete({ tenantId: context.tenantId, sessionId, kind });
+      //
+      // Narrowed to one producer's own rows when it names itself, so re-running
+      // the scanner cannot take a person's hand-placed masks with it.
+      if (origin === undefined) await repository.delete({ tenantId: context.tenantId, sessionId, kind });
+      else await manager.createQueryBuilder().delete().from(AnnotationEntity)
+        .where(`"tenantId" = :tenantId AND "sessionId" = :sessionId AND kind = :kind AND value->>'origin' = :origin`,
+          { tenantId: context.tenantId, sessionId, kind, origin })
+        .execute();
       if (values.length === 0) return [];
       const rows = values.map((value) => repository.create({
         id: uuidV7(),
@@ -70,7 +78,7 @@ export class PostgresAnnotationStore implements AnnotationStore {
         turnId: null,
         blockId: null,
         kind,
-        value,
+        value: origin === undefined ? value : { ...value, origin },
       }));
       return (await repository.save(rows)).map(toAnnotation);
     });

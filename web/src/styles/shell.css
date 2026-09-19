@@ -61,7 +61,8 @@
 */
 .page { width: min(var(--content-max), 100%); margin: 0 auto; padding: var(--sp-8) var(--gutter) var(--sp-16); }
 .page-heading { margin-bottom: var(--sp-8); }
-.page-heading h1, .search-hero h1 { margin: var(--sp-2) 0; font-size: clamp(24px, 2.4vw, 30px); line-height: var(--lh-tight); letter-spacing: -.025em; font-weight: var(--fw-semibold); }
+.page-heading h1, .search-hero h1 { margin: var(--sp-2) 0; font-size: var(--h1); line-height: var(--lh-tight); letter-spacing: -.025em; font-weight: var(--fw-semibold); }
+
 .page-heading p, .search-hero > p { max-width: var(--measure); margin: 0; color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-prose); }
 .row-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-6); }
 .eyebrow { display: flex; align-items: center; gap: var(--sp-2); color: var(--acid); }

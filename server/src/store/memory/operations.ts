@@ -39,6 +39,18 @@ export class MemoryArtifactStore implements ArtifactStore {
     return new Set(hashes.filter((hash) => this.tables.artifacts.has(key(context.tenantId, hash))));
   }
 
+  async countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]> {
+    const bySource = new Map<string, { source: string; artifacts: number; diagnostic: string | null }>();
+    for (const artifact of await this.listRawArtifacts(context)) {
+      if (artifact.status !== "unknown_format" && artifact.status !== "failed") continue;
+      const seen = bySource.get(artifact.source) ?? { source: artifact.source, artifacts: 0, diagnostic: null };
+      seen.artifacts += 1;
+      seen.diagnostic = artifact.diagnostic ?? seen.diagnostic;
+      bySource.set(artifact.source, seen);
+    }
+    return [...bySource.values()].sort((left, right) => right.artifacts - left.artifacts);
+  }
+
   async listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> {
     return [...this.tables.artifacts.entries()]
       .filter(([entryKey]) => entryKey.startsWith(`${context.tenantId}:`))

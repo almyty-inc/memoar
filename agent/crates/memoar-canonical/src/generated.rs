@@ -158,6 +158,14 @@ pub enum MemoryScope {
     Project,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactionStatus {
+    Clear,
+    Findings,
+    Reviewed,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryDocument {
@@ -171,6 +179,8 @@ pub struct MemoryDocument {
     pub content_hash: String,
     pub captured_at: String,
     pub visibility: Visibility,
+    pub redaction_status: RedactionStatus,
+    pub redaction_findings: Vec<String>,
     pub provenance: Option<Vec<ProvenanceEntry>>,
 }
 

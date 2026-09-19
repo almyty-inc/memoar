@@ -27,7 +27,16 @@
   --line-soft: #e8e6e0;
   --text: #17191b;
   --muted: #5f6265;
-  --quiet: #86898c;
+  /*
+    The quietest ink that is still legible.
+
+    This was #86898c, which carries 12px and 13px text in a dozen places and
+    measures 3.1:1 on --sidebar — below the 4.5:1 that size needs. Every
+    surface it is set on is one of the five neutrals below, and against the
+    darkest of them (--sidebar) this value measures 4.61:1.
+  */
+  --quiet: #6a6d70;
+
 
   /* The one saturated colour, kept from the dark theme and darkened until it is
      legible on paper rather than glowing on top of it. */
@@ -45,8 +54,21 @@
   --line-warning: #dfd8c5;
   --line-danger: #d6b2b2;
 
-  /* Spacing: a 4px grid. Steps are far enough apart to read as deliberate. */
+  /*
+    Which hairline.
+
+    Two weights, one rule: --line-soft separates two surfaces that are already
+    different — a card from the page, a header from the body under it.
+    --line draws a box the reader acts on: an input, a button, a badge, a drop
+    target, a command well, and the modal, which has to read as lifted off the
+    page rather than laid on it.
+  */
+
+  /* Spacing: a 4px grid. Steps are far enough apart to read as deliberate.
+     --sp-05 is the half step, for the hairline gaps inside a control. */
+  --sp-05: 2px;
   --sp-1: 4px;
+
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
@@ -86,15 +108,38 @@
   --fw-bold: 700;
 
   /* Boxes, not pills: a small radius everywhere reads as structure. */
+  --r-xs: 2px;
   --r-sm: 4px;
+
   --r-md: 6px;
   --r-lg: 10px;
   --r-full: 999px;
 
-  /* Control heights, so a button, a select and an input in one row line up. */
+  /*
+    Control heights, so a button, a select and an input in one row line up.
+
+    This claimed to be three and was eight, because spacing tokens were doing
+    duty as heights: a badge was --sp-6 tall, a toggle row --sp-16, and a
+    metric cell was 68px for no reason the ladder could explain. Seven rungs,
+    every one of them named for what stands that tall.
+  */
+  --h-2xs: 20px;  /* a count chip; the compact switch */
+  --h-xs: 24px;   /* a badge */
   --h-sm: 32px;
   --h-md: 36px;
-  --h-lg: 44px;
+  --h-lg: 44px;   /* the touch minimum */
+  --h-xl: 56px;   /* a row read across: the hero field, a source row */
+  --h-2xl: 64px;  /* a row acted on: a toggle, a drop target, the phone nav */
+
+  /* The switch is a shape rather than a box, so its parts are named here
+     instead of being five loose numbers in the rule that draws it. */
+  --switch-w: 40px;
+  --switch-knob: 18px;
+  --switch-travel: 16px;
+  --switch-w-sm: var(--sp-8);
+  --switch-knob-sm: 14px;
+  --switch-travel-sm: 12px;
+
 
   /* Square tiles behind icons. Three sizes, not the ten this replaces. */
   --tile-sm: 28px;
@@ -104,11 +149,55 @@
   /* Layout. The topbar shares the page gutter so the breadcrumb sits directly
      above the heading rather than eight pixels to the left of it. */
   --sidebar-w: 248px;
+  /* The facet rail on search. The same width as the nav rail, and a separate
+     decision from it: they sit side by side on that screen. */
+  --facet-w: 248px;
   --topbar-h: 60px;
+  --bottom-nav-h: var(--h-2xl);
   --gutter: var(--sp-8);
   --content-max: 1200px;
   /* Prose stops at a readable measure instead of running the width of a 27" display. */
   --measure: 68ch;
+
+  /*
+    One heading scale.
+
+    There were three: 24→30 on every page heading, 28→38 on the timeline,
+    28→38 again on the setup guide. 28 is not on the type ladder at all, and
+    the timeline's heading was a full step larger than the same heading
+    everywhere else. Built from ladder values only.
+  */
+  --h1: clamp(var(--fs-2xl), 3vw, var(--fs-4xl));
+
+  /*
+    Named sizes that belong to one element each.
+
+    They are still measurements somebody chose, but they are chosen once, in
+    the file that holds measurements, and the rule that uses them says which
+    one it means.
+  */
+  --marker-reserve: 120px;      /* clearance kept for the floating "best match" mark */
+  --session-header-h: 120px;    /* how far the session header pushes the inspector down */
+  --card-min: 280px;            /* the shortest a card or an empty state may be */
+  --tile-min: 260px;            /* an overview tile, once the grid has collapsed */
+  --stat-col: 148px;            /* a figure and its label in the overview strip */
+  --target-col: 112px;          /* a conversion target; a source badge holding a column */
+  --scrollbar-w: 11px;
+  --scrollbar-inset: 3px;
+
+  /*
+    Viewport arithmetic for the timeline's own scroll box, which is the one
+    element in the application sized against the window. Four literals across
+    three files became one pair, redefined per breakpoint with the gutters.
+  */
+  --timeline-chrome: 300px;
+  --timeline-min: 480px;
+  --search-chrome: 260px;
+
+  /* One inactive weight. A disabled control was .45 and a not-yet-connected
+     card was .68, both written inline. */
+  --opacity-inactive: .45;
+
 
   /* Depth comes from the hairline, so the shadow is barely there. */
   --shadow: 0 1px 2px rgb(23 25 27 / 6%), 0 8px 24px rgb(23 25 27 / 5%);
@@ -127,10 +216,18 @@
   text-rendering: optimizeLegibility;
 }
 
-@media (max-width: 860px) {
-  :root { --gutter: var(--sp-6); }
+/* The session header stacks into two rows here, so what it pushes down grows.
+   Below 1040 the inspector stops being sticky and the offset stops mattering. */
+@media (max-width: 1180px) {
+  :root { --session-header-h: 180px; }
 }
 
-@media (max-width: 620px) {
-  :root { --gutter: var(--sp-4); --topbar-h: 56px; }
+@media (max-width: 860px) {
+  :root { --gutter: var(--sp-6); --timeline-chrome: 320px; --timeline-min: 560px; }
 }
+
+
+@media (max-width: 620px) {
+  :root { --gutter: var(--sp-4); --topbar-h: 56px; --timeline-chrome: 360px; }
+}
+

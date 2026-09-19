@@ -4,3 +4,4 @@ export * from "./ingest/object-storage.js";
 export * from "./ingest/queues.js";
 export * from "./ingest/detection.js";
 export * from "./ingest/ingest.service.js";
+export * from "./ingest/ingest.controller.js";

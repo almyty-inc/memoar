@@ -6,8 +6,19 @@ Sharing changes visibility. Conversion changes representation. Neither operation
 
 1. Open the session and start a redaction review.
 2. Inspect every finding and the exact content that will leave the private scope.
-3. Mark the review complete.
-4. Create a viewer link or an importer link with an optional expiry.
+3. Select anything else that must not leave, which stores a `redaction_mask` annotation naming the block and the range within its text.
+4. Mark the review complete.
+5. Create a viewer link or an importer link with an optional expiry.
+
+### What a share link actually serves
+
+Everything that leaves the tenant — a viewer link, an imported copy, a transfer — is projected first:
+
+- Every range masked during the review is replaced with `[REDACTED <kind>]`. Masks are anchored to a content block and to character offsets within that block's text, because block text is the only text that is ever served. The secret scanner's own findings carry byte offsets into the uploaded file instead, so they are recorded for the findings count and the review UI and are removed by pattern rather than by range.
+- The tenant's own redaction settings decide the patterns: `secretScan` (API keys, JWTs, `NAME=value` lines, private keys), `emailScan`, `pathScan` (home-directory paths), and any `customPatterns`. They apply to what the scanner looks for on the way in and to what the projection masks on the way out.
+- Raw tool-call and tool-result payloads are stripped whatever the settings say.
+
+Re-capturing a transcript that is still growing re-runs the scanner, and that replaces only the scanner's own findings. Masks placed by hand survive every later capture.
 
 Revoking a grant blocks future access. Imported copies keep their provenance even if the original grant is later revoked.
 

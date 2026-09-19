@@ -19,14 +19,12 @@
    lines under it is a step on the same ladder. */
 .auth-form { display: grid; gap: var(--sp-4); }
 .auth-form > label { display: grid; gap: var(--sp-2); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
-.auth-form > label input { min-height: var(--h-lg); padding: 0 var(--sp-3); color: var(--text); background: var(--panel-hover); border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--fs-base); font-weight: var(--fw-normal); }
-.auth-form > label input::placeholder { color: var(--quiet); }
+/* The input itself is the one in controls.css, which lists this form. */
 .auth-form > .button { width: 100%; min-height: var(--h-lg); margin-top: var(--sp-1); }
 
-/* An inline failure: bounded by the card, wrapping anywhere, so no server
-   message can ever run out past the panel. */
-.auth-error { display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; padding: var(--sp-3); color: var(--danger); background: var(--surface-danger); border: 1px solid var(--line-danger); border-radius: var(--r-md); font-size: var(--fs-sm); line-height: var(--lh-normal); overflow-wrap: anywhere; }
-.auth-error svg { flex: 0 0 auto; margin-top: 1px; }
+/* The inline failure here is .error-note, in controls.css: bounded by the
+   card and wrapping anywhere, so no server message runs out past the panel. */
+
 
 /* Changing your mind is a separate decision from filling the form in, and is
    spaced like one. */
@@ -49,7 +47,8 @@
 .onboarding-page { position: relative; min-height: calc(100vh - var(--topbar-h)); overflow: hidden; padding: var(--sp-10) var(--gutter) var(--sp-12); }
 .onboarding-head { position: relative; max-width: 62ch; margin: 0 auto var(--sp-10); text-align: center; }
 .onboarding-head .eyebrow { justify-content: center; }
-.onboarding-head h1 { margin: var(--sp-3) 0; font-size: clamp(28px, 3.4vw, 38px); letter-spacing: -.035em; }
+.onboarding-head h1 { margin: var(--sp-3) 0; font-size: var(--h1); letter-spacing: -.035em; }
+
 .onboarding-head p { max-width: var(--measure); margin: 0 auto; color: var(--muted); font-size: var(--fs-md); line-height: var(--lh-prose); }
 .onboarding-layout { position: relative; max-width: var(--content-max); display: grid; grid-template-columns: 200px minmax(340px, 1fr) minmax(300px, .8fr); gap: var(--sp-5); margin: 0 auto; }
 
@@ -63,7 +62,8 @@
 .setup-steps li.active { color: var(--text); background: var(--sidebar); border-radius: var(--r-md); }
 .setup-steps li.active > span { color: var(--acid); border-color: var(--acid); }
 
-.install-card, .sync-card { overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.install-card, .sync-card { overflow: hidden; background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r-lg); }
+
 .install-card > header, .sync-card > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-3); padding: var(--sp-4); border-bottom: 1px solid var(--line-soft); }
 .install-card > header > span { width: var(--tile-lg); height: var(--tile-lg); display: inline-flex; align-items: center; justify-content: center; color: var(--acid); background: var(--panel-hover); border-radius: var(--r-md); }
 .install-card h2, .sync-card h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-md); }
@@ -79,8 +79,16 @@
 .install-explainer strong { font-size: var(--fs-sm); }
 .install-explainer small { margin-top: 2px; color: var(--quiet); font-size: var(--fs-xs); line-height: var(--lh-normal); }
 
-.sync-card { opacity: .68; }
-.sync-card.sync-active { opacity: 1; border-color: var(--acid); }
+/*
+  Inactive is said by the border and the badge in the header, not by fading the
+  whole card. A blanket .68 over 12px --quiet copy measured about 2.2:1 — the
+  state that most needs reading was the one hardest to read.
+*/
+.sync-card.sync-active { border-color: var(--acid); }
+/* This card's children carry their own margin — the card itself has no
+   padding — so a paragraph dropped straight into it sat on both hairlines. */
+.sync-card > p { margin: var(--sp-4); }
+
 .discovery-machine { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-3); margin: var(--sp-4); padding: var(--sp-3); background: var(--panel-hover); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
 .discovery-machine > span { width: var(--tile-md); height: var(--tile-md); display: inline-flex; align-items: center; justify-content: center; color: var(--acid); background: var(--sidebar); border-radius: var(--r-md); }
 .discovery-machine strong, .discovery-machine p { display: block; }

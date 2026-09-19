@@ -47,6 +47,13 @@ export class MemoryMemoryDocumentStore implements MemoryStore {
       contentHash: capture.contentHash,
       capturedAt: capture.capturedAt,
       visibility: capture.visibility,
+      // A completed review survives a capture that found the file unchanged —
+      // the agent re-reads these on a timer, and a review undone every few
+      // minutes is not a review. Any change of content is a new document to
+      // look at, so the scan's verdict stands.
+      ...(existing?.contentHash === capture.contentHash && existing.redactionStatus === "reviewed"
+        ? { redactionStatus: "reviewed" as const, redactionFindings: [...existing.redactionFindings] }
+        : { redactionStatus: capture.redactionStatus, redactionFindings: [...capture.redactionFindings] }),
       provenance: capture.provenance ?? [],
       ...(capture.workspacePath ? { workspacePath: capture.workspacePath } : {}),
     };
@@ -69,6 +76,15 @@ export class MemoryMemoryDocumentStore implements MemoryStore {
     };
     this.tables.memoryRevisions.set(key(context.tenantId, revision.id), revision);
     return Promise.resolve({ document: copy(document), revision: copy(revision) });
+  }
+
+  reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null> {
+    const entry = key(context.tenantId, documentId);
+    const document = this.tables.memoryDocuments.get(entry);
+    if (!document || document.contentHash !== contentHash) return Promise.resolve(null);
+    const reviewed = { ...document, redactionStatus: "reviewed" as const };
+    this.tables.memoryDocuments.set(entry, reviewed);
+    return Promise.resolve(copy(reviewed));
   }
 
   deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean> {

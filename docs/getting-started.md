@@ -76,9 +76,13 @@ The binary lands at `agent/target/release/memoar`. Put it on your `PATH`, and
 npx memoar login --endpoint http://localhost:4000/v1 --email you@example.com --password '...'
 ```
 
-This registers the computer as a **machine** and stores a token scoped to
-capture — it can upload sessions and nothing else. The token is written to
-`credentials.json` with mode `0600`, separately from the rest of the config.
+This registers the computer as a **machine** and stores an API key scoped to
+what the agent does — capture, upload, keep its machine record current, read
+back what it archived. It is deliberately less than your browser session holds:
+no sharing, no minting further credentials, no MCP. It is written to
+`credentials.json` with mode `0600`, separately from the rest of the config, and
+it does not expire, so `sync --watch` keeps running rather than dying with a
+browser token after an hour. Revoke it per computer in **Settings → API keys**.
 
 If you would rather not put a password in your shell history, pass `--token`
 with an API key created in **Settings → API keys**.

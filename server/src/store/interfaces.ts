@@ -10,8 +10,11 @@ import type {
   RedactionReviewRecord,
   ShareGrantRecord,
   ShareTokenLookup,
+  TeamInvitation,
   TeamMember,
+  TeamMemberSummary,
   TeamRecord,
+  TeamShareOptinRecord,
   TenantSettingsRecord,
   TransferRecord,
 } from "./records.js";
@@ -65,12 +68,19 @@ export interface AnnotationStore {
    * how leaky it was rather than with how large it was, and a file that
    * mentioned a credential on every line was the worst case for the database
    * rather than merely for the reader.
+   *
+   * @param origin when given, only rows this producer wrote are replaced, and
+   * every written row is stamped with it. The scanner re-runs on every capture
+   * of a growing transcript, and replacing the whole kind deleted the masks the
+   * user had placed by hand — silently undoing their redaction review each time
+   * the agent uploaded another few lines of the same conversation.
    */
   replaceAnnotations(
     context: TenantContext,
     sessionId: string,
     kind: AnnotationKind,
     values: Record<string, unknown>[],
+    origin?: string,
   ): Promise<Annotation[]>;
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null>;
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean>;
@@ -90,6 +100,9 @@ export interface MemoryCapture {
   capturedAt: string;
   visibility: Visibility;
   provenance?: ProvenanceEntry[];
+  /** What the secret scanner made of `text`, decided before the store is called. */
+  redactionStatus: Exclude<MemoryDocument["redactionStatus"], "reviewed">;
+  redactionFindings: string[];
 }
 
 /**
@@ -106,6 +119,17 @@ export interface MemoryStore {
   getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null>;
   listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]>;
   captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }>;
+
+  /**
+   * Records that a person looked at this document's findings and let it stand.
+   *
+   * The review names the content it was performed against. A reviewer reading
+   * one version while the agent captures the next would otherwise clear a
+   * document nobody has seen — the same reason a session's review carries a
+   * content digest. Returns null when the document is gone or has moved on,
+   * which the caller reports as a conflict rather than a success.
+   */
+  reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null>;
   deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean>;
 }
 
@@ -133,11 +157,66 @@ export interface SharingStore {
 export interface TeamStore {
   createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord>;
   listTeamsForUser(userId: string): Promise<TeamRecord[]>;
+  /** Accepted membership only: an invitation grants no reads until it is taken up. */
   isTeamMember(teamId: string, userId: string): Promise<boolean>;
-  addTeamMember(teamId: string, member: TeamMember): Promise<void>;
+  /** Records an invitation. It becomes a membership only when the invitee accepts. */
+  inviteTeamMember(teamId: string, member: TeamMember): Promise<void>;
+  listTeamInvitations(userId: string): Promise<TeamInvitation[]>;
+  /**
+   * Everybody on one team's roster, invited and accepted alike, in one list.
+   *
+   * Both halves, because they are the same question asked from two sides: who
+   * is here, and who has been asked. Splitting them would need two routes to
+   * answer one screen, and would leave an invitation the caller sent with
+   * nowhere to appear — `memberCount` does not move until it is accepted.
+   */
+  listTeamMembers(teamId: string): Promise<TeamMemberSummary[]>;
+  /** @returns false when there is no pending invitation for this person. */
+  acceptTeamInvitation(teamId: string, userId: string): Promise<boolean>;
   removeTeamMember(teamId: string, userId: string): Promise<boolean>;
   listTeamSessions(teamId: string): Promise<ArchivedSession[]>;
   listTeamCollections(teamId: string): Promise<CollectionRecord[]>;
+  /**
+   * The distinct tenants a team request may iterate over: accepted members
+   * only. This is the whole of the membership half of the isolation argument —
+   * row-level security bounds each query to one tenant, and this bounds which
+   * tenants a request may bind into the setting the policy reads.
+   */
+  listTeamMemberTenants(teamId: string): Promise<string[]>;
+  /**
+   * One teammate's session, found across member tenants and returned only if
+   * its visibility actually names this team. Never a way into a private one.
+   */
+  getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null>;
+}
+
+/**
+ * Who has agreed to share into a team, and from which machines.
+ *
+ * Separate from TeamStore because this is consent, not membership: being in a
+ * team and sharing your capture with it are two different decisions, and the
+ * second one is never implied by the first.
+ */
+export interface TeamOptinStore {
+  /** The caller's own enrolments for one team. Nobody reads anybody else's. */
+  listTeamOptins(teamId: string, tenantId: string): Promise<TeamShareOptinRecord[]>;
+  /** Every enrolment this tenant holds, across all teams. At most one team's worth. */
+  listTenantOptins(tenantId: string): Promise<TeamShareOptinRecord[]>;
+  /** @returns false when an identical enrolment already exists. */
+  createTeamOptin(optin: TeamShareOptinRecord): Promise<boolean>;
+  deleteTeamOptin(teamId: string, tenantId: string, machineId: string | null): Promise<boolean>;
+  /**
+   * The team a session captured right now on this machine is widened to, or
+   * null. Resolved at ingest and written into `sessions.visibility`, so no read
+   * path has to consult this table or change shape.
+   */
+  resolveIngestTeam(tenantId: string, machineId?: string): Promise<string | null>;
+  /**
+   * Puts the caller's already-stamped sessions back to private. An ordinary
+   * single-tenant write under the caller's own policy — revocation reaches only
+   * the sharer's own archive, never a copy somebody already imported.
+   */
+  revokeTeamVisibility(context: TenantContext, teamId: string, machineId: string | null): Promise<number>;
 }
 
 export interface DirectoryStore {
@@ -150,6 +229,8 @@ export interface ArtifactStore {
   updateRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<void>;
   getRawArtifact(context: TenantContext, sha256: string): Promise<RawArtifactRecord | null>;
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>>;
+  /** Artifacts kept but never turned into a session, grouped by the tool they came from. */
+  countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]>;
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]>;
 }
 
@@ -193,6 +274,7 @@ export interface ArchiveStore extends
   CollectionStore,
   SharingStore,
   TeamStore,
+  TeamOptinStore,
   DirectoryStore,
   ArtifactStore,
   JobStore,

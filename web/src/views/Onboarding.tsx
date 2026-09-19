@@ -148,7 +148,8 @@ export function SignInView({ onSignIn, onCreateAccount, onOAuth, creating: start
             />
           </label>
           {error ? (
-            <p className="auth-error" role="alert"><AlertCircle size={16} aria-hidden="true" /><span>{error}</span></p>
+            <p className="error-note" role="alert">
+<AlertCircle size={16} aria-hidden="true" /><span>{error}</span></p>
           ) : null}
           <Button type="submit" variant="primary" disabled={loading}>
             {loading

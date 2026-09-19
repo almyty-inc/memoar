@@ -1,47 +1,26 @@
-import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { emptyConnectedDashboard, routeFromLocation } from './app/bootstrap';
 import { Shell } from './components/Shell';
-import { Button } from './components/ui';
 import { memoarApi } from './lib/api';
 import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
-import { pathForLegacyHash, pathForRoute, routeForPath, type Route } from './lib/routes';
+import { pathForRoute, routeForPath, type Route } from './lib/routes';
 import { CollectionsView } from './views/Collections';
+import { ConnectionError } from './views/ConnectionError';
 import { MemoryView } from './views/Memory';
 import { ImportView } from './views/Import';
 import { MachinesView } from './views/Machines';
+import { NotFoundPage } from './views/NotFoundPage';
 import { SignInView } from './views/Onboarding';
 import { OnboardingView } from './views/OnboardingSteps';
 import { SearchView } from './views/Search';
 import { SessionDetailView } from './views/SessionDetail';
 import { SettingsView } from './views/Settings';
 import { SharingView } from './views/Sharing';
+import { TeamsView } from './views/Teams';
 import { TimelineView } from './views/Timeline';
 import { WorkspaceView } from './views/Workspace';
-
-const emptyConnectedDashboard: DashboardState = {
-  timeline: [],
-  archivedSessions: 0,
-  collections: [],
-  grants: [],
-  transfers: [],
-  machines: [],
-  apiKeys: [],
-};
-
-/**
- * The route in the address bar.
- *
- * A `#/…` link left over from before paths is rewritten once, here, so nothing
- * anyone bookmarked stops working.
- */
-function routeFromLocation(): Route {
-  const legacy = pathForLegacyHash(window.location.hash);
-  if (legacy) {
-    window.history.replaceState(null, '', legacy);
-    return routeForPath(legacy) ?? { view: 'timeline' };
-  }
-  return routeForPath(window.location.pathname) ?? { view: 'timeline' };
-}
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => {
@@ -58,7 +37,9 @@ export function App() {
   const [intended] = useState<Route | null>(() => {
     if (!memoarApi.configured || memoarApi.authenticated) return null;
     const current = routeFromLocation();
-    return current.view === 'signin' ? null : current;
+    // An address with no screen is not somewhere to be returned to afterwards.
+    return current.view === 'signin' || current.view === 'not-found' ? null : current;
+
   });
   const [dashboard, setDashboard] = useState<DashboardState>(emptyConnectedDashboard);
   const [loading, setLoading] = useState(() => !memoarApi.configured || memoarApi.authenticated);
@@ -128,7 +109,8 @@ export function App() {
 
   // Back and forward move between screens, which is what those buttons are for.
   useEffect(() => {
-    const onPopState = () => { setRoute(routeForPath(window.location.pathname) ?? { view: 'timeline' }); };
+    const onPopState = () => { setRoute(routeForPath(window.location.pathname)); };
+
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -180,6 +162,12 @@ export function App() {
         }
         return { ...current, timeline: [...byDate].map(([date, sessions]) => ({ date, sessions })), nextTimelineCursor: page.nextCursor };
       });
+    } catch (error) {
+      // Every other failure in this file sets `connectionError`; this one had
+      // no catch at all, and the callers invoke it as `void onLoadMore()`, so a
+      // failed page became an unhandled rejection and the spinner simply
+      // stopped. Scrolling produced nothing and said nothing.
+      setConnectionError(error instanceof Error ? error.message : 'More sessions could not be loaded');
     } finally {
       setLoadingMore(false);
     }
@@ -212,11 +200,7 @@ export function App() {
   let content;
   if (connectionError) {
     content = (
-      <section className="page connection-error" role="alert">
-        <AlertCircle size={24} />
-        <div><h1>Archive connection failed</h1><p>{connectionError}</p></div>
-        <Button onClick={() => void loadDashboard()}><RefreshCw size={14} /> Retry</Button>
-      </section>
+      <ConnectionError connectionError={connectionError} loadDashboard={loadDashboard} />
     );
   } else if (view === 'workspace') {
     content = (
@@ -259,6 +243,8 @@ export function App() {
         }}
       />
     );
+  } else if (view === 'teams') {
+    content = <TeamsView user={user} />;
   } else if (view === 'machines') {
     content = <MachinesView machines={dashboard.machines} onConnect={() => navigate('onboarding')} />;
   } else if (view === 'settings') {
@@ -267,7 +253,18 @@ export function App() {
       setDashboard((current) => ({ ...current, apiKeys: [created.apiKey, ...current.apiKeys] }));
       return created.secret;
     }} />;
+  } else if (view === 'not-found') {
+    /*
+      A typo'd or since-removed address used to render the timeline, silently,
+      under whatever the reader had typed: a page that says one thing and an
+      address bar that says another. The address is left alone so it can be
+      corrected or reported.
+    */
+    content = (
+      <NotFoundPage navigate={navigate} />
+    );
   } else if (view === 'onboarding') {
+
     content = <OnboardingView machines={dashboard.machines} onComplete={() => navigate('timeline')} onRefresh={loadDashboard} />;
   } else if (view === 'session') {
     content = openDetail ? (

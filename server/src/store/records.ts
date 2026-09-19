@@ -21,6 +21,48 @@ export interface TeamMember {
   email: string;
 }
 
+/**
+ * One row of a team's roster, as the other members of that team may see it.
+ *
+ * `tenantId` is deliberately absent. It is the key the isolation argument turns
+ * on, it is never anybody's business but the store's, and a roster is not a
+ * reason to hand it out.
+ *
+ * `status` is what makes an invitation somebody sent visible to them at all:
+ * `memberCount` only moves on acceptance, and the invitee's own invitation list
+ * is scoped to the invitee, so without this the sender has nothing to look at.
+ */
+export interface TeamMemberSummary {
+  userId: string;
+  email: string;
+  status: "invited" | "active";
+}
+
+/** A team somebody has been asked to join but has not yet joined. */
+export interface TeamInvitation {
+  teamId: string;
+  teamName: string;
+  orgId: string;
+}
+
+/**
+ * Standing consent to share into one team. No row means no sharing: the default
+ * is off, and creating or joining a team shares nothing by itself.
+ *
+ * `machineId: null` means every machine of the tenant, including ones enrolled
+ * later. Consent is forward-looking only — enrolling never widens what is
+ * already archived, because "share what I do from here on" is a different
+ * consent from "share everything I have ever captured on this laptop".
+ */
+export interface TeamShareOptinRecord {
+  id: string;
+  teamId: string;
+  tenantId: string;
+  userId: string;
+  machineId: string | null;
+  createdAt: string;
+}
+
 export interface RedactionMaskSnapshot {
   kind: string;
   start: number;

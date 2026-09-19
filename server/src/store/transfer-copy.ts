@@ -1,5 +1,5 @@
 import { uuidV7 } from "../ids.js";
-import { applyRedactionProjection } from "../redaction.js";
+import { applyRedactionProjection, type ProjectionOptions } from "../redaction.js";
 import type { ArchivedSession } from "./context.js";
 
 /**
@@ -8,8 +8,16 @@ import type { ArchivedSession } from "./context.js";
  * visibility owned by the recipient, and an appended import provenance entry
  * citing the transfer or share grant.
  */
-export function copyTransferredSession(source: ArchivedSession, transferId: string, ownerId: string, provenancePrefix = "transfer"): ArchivedSession {
-  const clone = structuredClone(source);
+export function copyTransferredSession(
+  source: ArchivedSession,
+  transferId: string,
+  ownerId: string,
+  provenancePrefix = "transfer",
+  /** The sender's masks and patterns. Without them this masks built-in secrets only. */
+  projection: ProjectionOptions = {},
+): ArchivedSession {
+  // Masked before the block ids are remapped: a mask names the block it belongs to.
+  const clone = applyRedactionProjection(source, projection);
   const turnIdMap = new Map<string, string>();
   for (const turn of clone.turns) turnIdMap.set(turn.id, uuidV7());
   const turns = clone.turns.map((turn) => ({
@@ -18,7 +26,7 @@ export function copyTransferredSession(source: ArchivedSession, transferId: stri
     parentId: turn.parentId ? turnIdMap.get(turn.parentId) ?? turn.parentId : turn.parentId,
     blocks: turn.blocks.map((block) => ({ ...block, id: uuidV7() })),
   }));
-  return applyRedactionProjection({
+  return {
     ...clone,
     id: uuidV7(),
     turns,
@@ -28,5 +36,5 @@ export function copyTransferredSession(source: ArchivedSession, transferId: stri
       sourceId: `${provenancePrefix}:${transferId}:${source.id}`,
       capturedAt: new Date().toISOString(),
     }],
-  });
+  };
 }

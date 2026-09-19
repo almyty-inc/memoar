@@ -2,12 +2,12 @@ import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundExce
 import { createHash, randomBytes } from "node:crypto";
 import type { Visibility } from "../../libs/canonical/src/generated.js";
 import type {
-  AnnotationStore, ArchivedSession, RedactionReviewRecord, SessionStore,
-  ShareGrantRecord, SharingStore, ShareTokenLookup, TenantContext, TransferRecord,
+  AnnotationStore, ArchivedSession, RedactionReviewRecord, SessionStore, SettingsStore,
+  ShareGrantRecord, SharingStore, ShareTokenLookup, TeamStore, TenantContext, TransferRecord,
 } from "../archive-store.js";
 import { copyTransferredSession } from "../archive-store.js";
 import { uuidV7 } from "../ids.js";
-import { applyRedactionProjection } from "../redaction.js";
+import { applyRedactionProjection, redactionPatterns, reviewedMasks, type ProjectionOptions } from "../redaction.js";
 import { canonicalProjection, sessionSummary } from "../sessions.js";
 import { ARCHIVE_STORE } from "../tokens.js";
 import type { CreateShareLinkDto, RequestTransferDto, UpdateVisibilityDto } from "./sharing.dto.js";
@@ -25,7 +25,7 @@ export function sessionContentDigest(session: ArchivedSession): string {
 
 @Injectable()
 export class SharingService {
-  constructor(@Inject(ARCHIVE_STORE) private readonly store: SessionStore & AnnotationStore & SharingStore) {}
+  constructor(@Inject(ARCHIVE_STORE) private readonly store: SessionStore & AnnotationStore & SharingStore & SettingsStore & TeamStore) {}
 
   async completeReview(context: TenantContext, sessionId: string): Promise<RedactionReviewRecord> {
     const [session, annotations] = await Promise.all([
@@ -84,6 +84,12 @@ export class SharingService {
       }
       session = await this.requireCurrentReview(context, sessionId, body.redactionReviewId);
     }
+    // Widening into a team the caller is not in would hand their session to
+    // strangers. CollectionService has always checked this; this path wrote
+    // whatever teamId it was given.
+    if (body.visibility.teamId && !await this.store.isTeamMember(body.visibility.teamId, context.userId)) {
+      throw new ForbiddenException("Caller is not a member of that team");
+    }
     const visibility: Visibility = {
       scope: body.visibility.scope,
       ownerId: session.visibility.ownerId,
@@ -135,7 +141,7 @@ export class SharingService {
   }
 
   /** Resolves an active, unexpired share token to its grant and owning session. */
-  private async resolveShareToken(token: string): Promise<{ grant: ShareTokenLookup; session: ArchivedSession }> {
+  private async resolveShareToken(token: string): Promise<{ grant: ShareTokenLookup; session: ArchivedSession; ownerContext: TenantContext }> {
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const grant = await this.store.getShareGrantByTokenHash(tokenHash);
     if (!grant || grant.status !== "active" || (grant.expiresAt && grant.expiresAt < new Date().toISOString())) {
@@ -144,19 +150,39 @@ export class SharingService {
     const ownerContext: TenantContext = { tenantId: grant.tenantId, userId: grant.tenantId, scopes: ["archive:read"], authType: "machine" };
     const session = await this.store.getSession(ownerContext, grant.sessionId);
     if (!session) throw new NotFoundException("Share link not found");
-    return { grant, session };
+    return { grant, session, ownerContext };
+  }
+
+  /**
+   * How the owner's archive says this session must look on its way out: the
+   * ranges their review masked, and the patterns their tenant asked for.
+   *
+   * Read from the live annotations rather than from the review snapshot,
+   * because a mask added after the review is still a mask the owner placed —
+   * and the review gate has already established that the content is the content
+   * they looked at.
+   */
+  private async projectionFor(context: TenantContext, sessionId: string): Promise<ProjectionOptions> {
+    const [settings, annotations] = await Promise.all([
+      this.store.getTenantSettings(context),
+      this.store.listAnnotations(context, sessionId),
+    ]);
+    return { patterns: redactionPatterns(settings.redaction), masks: reviewedMasks(annotations) };
   }
 
   async consumeShare(token: string): Promise<Record<string, unknown>> {
-    const { grant, session } = await this.resolveShareToken(token);
-    const projected = applyRedactionProjection(structuredClone(session));
+    const { grant, session, ownerContext } = await this.resolveShareToken(token);
+    const projected = applyRedactionProjection(session, await this.projectionFor(ownerContext, grant.sessionId));
     return { session: canonicalProjection(projected), permission: grant.permission, expiresAt: grant.expiresAt };
   }
 
   async importShare(context: TenantContext, token: string): Promise<Record<string, unknown>> {
-    const { grant, session } = await this.resolveShareToken(token);
+    const { grant, session, ownerContext } = await this.resolveShareToken(token);
     if (grant.permission !== "importer") throw new ForbiddenException("Share link does not allow import");
-    const copy = copyTransferredSession(session, grant.grantId, context.userId, "share");
+    // Projected before the copy, not after: copying mints new block ids, and a
+    // mask names the block it belongs to.
+    const projected = applyRedactionProjection(session, await this.projectionFor(ownerContext, grant.sessionId));
+    const copy = copyTransferredSession(projected, grant.grantId, context.userId, "share");
     await this.store.saveSession(context, copy);
     return sessionSummary(copy);
   }

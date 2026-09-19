@@ -100,7 +100,8 @@ export function CollectionsView({ collections, onOpen, onCreate }: {
           );
         })}
 
-        {openError ? <p role="alert">{openError}</p> : null}
+        {openError ? <p role="alert" className="error-note">{openError}</p> : null}
+
         <button className="new-collection-card" type="button" onClick={() => setCreateOpen(true)}>
           <span><FolderPlus size={22} /></span><strong>Create a collection</strong><p>Curate sessions, notes, and pins around a project or topic.</p>
         </button>

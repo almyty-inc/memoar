@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  Check,
   ChevronDown,
   CircleDot,
   Cloud,
@@ -9,26 +8,35 @@ import {
   HardDrive,
   Laptop,
   Plus,
-  RefreshCw,
   Server,
   ShieldCheck,
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { useState } from 'react';
-import type { Machine, MachineSource } from '../lib/types';
+import { useEffect, useState } from 'react';
+import { memoarApi } from '../lib/api';
+import type { Machine, UnparsedSource } from '../lib/types';
 import { Badge, Button, IconButton, StatusDot, cn, formatRelative } from '../components/ui';
 import { machineStatusLabel } from '../lib/source-labels';
-
-const stateCopy: Record<MachineSource['state'], string> = {
-  synced: 'Synced',
-  syncing: 'Syncing now',
-  attention: 'Needs attention',
-  disabled: 'Disabled',
-};
+import { SourceRow } from './machines/SourceRow';
+import { UnparsedPanel } from './machines/UnparsedPanel';
 
 export function MachinesView({ machines, onConnect }: { machines: Machine[]; onConnect: () => void }) {
   const [expanded, setExpanded] = useState<string[]>(machines.slice(0, 2).map((machine) => machine.id));
+  /*
+    What capture collected and the archive could not read. Null until the
+    archive answers and null again if it refuses: an unreadable-file count this
+    page could not obtain is not a zero, and nothing renders until there is one.
+  */
+  const [unparsed, setUnparsed] = useState<UnparsedSource[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void memoarApi.listUnparsedArtifacts()
+      .then((items) => { if (!cancelled) setUnparsed(items); })
+      .catch(() => { if (!cancelled) setUnparsed(null); });
+    return () => { cancelled = true; };
+  }, []);
+  const unparsedBySource = new Map((unparsed ?? []).map((item) => [item.source, item]));
   const toggle = (id: string) => setExpanded((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   const sessionCount = machines.flatMap((machine) => machine.sources).reduce((count, source) => count + source.sessionCount, 0);
   const needsAttention = machines.flatMap((machine) => machine.sources.filter((source) => source.state === 'attention').map((source) => ({ machine, source })));
@@ -62,6 +70,8 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
         </div>
       </section>
 
+      {unparsed ? <UnparsedPanel items={unparsed} machines={machines} /> : null}
+
       <div className="machine-list">
         {machines.map((machine) => {
           const isExpanded = expanded.includes(machine.id);
@@ -78,7 +88,7 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
                   {machine.sources.length > 0 ? (
                     <div className="source-list-head"><span>Source</span><span>Archive</span><span>Last sync</span><span>Status</span><span /></div>
                   ) : null}
-                  {machine.sources.map((source) => <SourceRow key={source.id} source={source} />)}
+                  {machine.sources.map((source) => <SourceRow key={source.id} source={source} unparsed={unparsedBySource.get(source.id)} />)}
                   <button className="add-source-row" type="button" onClick={onConnect}><Plus size={14} /> Discover another source on {machine.name}</button>
                 </div>
               ) : null}
@@ -114,19 +124,6 @@ export function MachinesView({ machines, onConnect }: { machines: Machine[]; onC
         <div><strong>Connect another computer</strong><p>Signing the agent in registers the machine and starts source discovery.</p></div>
         <Button size="sm" variant="primary" onClick={onConnect}>Setup guide</Button>
       </section>
-    </div>
-  );
-}
-
-function SourceRow({ source }: { source: MachineSource }) {
-  const [enabled, setEnabled] = useState(source.enabled);
-  return (
-    <div className="source-row">
-      <div><span className={`mini-source source-${source.id.replace('-cli', '').replace('-code', '')}`}><Code2 size={15} /></span><div><strong>{source.label}</strong><small>Native local store</small></div></div>
-      <span><strong>{source.sessionCount}</strong> sessions</span>
-      <span>{formatRelative(source.lastSyncAt)}</span>
-      <span className={cn('source-state', `source-state-${source.state}`)}>{source.state === 'synced' ? <Check size={13} /> : source.state === 'syncing' ? <RefreshCw size={13} /> : <AlertCircle size={13} />}{stateCopy[source.state]}</span>
-      <button className={cn('switch compact', enabled && 'switch-on')} type="button" role="switch" aria-checked={enabled} aria-label={`${enabled ? 'Disable' : 'Enable'} ${source.label}`} onClick={() => setEnabled(!enabled)}><span /></button>
     </div>
   );
 }

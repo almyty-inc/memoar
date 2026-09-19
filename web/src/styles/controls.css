@@ -1,14 +1,19 @@
 /* Buttons, badges, inputs, switches, modals: everything reused across screens. */
 
+/* white-space: a label is one line. "Create key" wrapped to two at 390px and
+   the icon beside it centred against the block rather than against the word. */
 .button {
   min-height: var(--h-md); display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
   padding: 0 var(--sp-3); color: var(--text); background: var(--panel-raised); border: 1px solid var(--line);
   border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-medium); cursor: pointer;
+  white-space: nowrap;
   transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
 }
+
 .button:hover:not(:disabled) { background: var(--panel-hover); }
 .button:active:not(:disabled) { transform: translateY(1px); }
-.button:disabled { opacity: .45; cursor: not-allowed; }
+.button:disabled { opacity: var(--opacity-inactive); cursor: not-allowed; }
+
 .button-primary { color: #fbfbf8; background: var(--text); border-color: var(--text); }
 .button-primary:hover:not(:disabled) { background: #2b2e31; border-color: #2b2e31; }
 .button-ghost { color: var(--muted); background: transparent; border-color: transparent; }
@@ -20,8 +25,9 @@
 .icon-button { width: var(--h-md); height: var(--h-md); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: var(--r-md); cursor: pointer; }
 .icon-button:hover { color: var(--text); background: var(--sidebar); border-color: var(--line); }
 
-.badge { min-height: var(--sp-6); display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-2); color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-xs); font-weight: var(--fw-normal); white-space: nowrap; }
-.source-badge { min-height: var(--sp-6); display: inline-flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2); color: var(--text); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: var(--fw-semibold); white-space: nowrap; }
+.badge { min-height: var(--h-xs); display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-2); color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-xs); font-weight: var(--fw-normal); white-space: nowrap; }
+.source-badge { min-height: var(--h-xs); display: inline-flex;
+ align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2); color: var(--text); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: var(--fw-semibold); white-space: nowrap; }
 .source-mark { width: 6px; height: 6px; border-radius: 50%; }
 .source-claude .source-mark { background: #855026; box-shadow: 0 0 7px #85502680; }
 .source-codex .source-mark { background: var(--acid); box-shadow: 0 0 7px #3d7a1f80; }
@@ -41,20 +47,38 @@
 
 .command-search { width: 260px; height: var(--h-md); gap: var(--sp-2); padding: 0 var(--sp-3); color: var(--quiet); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-md); cursor: pointer; text-align: left; }
 .command-search span { flex: 1; min-width: 0; overflow: hidden; font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
-kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px var(--sp-1); color: var(--quiet); background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-label); }
+/* --fs-xs, not --fs-label: 11px is reserved for uppercase mono labels, and a
+   key cap is a glyph rather than a label. */
+kbd { display: inline-flex; align-items: center; gap: var(--sp-05); padding: var(--sp-05) var(--sp-1); color: var(--quiet); background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-xs); }
+
 
 .select-control { height: var(--h-md); display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); color: var(--muted); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-md); }
 .select-control select { max-width: 180px; padding: 0 var(--sp-5) 0 0; color: inherit; background: transparent; border: 0; outline: 0; font-size: var(--fs-sm); appearance: none; cursor: pointer; }
 .select-control svg:last-child { margin-left: calc(var(--sp-5) * -1); pointer-events: none; }
 .mobile-filter-button { display: none; }
-.filter-count { min-width: var(--sp-5); height: var(--sp-5); display: inline-flex; align-items: center; justify-content: center; color: var(--acid-ink); background: var(--acid); border-radius: var(--r-full); font-size: var(--fs-label); }
+/* A count is a number, not a label, so it does not get the 11px that only
+   uppercase mono labels are allowed. */
+.filter-count { min-width: var(--h-2xs); height: var(--h-2xs); display: inline-flex; align-items: center; justify-content: center; color: var(--acid-ink); background: var(--acid); border-radius: var(--r-full); font-size: var(--fs-xs); }
+
 .shortcut-hint { color: var(--quiet); }
 
 .field-label { display: grid; gap: var(--sp-2); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
-.field-label input, .field-label select, .field-label textarea, .form-grid select {
+
+/*
+  One text input.
+
+  This rule was written three times — here, again for the sign-in form, and
+  again for the pack budget row — identical but for the padding, which is the
+  only reason they looked the same. One base; the forms that use it list
+  themselves here rather than restating it.
+*/
+.field-label input, .field-label select, .field-label textarea, .form-grid select,
+.auth-form > label input, .budget-row input, .budget-row select {
   width: 100%; min-height: var(--h-lg); padding: var(--sp-2) var(--sp-3); color: var(--text); background: var(--panel-hover);
   border: 1px solid var(--line); border-radius: var(--r-md); outline: 0; resize: vertical; font-size: var(--fs-base); font-weight: var(--fw-normal);
 }
+.field-label input::placeholder, .field-label textarea::placeholder, .auth-form > label input::placeholder { color: var(--quiet); }
+
 /* One select treatment everywhere. Left to the platform, the same control is a
    rounded pill in one panel and a bordered box in the next. */
 .field-label select, .form-grid select, .budget-row select {
@@ -71,19 +95,75 @@ kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px var(--sp
 
 .form-stack { display: grid; gap: var(--sp-5); }
 
-.toggle-row { min-height: var(--sp-16); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); }
+.toggle-row { min-height: var(--h-2xl); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); }
+
 .toggle-row label span, .toggle-row label small { display: block; }
 .toggle-row label span { font-size: var(--fs-base); font-weight: var(--fw-semibold); }
 .toggle-row label small { margin-top: var(--sp-1); color: var(--quiet); font-size: var(--fs-xs); }
-.switch { width: 40px; height: var(--sp-6); flex: 0 0 auto; padding: 2px; background: var(--line-soft); border: 1px solid var(--line); border-radius: var(--r-full); cursor: pointer; }
-.switch > span { width: 18px; height: 18px; display: block; background: #7d7a75; border-radius: 50%; transition: transform 140ms ease, background 140ms ease; }
+.switch { width: var(--switch-w); height: var(--h-xs); flex: 0 0 auto; padding: var(--sp-05); background: var(--line-soft); border: 1px solid var(--line); border-radius: var(--r-full); cursor: pointer; }
+.switch > span { width: var(--switch-knob); height: var(--switch-knob); display: block; background: #7d7a75; border-radius: 50%; transition: transform 140ms ease, background 140ms ease; }
 .switch-on { background: #cedcba; border-color: #b1c68b; }
-.switch-on > span { background: var(--acid); transform: translateX(16px); }
-.switch.compact { width: var(--sp-8); height: var(--sp-5); }
-.switch.compact > span { width: 14px; height: 14px; }
-.switch.compact.switch-on > span { transform: translateX(12px); }
+.switch-on > span { background: var(--acid); transform: translateX(var(--switch-travel)); }
+.switch.compact { width: var(--switch-w-sm); height: var(--h-2xs); }
+.switch.compact > span { width: var(--switch-knob-sm); height: var(--switch-knob-sm); }
+.switch.compact.switch-on > span { transform: translateX(var(--switch-travel-sm)); }
 
-.modal-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: var(--sp-5); background: rgb(23 25 27 / 34%); backdrop-filter: blur(7px); }
+
+/*
+  Having nothing to show, and failing: the two states every screen needs and
+  the two that were written per-screen or not at all.
+
+  There was one designed empty state, used on the timeline, and a bare
+  `.empty-note` paragraph — the most-used empty state in the product, on nine
+  screens — with no rule anywhere, so it rendered as flush-left body copy in a
+  tile with six hundred pixels of air under it. Two languages for one
+  situation. One family now: the same centred, quiet voice, at two sizes,
+  because a tile and a page have different room.
+*/
+.no-filter-results, .empty-state { min-height: var(--card-min); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); text-align: center; }
+.no-filter-results h1, .no-filter-results h3, .empty-state h1, .empty-state h3 { margin: 0; font-size: var(--fs-lg); }
+.no-filter-results p, .empty-state p { max-width: 48ch; margin: 0; color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-normal); }
+.empty-state > svg { color: var(--acid); }
+
+/* The compact member of the same family: one sentence, centred in whatever
+   room the container has, rather than flush left against its top-left corner. */
+.empty-note, .collection-empty, .field-empty {
+  display: block; margin: auto; padding: var(--sp-5) var(--sp-3); max-width: 48ch;
+  color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); text-align: center;
+}
+/* Inside a field, the note stands where the control it replaces would. */
+.field-empty { min-height: var(--h-lg); display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: var(--sp-2) 0; text-align: left; }
+.collection-empty { margin: 0 0 var(--sp-3); padding: var(--sp-3) 0; text-align: left; }
+
+/*
+  A failure, anywhere.
+
+  Four of these were an unclassed <p role="alert"> with no matching selector in
+  any stylesheet, so a failed conversion and a failed pack build read as
+  ordinary body copy. This is the sign-in form's error, which was the only one
+  that had ever been designed, promoted to the generic it always was.
+*/
+.error-note {
+  display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; padding: var(--sp-3);
+  color: var(--danger); background: var(--surface-danger); border: 1px solid var(--line-danger);
+  border-radius: var(--r-md); font-size: var(--fs-sm); line-height: var(--lh-normal); overflow-wrap: anywhere;
+}
+.error-note svg { flex: 0 0 auto; margin-top: 1px; }
+
+/* The whole screen failing, rather than one action in it. */
+.connection-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-4); min-height: calc(100vh - var(--topbar-h) - var(--sp-16)); text-align: center; }
+.connection-error > svg { color: var(--danger); }
+.connection-error h1 { margin: 0 0 var(--sp-2); font-size: var(--fs-xl); }
+.connection-error p { max-width: 48ch; margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); overflow-wrap: anywhere; }
+
+/* Not a failure: something the reader has not done yet, said beside the
+   control that is waiting for it. */
+
+.field-hint { display: flex; align-items: center; gap: var(--sp-2); margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); }
+.field-hint svg { flex: 0 0 auto; color: var(--quiet); }
+
+.modal-backdrop { position: fixed;
+ inset: 0; z-index: 120; display: grid; place-items: center; padding: var(--sp-5); background: rgb(23 25 27 / 34%); backdrop-filter: blur(7px); }
 .modal-card { width: min(640px, 100%); max-height: min(820px, calc(100vh - var(--sp-10))); overflow-y: auto; background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); animation: modal-in 160ms ease-out; }
 .modal-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-5); padding: var(--sp-5); border-bottom: 1px solid var(--line-soft); }
 .modal-card h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-lg); letter-spacing: -.02em; }

@@ -12,6 +12,8 @@ export interface PostgresFixture {
 
 export const CONTRACT_FIXTURE: PostgresFixture = { container: "memoar-store-contract-test", port: 55979 };
 export const RLS_FIXTURE: PostgresFixture = { container: "memoar-rls-test", port: 55980 };
+/** Two teams, four tenants: the cross-workspace isolation proof runs alone. */
+export const TEAM_FANOUT_FIXTURE: PostgresFixture = { container: "memoar-team-fanout-test", port: 55988 };
 
 /** Least-privilege runtime role created by the AppRole migration. */
 export function appRoleUrl(fixture: PostgresFixture): string {

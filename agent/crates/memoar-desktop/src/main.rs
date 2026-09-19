@@ -47,6 +47,22 @@ fn sign_in(
     capture::sign_in(&app.paths, &endpoint, &email, &password)
 }
 
+/// What is masked before upload, changed from the window.
+///
+/// Until now this was settable only by the flags `login` was given, which the
+/// window never offered — so the graphical path, the one somebody who does not
+/// use a terminal takes, uploaded everything unmasked with no way to change it
+/// short of hand-editing `config.json`.
+#[tauri::command]
+fn set_redaction(
+    app: TauriState<'_, App>,
+    secrets: bool,
+    email_addresses: bool,
+    home_paths: bool,
+) -> Result<Status, String> {
+    capture::set_redaction(&app.paths, &app.state, secrets, email_addresses, home_paths)
+}
+
 #[tauri::command]
 fn sync_now(app: TauriState<'_, App>) -> Result<Status, String> {
     capture::sync_now(&app.paths, &app.state, &now())
@@ -106,6 +122,7 @@ fn main() {
             status,
             sign_in,
             sync_now,
+            set_redaction,
             archive_url
         ])
         .run(tauri::generate_context!())

@@ -6,6 +6,7 @@ import { AuthModule } from "./auth.module.js";
 import { CollectionsModule } from "./collections/collections.module.js";
 import { ConvertModule } from "./convert.module.js";
 import { DistillationModule } from "./distillation.module.js";
+import { CapabilitiesController } from "./capabilities.controller.js";
 import { HealthController } from "./health.controller.js";
 import { InfrastructureModule } from "./infrastructure.module.js";
 import { IngestModule } from "./ingest.module.js";
@@ -46,7 +47,7 @@ import { TeamsModule } from "./teams.module.js";
     MetricsModule,
     ErrorsModule,
   ],
-  controllers: [HealthController, OpenApiController],
+  controllers: [CapabilitiesController, HealthController, OpenApiController],
   providers: [
     // Every request gets an id and one structured line; every failure gets the
     // problem document the contract describes, carrying that id.

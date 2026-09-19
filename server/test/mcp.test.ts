@@ -4,14 +4,12 @@ import { type CanActivate, type ExecutionContext, type INestApplication, Injecta
 import { APP_GUARD, NestFactory } from "@nestjs/core";
 import { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AnnotationService, CollectionService } from "../src/curation.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { configureApp } from "../src/main.js";
 import { McpController, McpRateLimiter, McpService } from "../src/mcp.js";
-import { DeterministicLexicalBackend, DisabledSemanticSearchProvider, PackService, SearchService } from "../src/search.js";
-import { SessionsService } from "../src/sessions.js";
-import { ARCHIVE_STORE, SEARCH_BACKEND, SEMANTIC_SEARCH_PROVIDER } from "../src/tokens.js";
+import { McpToolRegistry } from "../src/mcp/registry.js";
+import { buildRegistry } from "./mcp-fixture.js";
 
 @Injectable()
 class TestAuthGuard implements CanActivate {
@@ -26,16 +24,11 @@ const store = new DevArchiveStore();
 @Module({
   controllers: [McpController],
   providers: [
-    { provide: ARCHIVE_STORE, useValue: store },
-    { provide: SEARCH_BACKEND, useFactory: () => new DeterministicLexicalBackend(store) },
-    { provide: SEMANTIC_SEARCH_PROVIDER, useFactory: () => new DisabledSemanticSearchProvider() },
-    SearchService,
-    { provide: PackService, useFactory: (search: SearchService) => new PackService(search, () => new Date("2026-08-19T00:00:00.000Z")), inject: [SearchService] },
-    { provide: SessionsService, useFactory: () => new SessionsService(store) },
-    { provide: CollectionService, useFactory: () => new CollectionService(store) },
-    { provide: AnnotationService, useFactory: () => new AnnotationService(store) },
+    { provide: McpToolRegistry, useFactory: () => buildRegistry(store) },
     McpService,
-    { provide: McpRateLimiter, useFactory: () => new McpRateLimiter(5, 60_000, null) },
+    // Small, so the 429 test exhausts it quickly; large enough for the tool calls
+    // the first test makes through one client.
+    { provide: McpRateLimiter, useFactory: () => new McpRateLimiter(20, 60_000, null) },
     { provide: APP_GUARD, useClass: TestAuthGuard },
   ],
 })
@@ -69,6 +62,12 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
     const listed = await client.listTools();
     expect(listed.tools.map((tool) => tool.name)).toEqual([
       "search_sessions", "get_excerpt", "pack", "get_session", "list_collections", "get_memory", "save_note",
+      "list_sessions", "list_machines",
+      "list_annotations", "add_annotation",
+      "create_collection", "list_collection_sessions", "add_session_to_collection", "remove_session_from_collection",
+      "list_share_links", "list_transfers",
+      "export_project_memory",
+      "list_memory_documents", "get_memory_document",
     ]);
     expect(listed.tools.find((tool) => tool.name === "search_sessions")!.description).toContain("Start here");
     expect(listed.tools.find((tool) => tool.name === "get_session")!.description).toContain("Last resort");
@@ -77,6 +76,32 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
     const structured = searched.structuredContent as { items: { id: string }[]; meta: { realizedMode: string } };
     expect(structured.items[0]!.id).toBe(TEST_SESSION.id);
     expect(structured.meta.realizedMode).toBe("lexical");
+
+    // The instruction files are reachable over MCP too, through the same
+    // server and the same tenant context as the session tools.
+    await store.captureMemoryDocument(TEST_CONTEXT, {
+      scope: "project",
+      machineId: TEST_SESSION.source.machineId,
+      workspacePath: "/workspace/memoar",
+      path: "/workspace/memoar/AGENTS.md",
+      title: "AGENTS.md",
+      readers: ["codex"],
+      contentHash: "a".repeat(64),
+      text: "Small files. Real coverage.",
+      capturedAt: "2026-08-19T00:00:00.000Z",
+      visibility: { scope: "private", ownerId: TEST_CONTEXT.userId },
+      redactionStatus: "clear",
+      redactionFindings: [],
+    });
+    const documents = await client.callTool({ name: "list_memory_documents", arguments: { pathPattern: "AGENTS.md" } });
+    const listedDocuments = documents.structuredContent as { items: { id: string; path: string }[]; total: number };
+    expect(listedDocuments.items.map((document) => document.path)).toEqual(["/workspace/memoar/AGENTS.md"]);
+
+    const document = await client.callTool({ name: "get_memory_document", arguments: { documentId: listedDocuments.items[0]!.id } });
+    expect((document.structuredContent as { content: { text: string } }).content.text).toBe("Small files. Real coverage.");
+
+    const refused = await client.callTool({ name: "get_memory_document", arguments: { documentId: "not-a-uuid" } });
+    expect(refused.isError, "a malformed argument is the caller's error, not a document").toBe(true);
 
     const saved = await client.callTool({ name: "save_note", arguments: { sessionId: TEST_SESSION.id, markdown: "Keep the raw artifact before parsing." } });
     expect(saved.isError).toBeFalsy();

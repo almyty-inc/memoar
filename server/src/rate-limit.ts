@@ -135,10 +135,18 @@ function callerKey(request: Request): string {
   return `ip:${request.ip ?? "unknown"}`;
 }
 
-/** Key under which failed credential attempts against one account are counted. */
+/**
+ * Key under which failed credential attempts against one account are counted.
+ *
+ * Deliberately free of the caller's address. Including it partitioned the
+ * budget per source, so ten guesses per address against one account meant a
+ * thousand addresses bought ten thousand guesses — the distributed case this
+ * limit exists for. The budget belongs to the account being guessed at, and
+ * one account is one budget however many places the guesses come from.
+ */
 export function credentialFailureKey(request: Request): string {
   const pattern = (request as { route?: { path?: string } }).route?.path ?? request.path;
-  return `${RATE_LIMIT_KEY}:failed:${pattern}:${credentialSubject(request)}:${callerKey(request)}`;
+  return `${RATE_LIMIT_KEY}:failed:${pattern}:${credentialSubject(request)}`;
 }
 
 function tooMany(response: Response, windowSeconds: number): HttpException {

@@ -104,6 +104,57 @@ describe("credential endpoints are rate limited", () => {
   });
 });
 
+describe("a guessing budget spent from many addresses at once", () => {
+  /**
+   * The distributed case, which is the one this limit is for.
+   *
+   * The failure key used to include the caller's address, so the budget was
+   * partitioned per source: three guesses per address against one account meant
+   * a thousand addresses bought three thousand guesses, and a botnet paid
+   * nothing at all. The comment above the key said the opposite.
+   *
+   * Its own server, told to trust one proxy hop, because that is the only way a
+   * test can present itself as arriving from different addresses.
+   */
+  let proxied: TestApi;
+
+  beforeAll(async () => {
+    proxied = await startTestApi({ MEMOAR_TRUSTED_PROXY_HOPS: "1" });
+  }, 30_000);
+
+  afterAll(async () => {
+    delete process.env.MEMOAR_TRUSTED_PROXY_HOPS;
+    if (proxied) await proxied.close();
+  });
+
+  it("belongs to the account being guessed at, not to each address guessing", async () => {
+    const email = "target-five@memoar.dev";
+    const statuses: number[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const response = await proxied.request("POST", "/auth/login", {
+        token: null,
+        headers: { "x-forwarded-for": `203.0.113.${index}` },
+        body: { email, password: "wrong-but-long-enough" },
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses.slice(3), "a new source address bought a fresh budget").toEqual([429, 429]);
+  });
+
+  it("still leaves a different account alone", async () => {
+    // Per-account, not per-server: one person under attack must not lock out
+    // everybody else on the archive.
+    const response = await proxied.request("POST", "/auth/login", {
+      token: null,
+      headers: { "x-forwarded-for": "203.0.113.9" },
+      body: { email: "bystander-five@memoar.dev", password: "wrong-but-long-enough" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe("MemoryRateLimitStore", () => {
   it("counts within a window and starts again once it passes", async () => {
     const store = new MemoryRateLimitStore();

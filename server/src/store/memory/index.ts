@@ -4,13 +4,14 @@ import type { ArchiveStore, MemoryCapture } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
-  TeamMember, TeamRecord, TenantSettingsRecord, TransferRecord,
+  TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord, TeamShareOptinRecord, TenantSettingsRecord, TransferRecord,
 } from "../records.js";
 import { MemoryAnnotationStore, MemoryCollectionStore } from "./curation.js";
 import { MemoryMemoryDocumentStore } from "./memory-documents.js";
 import { MemoryArtifactStore, MemoryJobStore, MemoryMachineStore, MemorySettingsStore } from "./operations.js";
 import { MemorySessionStore } from "./sessions.js";
 import { MemorySharingStore, MemoryTeamStore } from "./sharing.js";
+import { MemoryTeamOptinStore } from "./team-optins.js";
 import { MemoryTables } from "./tables.js";
 
 /**
@@ -25,6 +26,7 @@ export class DevArchiveStore implements ArchiveStore {
   private readonly collectionStore = new MemoryCollectionStore(this.tables);
   private readonly sharingStore = new MemorySharingStore(this.tables);
   private readonly teamStore = new MemoryTeamStore(this.tables);
+  private readonly teamOptinStore = new MemoryTeamOptinStore(this.tables);
   private readonly artifactStore = new MemoryArtifactStore(this.tables);
   private readonly memoryStore = new MemoryMemoryDocumentStore(this.tables);
   private readonly jobStore = new MemoryJobStore(this.tables);
@@ -49,7 +51,7 @@ export class DevArchiveStore implements ArchiveStore {
 
   listAnnotations(context: TenantContext, sessionId?: string): Promise<Annotation[]> { return this.annotationStore.listAnnotations(context, sessionId); }
   createAnnotation(context: TenantContext, input: { sessionId: string; turnId?: string; blockId?: string; kind: AnnotationKind; value: Record<string, unknown> }): Promise<Annotation> { return this.annotationStore.createAnnotation(context, input); }
-  replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[]): Promise<Annotation[]> { return this.annotationStore.replaceAnnotations(context, sessionId, kind, values); }
+  replaceAnnotations(context: TenantContext, sessionId: string, kind: AnnotationKind, values: Record<string, unknown>[], origin?: string): Promise<Annotation[]> { return this.annotationStore.replaceAnnotations(context, sessionId, kind, values, origin); }
   updateAnnotation(context: TenantContext, annotationId: string, value: Record<string, unknown>): Promise<Annotation | null> { return this.annotationStore.updateAnnotation(context, annotationId, value); }
   deleteAnnotation(context: TenantContext, annotationId: string): Promise<boolean> { return this.annotationStore.deleteAnnotation(context, annotationId); }
 
@@ -57,6 +59,7 @@ export class DevArchiveStore implements ArchiveStore {
   getMemoryDocument(context: TenantContext, documentId: string): Promise<MemoryDocument | null> { return this.memoryStore.getMemoryDocument(context, documentId); }
   listMemoryRevisions(context: TenantContext, documentId: string): Promise<MemoryRevision[]> { return this.memoryStore.listMemoryRevisions(context, documentId); }
   captureMemoryDocument(context: TenantContext, capture: MemoryCapture): Promise<{ document: MemoryDocument; revision: MemoryRevision | null }> { return this.memoryStore.captureMemoryDocument(context, capture); }
+  reviewMemoryDocument(context: TenantContext, documentId: string, contentHash: string): Promise<MemoryDocument | null> { return this.memoryStore.reviewMemoryDocument(context, documentId, contentHash); }
   deleteMemoryDocument(context: TenantContext, documentId: string): Promise<boolean> { return this.memoryStore.deleteMemoryDocument(context, documentId); }
 
   listCollections(context: TenantContext): Promise<CollectionRecord[]> { return this.collectionStore.listCollections(context); }
@@ -77,18 +80,31 @@ export class DevArchiveStore implements ArchiveStore {
   createTeam(input: { name: string; orgId?: string }, creator: TeamMember): Promise<TeamRecord> { return this.teamStore.createTeam(input, creator); }
   listTeamsForUser(userId: string): Promise<TeamRecord[]> { return this.teamStore.listTeamsForUser(userId); }
   isTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teamStore.isTeamMember(teamId, userId); }
-  addTeamMember(teamId: string, member: TeamMember): Promise<void> { return this.teamStore.addTeamMember(teamId, member); }
+  inviteTeamMember(teamId: string, member: TeamMember): Promise<void> { return this.teamStore.inviteTeamMember(teamId, member); }
+  listTeamInvitations(userId: string): Promise<TeamInvitation[]> { return this.teamStore.listTeamInvitations(userId); }
+  listTeamMembers(teamId: string): Promise<TeamMemberSummary[]> { return this.teamStore.listTeamMembers(teamId); }
+  acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> { return this.teamStore.acceptTeamInvitation(teamId, userId); }
   removeTeamMember(teamId: string, userId: string): Promise<boolean> { return this.teamStore.removeTeamMember(teamId, userId); }
   findAccountByEmail(email: string): Promise<TeamMember | null> { return this.teamStore.findAccountByEmail(email); }
   getAccountEmail(userId: string): Promise<string | null> { return this.teamStore.getAccountEmail(userId); }
   listTeamSessions(teamId: string): Promise<ArchivedSession[]> { return this.teamStore.listTeamSessions(teamId); }
+  listTeamMemberTenants(teamId: string): Promise<string[]> { return this.teamStore.listTeamMemberTenants(teamId); }
+  getTeamSession(teamId: string, sessionId: string): Promise<ArchivedSession | null> { return this.teamStore.getTeamSession(teamId, sessionId); }
   listTeamCollections(teamId: string): Promise<CollectionRecord[]> { return this.teamStore.listTeamCollections(teamId); }
+
+  listTeamOptins(teamId: string, tenantId: string): Promise<TeamShareOptinRecord[]> { return this.teamOptinStore.listTeamOptins(teamId, tenantId); }
+  listTenantOptins(tenantId: string): Promise<TeamShareOptinRecord[]> { return this.teamOptinStore.listTenantOptins(tenantId); }
+  createTeamOptin(optin: TeamShareOptinRecord): Promise<boolean> { return this.teamOptinStore.createTeamOptin(optin); }
+  deleteTeamOptin(teamId: string, tenantId: string, machineId: string | null): Promise<boolean> { return this.teamOptinStore.deleteTeamOptin(teamId, tenantId, machineId); }
+  resolveIngestTeam(tenantId: string, machineId?: string): Promise<string | null> { return this.teamOptinStore.resolveIngestTeam(tenantId, machineId); }
+  revokeTeamVisibility(context: TenantContext, teamId: string, machineId: string | null): Promise<number> { return this.teamOptinStore.revokeTeamVisibility(context, teamId, machineId); }
 
   saveRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<boolean> { return this.artifactStore.saveRawArtifact(context, artifact); }
   updateRawArtifact(context: TenantContext, artifact: RawArtifactRecord): Promise<void> { return this.artifactStore.updateRawArtifact(context, artifact); }
   getRawArtifact(context: TenantContext, sha256: string): Promise<RawArtifactRecord | null> { return this.artifactStore.getRawArtifact(context, sha256); }
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>> { return this.artifactStore.listArtifactHashes(context, hashes); }
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> { return this.artifactStore.listRawArtifacts(context); }
+  countUnparsedArtifactsBySource(context: TenantContext) { return this.artifactStore.countUnparsedArtifactsBySource(context); }
 
   saveJob(context: TenantContext, job: JobRecord): Promise<void> { return this.jobStore.saveJob(context, job); }
   getJob(context: TenantContext, jobId: string): Promise<JobRecord | null> { return this.jobStore.getJob(context, jobId); }

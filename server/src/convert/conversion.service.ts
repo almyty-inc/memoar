@@ -153,11 +153,11 @@ export class ConvertController {
   }
 
   @Get(":jobId")
-  get(@Tenant() context: TenantContext, @Param("jobId") jobId: string) { return this.conversions.get(context, jobId); }
+  get(@Tenant() context: TenantContext, @Param("jobId", ParseUUIDPipe) jobId: string) { return this.conversions.get(context, jobId); }
 
   @Get(":jobId/download")
   @Redirect(undefined, 302)
-  download(@Tenant() context: TenantContext, @Param("jobId") jobId: string) { return this.conversions.download(context, jobId); }
+  download(@Tenant() context: TenantContext, @Param("jobId", ParseUUIDPipe) jobId: string) { return this.conversions.download(context, jobId); }
 
   @Post(":jobId/materialize")
   @HttpCode(202)

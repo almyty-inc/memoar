@@ -34,10 +34,15 @@ describe('the address of a screen', () => {
     expect(routeForPath('/memory')).toEqual({ view: 'memory' });
   });
 
-  it('lands on the timeline at the root, and nowhere for an address that has no screen', () => {
+  it('lands on the timeline at the root, and on a 404 for an address that has no screen', () => {
+    // This returned null and both callers fell back to the timeline, so a
+    // typo'd or retired link rendered the archive under an address that did
+    // not name it, with nothing to say anything had gone wrong.
     expect(routeForPath('/')).toEqual({ view: 'timeline' });
-    expect(routeForPath('/nothing-here')).toBeNull();
+    expect(routeForPath('/nothing-here')).toEqual({ view: 'not-found' });
+    expect(routeForPath('/sessions')).toEqual({ view: 'not-found' });
   });
+
 
   it('ignores a trailing slash', () => {
     expect(routeForPath('/settings/')).toEqual({ view: 'settings' });

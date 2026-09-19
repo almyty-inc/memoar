@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Memoar API
-  version: 0.1.1
+  version: 0.3.0
   description: Contract for capture, archive, retrieval, sharing, conversion, and MCP authentication.
 servers:
   - url: http://localhost:4000/v1
@@ -17,7 +17,123 @@ tags:
   - name: Convert
   - name: Machines
   - name: MCP
+  - name: Operations
 paths:
+  /ingest/unparsed:
+    get:
+      tags: [Ingest]
+      operationId: listUnparsedArtifacts
+      description: >-
+        Artifacts this account collected and the archive could not turn into a
+        session, counted per tool. Unparseable bytes are kept deliberately, so a
+        parser written later can still read them — but nothing said so out loud,
+        and that silence hides the one way capture can fail without failing: a
+        pattern pointed at the wrong directory. A tool reporting artifacts here
+        and no sessions is capturing the wrong files.
+      responses:
+        '200':
+          description: Unparsed artifact counts, most affected tool first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [source, artifacts, diagnostic]
+                      properties:
+                        source: { type: string }
+                        artifacts: { type: integer }
+                        diagnostic: { type: [string, 'null'] }
+  /capabilities:
+    get:
+      tags: [Operations]
+      operationId: getCapabilities
+      description: >-
+        What this deployment can read: the coding agents whose own stores the
+        capture agent collects, the formats that arrive by upload instead, and
+        the contract version. Answered from the parser registry rather than from
+        a list maintained by hand. Public, because it describes the software and
+        not an archive — someone deciding whether to run memoar has not signed
+        in yet.
+      security: []
+      responses:
+        '200':
+          description: The connectors and upload formats this build parses
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contractVersion, connectors, connectorCount, uploadFormats]
+                properties:
+                  contractVersion: { type: string }
+                  connectors: { type: array, items: { type: string } }
+                  connectorCount: { type: integer }
+                  uploadFormats: { type: array, items: { type: string } }
+  /mcp/status:
+    get:
+      tags: [MCP]
+      operationId: getMcpStatus
+      description: >-
+        Whether this deployment serves MCP and which tools it serves, answered
+        from the registry that serves them. Session-authenticated: the handshake
+        takes an API key, which a browser does not hold, so a web client had no
+        way to ask this and the settings page asserted availability it had never
+        measured.
+      responses:
+        '200':
+          description: MCP availability and the tool names on offer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available, contractVersion, tools]
+                properties:
+                  available: { type: boolean }
+                  contractVersion: { type: string }
+                  tools: { type: array, items: { type: string } }
+  /metrics:
+    get:
+      tags: [Operations]
+      operationId: getMetrics
+      description: >-
+        Prometheus exposition of the process and archive counters. Behind the
+        operator token, not a tenant credential: it describes the deployment
+        rather than any one account, and 404s when no operator token is
+        configured so an unconfigured archive does not advertise it.
+      responses:
+        '200':
+          description: Metrics in the Prometheus text exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+        '404':
+          description: No operator token is configured
+  /errors:
+    get:
+      tags: [Operations]
+      operationId: listErrorReports
+      description: >-
+        Aggregated error fingerprints. Behind the operator token, and never
+        carrying a raw error message — quoted literals, uuids, hashes, paths and
+        numbers are normalised out before an error is stored, so one tenant's
+        data cannot reach an operator through a stack trace.
+      responses:
+        '200':
+          description: Error fingerprints with counts and first and last occurrence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { type: object }
+        '404':
+          description: No operator token is configured
   /auth/login:
     post:
       tags: [Auth]
@@ -65,6 +181,17 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthMethods' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      description: >-
+        Ends the session the bearer token stands for. The token stops being accepted
+        immediately rather than at its expiry, so signing out is a fact about the
+        credential and not only about the client that was holding it.
+      responses:
+        '204': { description: Session ended }
+        '401': { $ref: '#/components/responses/ProblemResponse' }
   /auth/me:
     get:
       tags: [Auth]
@@ -118,7 +245,22 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [name, scopes], properties: { name: { type: string }, scopes: { type: array, items: { type: string } } } }
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  description: >-
+                    Must be known scopes, and must be a subset of the caller's own: a key is
+                    issued by somebody and cannot outrank them. '*' is a wildcard the guard
+                    honours, never a grant anybody may ask for.
+                  items:
+                    type: string
+                    enum: [archive:read, archive:write, sharing:write, keys:write, machines:write, ingest:write, machine:heartbeat, materialize:read, mcp:use]
       responses:
         '201':
           description: Secret is returned once
@@ -477,7 +619,7 @@ paths:
         - $ref: '#/components/parameters/CollectionId'
         - $ref: '#/components/parameters/SessionId'
       responses:
-        '204': { description: Membership saved }
+        '204': { description: Invitation recorded }
     delete:
       tags: [Collections]
       operationId: removeSessionFromCollection
@@ -684,11 +826,91 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Team' }
+  /teams/invitations:
+    get:
+      tags: [Teams]
+      operationId: listTeamInvitations
+      description: Teams this account has been asked to join and has not yet joined. Nobody sees anybody else's.
+      responses:
+        '200':
+          description: Pending invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [teamId, teamName, orgId]
+                      properties:
+                        teamId: { $ref: '#/components/schemas/Uuid' }
+                        teamName: { type: string }
+                        orgId: { $ref: '#/components/schemas/Uuid' }
+  /teams/invitations/{teamId}/accept:
+    post:
+      tags: [Teams]
+      operationId: acceptTeamInvitation
+      description: Joins the team. Membership begins here and not at the invitation, because being in a team decides what other people can see of your work.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Invitation accepted }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/invitations/{teamId}:
+    delete:
+      tags: [Teams]
+      operationId: declineTeamInvitation
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Invitation declined }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
   /teams/{teamId}/members:
+    get:
+      tags: [Teams]
+      operationId: listTeamMembers
+      description: >-
+        The team's roster: accepted members and outstanding invitations, each marked with which
+        it is. Caller must already be a member, so this never tells an outsider who is on a team.
+        It is also the only view of an invitation the sender has — memberCount moves only when the
+        invited person accepts, and the invitation list is scoped to the invitee. No tenant ids:
+        those are the isolation key and are never served.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Roster of the team
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, email, status]
+                      properties:
+                        userId: { $ref: '#/components/schemas/Uuid' }
+                        email: { type: string, format: email }
+                        status:
+                          type: string
+                          enum: [invited, active]
+                          description: '`invited` has been asked and has not accepted; `active` has joined and can read what members widen to the team.'
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
     put:
       tags: [Teams]
-      operationId: addTeamMember
-      description: Adds a member by account email. Caller must already be a member. There is no roles matrix; every member has the same capabilities.
+      operationId: inviteTeamMember
+      description: >-
+        Invites an account by email. The caller must already be a member, and the invitation
+        becomes a membership only when the invited person accepts it. There is no roles matrix;
+        every member has the same capabilities.
       parameters:
         - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
       requestBody:
@@ -697,7 +919,7 @@ paths:
           application/json:
             schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
       responses:
-        '204': { description: Membership saved }
+        '204': { description: Invitation recorded }
         '403': { $ref: '#/components/responses/ProblemResponse' }
         '404': { $ref: '#/components/responses/ProblemResponse' }
   /teams/{teamId}/members/{userId}:
@@ -739,6 +961,146 @@ paths:
           content:
             application/json:
               schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Collection' } } } }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/optins:
+    get:
+      tags: [Teams]
+      operationId: listTeamShareOptins
+      description: >-
+        This account's standing consent to share into the team. Nobody reads anybody else's:
+        the rows returned are the caller's own tenant's. An empty list is the default — creating
+        a team, or joining one, shares nothing by itself.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: The caller's enrolments for this team
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TeamShareOptin' } }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+    put:
+      tags: [Teams]
+      operationId: createTeamShareOptin
+      description: >-
+        Enrols this account's capture in the team: sessions captured from here on are written
+        with team visibility instead of private. Requires the sharing:write scope, because it
+        decides what other people may read. Not retroactive — sessions already archived keep the
+        visibility they have, and a teammate who imports a copy holds it in their own archive
+        permanently, beyond any later revocation. Only sessions whose redaction scan came back
+        clear are widened automatically; one with findings stays private until a human reviews it.
+        Idempotent: enrolling twice returns the enrolment already in force.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                machineId:
+                  allOf:
+                    - $ref: '#/components/schemas/Uuid'
+                  description: One machine of this account. Omit to enrol every machine, including ones added later.
+      responses:
+        '200':
+          description: Enrolment in force
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamShareOptin' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+        '409':
+          description: This account already shares into a different team; a session can name only one.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /teams/{teamId}/optins/{machineId}:
+    delete:
+      tags: [Teams]
+      operationId: deleteTeamShareOptin
+      description: >-
+        Withdraws consent, so nothing captured from here on is widened. Sessions already widened
+        keep their visibility unless revokePast is set, which walks this account's own sessions
+        and puts them back to private. Requires the sharing:write scope.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - name: machineId
+          in: path
+          required: true
+          description: A machine id, or the literal "all" for the enrolment covering every machine.
+          schema: { type: string }
+        - { name: revokePast, in: query, schema: { type: string, enum: ["true"] } }
+      responses:
+        '200':
+          description: Enrolment removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [teamId, machineId, revokedSessions]
+                properties:
+                  teamId: { $ref: '#/components/schemas/Uuid' }
+                  machineId: { type: [string, 'null'], format: uuid }
+                  revokedSessions: { type: integer, description: Sessions put back to private, zero unless revokePast was set. }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/search:
+    get:
+      tags: [Teams]
+      operationId: searchTeamSessions
+      description: >-
+        Searches every accepted member's archive for sessions widened to this team, and returns
+        the same body as GET /search. Each member's tenant is searched in its own single-tenant
+        query and the ranked lists are fused by reciprocal rank, so results from different
+        archives are merged by position rather than by scores that are not comparable. A private
+        session is never a result, whoever owns it. At most 25 member tenants; beyond that the
+        request is refused. If any member's semantic leg fails, the whole request reports
+        realizedMode lexical rather than mixing two ranking regimes.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: mode, in: query, schema: { type: string, enum: [hybrid, lexical, semantic], default: hybrid } }
+        - $ref: '#/components/parameters/Limit'
+        - { name: agent, in: query, schema: { type: string } }
+        - { name: workspace, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Team-visible results across member archives
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+  /teams/{teamId}/sessions/{sessionId}:
+    get:
+      tags: [Teams]
+      operationId: getTeamSession
+      description: >-
+        One teammate's session, in the same chunked shape as GET /sessions/{sessionId}. Resolved
+        through the member fan-out: the id is not the permission, and a session that is not
+        widened to this team answers 404 whether it exists or not. Read only — no route here
+        writes to a teammate's archive.
+      parameters:
+        - { name: teamId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+        - $ref: '#/components/parameters/SessionId'
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: chunkSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Canonical session chunk
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionChunk' }
         '403': { $ref: '#/components/responses/ProblemResponse' }
         '404': { $ref: '#/components/responses/ProblemResponse' }
   /settings:
@@ -1014,6 +1376,44 @@ paths:
                     oneOf:
                       - { $ref: '#/components/schemas/MemoryRevision' }
                       - { type: 'null' }
+  /memory/conversions:
+    post:
+      tags: [Memory]
+      operationId: convertMemoryDocuments
+      summary: Port the instruction files one tool reads into another tool's dialect
+      description: >
+        A mechanical dialect port. The same text, written to the target tool's
+        path and filename, with nothing rewritten, no frontmatter invented and
+        no model involved: `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` are the same
+        intent in different dialects, and these are the user's own words, which
+        are expensive to recreate and not memoar's to reinterpret.
+
+        Where the target reads a single file and several captured files are
+        selected, they are concatenated in source-path order, each part
+        introduced by an HTML comment naming the file it came from. Where the
+        target reads a rules directory, each captured file keeps its own file
+        and is copied byte for byte.
+
+        `cursor` is accepted as a source and not as a target: Cursor reads
+        nothing from a `.mdc` without frontmatter, so the only way to write one
+        would be to invent frontmatter.
+
+        A document the secret scanner flagged is refused until a person has
+        reviewed it — conversion writes the text onto a disk, which is egress.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryConversionRequest' }
+      responses:
+        '200':
+          description: The files to write, and where
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryConversionBundle' }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { description: No captured file is read by that tool in that scope }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
   /memory/{documentId}:
     get:
       tags: [Memory]
@@ -1040,6 +1440,36 @@ paths:
       responses:
         '204': { description: Removed, with every revision it ever had }
         '404': { description: No such memory document }
+  /memory/{documentId}/redaction-reviews:
+    post:
+      tags: [Memory]
+      operationId: reviewMemoryDocument
+      summary: Record that a person has reviewed what the scanner found in this file
+      description: >
+        A memory document the scanner flagged is not served outside the owner's
+        own archive until this has been called for the version in question. The
+        content hash names that version: if the agent captured the file again
+        while it was being read, the review is refused rather than applied to
+        text nobody has seen.
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentHash]
+              properties:
+                contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200':
+          description: The document, now reviewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryDocument' }
+        '404': { description: No such memory document }
+        '409': { $ref: '#/components/responses/ProblemResponse' }
 security:
   - bearerAuth: []
 components:
@@ -1403,6 +1833,18 @@ components:
         orgId: { $ref: '#/components/schemas/Uuid' }
         name: { type: string }
         memberCount: { type: integer, minimum: 1 }
+    TeamShareOptin:
+      type: object
+      description: >-
+        Standing consent to share into one team. No row means no sharing; the default is off.
+      required: [teamId, machineId, createdAt]
+      properties:
+        teamId: { $ref: '#/components/schemas/Uuid' }
+        machineId:
+          type: [string, 'null']
+          format: uuid
+          description: One machine of the account, or null for every machine of it.
+        createdAt: { type: string, format: date-time }
     Collection:
       type: object
       required: [id, name, sessionCount, updatedAt]
@@ -1466,7 +1908,7 @@ components:
         report: { type: object, additionalProperties: true }
     MemoryDocument:
       type: object
-      required: [id, scope, machineId, path, title, readers, contentHash, capturedAt]
+      required: [id, scope, machineId, path, title, readers, contentHash, capturedAt, redactionStatus, redactionFindings]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         scope: { type: string, enum: [global, project] }
@@ -1480,6 +1922,20 @@ components:
           description: The supported tools that read this path - a fact about the file, not its owner.
         contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
         capturedAt: { type: string, format: date-time }
+        redactionStatus:
+          type: string
+          enum: [clear, findings, reviewed]
+          description: >
+            What the secret scanner made of this file at capture, and whether a
+            person has since reviewed it. While this is findings the text is not
+            served outside the owner's own archive.
+        redactionFindings:
+          type: array
+          items: { type: string }
+          description: >
+            The kind of each thing the scanner matched - api_key, jwt, env,
+            private_key, email, path, custom. Kinds only: the matched text is
+            not stored beside the document.
     MemoryRevision:
       type: object
       required: [id, documentId, contentHash, text, size, capturedAt]
@@ -1505,6 +1961,65 @@ components:
         readers: { type: array, items: { type: string } }
         text: { type: string }
         capturedAt: { type: string, format: date-time }
+    MemoryConversionRequest:
+      type: object
+      required: [source, target, scope]
+      properties:
+        source:
+          type: string
+          description: The tool whose files are being ported. Any tool memoar captures for.
+          enum: [antigravity-cli, claude-code, codex, copilot, crush, cursor, goose, kilo, opencode, roo, zed]
+        target:
+          type: string
+          description: The dialect to write. Cursor is absent by design; see the operation description.
+          enum: [antigravity-cli, claude-code, codex, copilot, crush, goose, kilo, opencode, roo, zed]
+        scope: { type: string, enum: [global, project] }
+        workspacePath:
+          type: string
+          description: Required when scope is project. Those files belong to one repository.
+        machineId: { $ref: '#/components/schemas/Uuid' }
+    MemoryConversionBundle:
+      type: object
+      description: >
+        Everything needed to write the ported files, and nothing else. There is
+        no job and no object store: a memory conversion is a few kilobytes of
+        text somebody typed by hand, where a session conversion renders every
+        turn.
+      required: [contractVersion, bundleVersion, kind, source, target, scope, files, report, bundleSha256]
+      properties:
+        contractVersion: { type: string }
+        bundleVersion: { type: string, enum: ['1'] }
+        kind: { type: string, enum: [memory] }
+        source: { type: string }
+        target: { type: string }
+        scope: { type: string, enum: [global, project] }
+        workspacePath: { type: string }
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, mediaType, base64, sha256, size, sources]
+            properties:
+              path:
+                type: string
+                description: >
+                  Prefixed `~/` for a global conversion and `./` for a project
+                  one, so the root it is relative to is never guessed.
+              mediaType: { type: string }
+              base64: { type: string }
+              sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+              size: { type: integer, minimum: 0 }
+              sources:
+                type: array
+                description: The captured files this file was built from, in the order they appear in it.
+                items: { type: string }
+        report:
+          type: object
+          required: [documents, concatenated]
+          properties:
+            documents: { type: integer, minimum: 0 }
+            concatenated: { type: boolean }
+        bundleSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
     Machine:
       type: object
       required: [id, name, platform, status, lastSeenAt, sources]

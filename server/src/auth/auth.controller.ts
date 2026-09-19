@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Query, Redirect, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Query, Redirect, Post } from "@nestjs/common";
 
 import type { TenantContext } from "../archive-store.js";
 
@@ -39,6 +39,20 @@ export class AuthController {
   @Get("methods")
   methods(): { password: boolean; signup: string; oauth: string[] } {
     return this.auth.authMethods();
+  }
+
+  /**
+   * Ends this session.
+   *
+   * Without it a browser token was valid until it expired whatever anyone did:
+   * signing out cleared the client and left the credential working. The token
+   * itself is the argument because the id that identifies it is in the token,
+   * not in the context the guard builds.
+   */
+  @Post("logout")
+  @HttpCode(204)
+  logout(@Headers("authorization") authorization: string): Promise<void> {
+    return this.auth.logout(authorization.slice("Bearer ".length));
   }
 
   /**

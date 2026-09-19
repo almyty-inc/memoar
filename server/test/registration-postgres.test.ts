@@ -2,6 +2,8 @@ import type { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthService } from "../src/auth/auth.service.js";
 import { TokenService } from "../src/auth/tokens.js";
+import { BrowserSessionService } from "../src/auth/browser-sessions.js";
+import { CredentialsService } from "../src/auth/credentials.service.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { AuthIdentityEntity, UserEntity } from "../src/entities.js";
 import { dockerAvailable, startPostgres, stopPostgres } from "./helpers/postgres.js";
@@ -25,7 +27,9 @@ beforeAll(async () => {
   if (!usePostgres) return;
   process.env.MEMOAR_SIGNUP = "open";
   dataSource = await startPostgres(FIXTURE);
-  auth = new AuthService(new TokenService(), dataSource, new DevArchiveStore());
+  const tokens = new TokenService();
+  const store = new DevArchiveStore();
+  auth = new AuthService(tokens, dataSource, store, new BrowserSessionService(dataSource), new CredentialsService(tokens, dataSource, store));
 }, 300_000);
 
 afterAll(async () => {

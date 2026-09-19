@@ -109,6 +109,8 @@ export type Uuid = string;
 
 export type MemoryScope = "global" | "project";
 
+export type RedactionStatus = "clear" | "findings" | "reviewed";
+
 export interface MemoryDocument {
   id: Uuid;
   scope: MemoryScope;
@@ -120,6 +122,8 @@ export interface MemoryDocument {
   contentHash: string;
   capturedAt: string;
   visibility: Visibility;
+  redactionStatus: RedactionStatus;
+  redactionFindings: Array<string>;
   provenance?: Array<ProvenanceEntry>;
 }
 

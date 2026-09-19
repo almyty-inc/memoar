@@ -17,6 +17,8 @@ function document(overrides: Partial<MemoryDocument> = {}, workspacePath: string
     readers: ['codex', 'cursor', 'zed'],
     contentHash: 'a'.repeat(64),
     capturedAt: '2026-08-20T00:00:00.000Z',
+    redactionStatus: 'clear',
+    redactionFindings: [],
     ...overrides,
   };
 }
@@ -81,6 +83,62 @@ describe('agent memory', () => {
     render(<MemoryView />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Archive unreachable');
+  });
+
+  /*
+    Redaction review, on the screen where the file can actually be read.
+
+    A memory file is where somebody writes a staging key, and nobody re-reads
+    one before it goes out. The archive refuses to serve a flagged file to an
+    agent until a person has looked — so the person needs somewhere to look.
+  */
+  it('says what the scanner found and lets a person review it', async () => {
+    const flagged = document({ redactionStatus: 'findings', redactionFindings: ['api_key', 'api_key', 'email'] });
+    vi.spyOn(memoarApi, 'listMemory').mockResolvedValue({ items: [flagged] });
+    vi.spyOn(memoarApi, 'getMemory').mockResolvedValue({
+      document: flagged,
+      revisions: [revision('r1', 'The staging key is sk_live_0123456789abcdefghij.', '2026-08-20T00:00:00.000Z')],
+    });
+    const review = vi.spyOn(memoarApi, 'reviewMemory')
+      .mockResolvedValue(document({ redactionStatus: 'reviewed', redactionFindings: ['api_key', 'api_key', 'email'] }));
+
+    render(<MemoryView />);
+    // The status is on the file in the list, before it has been opened.
+    expect(await screen.findByText('Needs review')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('AGENTS.md'));
+    expect(await screen.findByText('The scanner matched 3 things in this file.')).toBeInTheDocument();
+    expect(screen.getByText('API key ×2')).toBeInTheDocument();
+    expect(screen.getByText('email address')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    // The version reviewed is the version read, not whatever the file says when
+    // the request lands.
+    expect(review).toHaveBeenCalledWith('doc-1', 'a'.repeat(64));
+    // Both where the file is listed and where it was read: one document, one status.
+    expect(await screen.findAllByText('Reviewed')).toHaveLength(2);
+    expect(screen.queryByText('Needs review')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark reviewed' })).not.toBeInTheDocument();
+  });
+
+  it('leaves the status where it was when the review is refused', async () => {
+    // Showing "Reviewed" on the strength of having asked would be the page
+    // asserting something nobody measured.
+    const flagged = document({ redactionStatus: 'findings', redactionFindings: ['api_key'] });
+    vi.spyOn(memoarApi, 'listMemory').mockResolvedValue({ items: [flagged] });
+    vi.spyOn(memoarApi, 'getMemory').mockResolvedValue({
+      document: flagged,
+      revisions: [revision('r1', 'sk_live_0123456789abcdefghij', '2026-08-20T00:00:00.000Z')],
+    });
+    vi.spyOn(memoarApi, 'reviewMemory').mockRejectedValue(new Error('This file was captured again while it was being reviewed.'));
+
+    render(<MemoryView />);
+    await userEvent.click(await screen.findByText('AGENTS.md'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark reviewed' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('captured again');
+    expect(screen.queryByText('Reviewed')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Needs review').length).toBeGreaterThan(0);
   });
 
   it('removes a file and reloads the list', async () => {

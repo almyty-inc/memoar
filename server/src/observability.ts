@@ -141,24 +141,36 @@ function problemBody(exception: unknown, status: number): Record<string, unknown
       return body;
     }
     const message = typeof body === "string" ? body : (body as { message?: unknown }).message;
-    const detail = Array.isArray(message)
+    return describe(status, Array.isArray(message)
       ? message.map((entry) => String(entry)).join("; ")
-      : typeof message === "string" ? message : undefined;
-    return {
-      type: `https://memoar.dev/problems/${slug(status)}`,
-      title: title(status),
-      status,
-      code: slug(status),
-      // A 4xx is the caller's own mistake and saying what it was helps them;
-      // a 5xx is ours, and its detail belongs in the log, not the response.
-      ...(status < 500 && detail !== undefined ? { detail } : {}),
-    };
+      : typeof message === "string" ? message : undefined);
   }
+  /*
+    Not every 4xx arrives as an HttpException. body-parser throws a plain Error
+    carrying `status: 413`, and describing that as `internal_error` told the
+    caller their oversized batch was a fault of ours — the exact confusion
+    statusFor() exists to prevent, undone one function later by naming the
+    body after the class instead of after the status.
+  */
+  if (status < 500) return describe(status, exception instanceof Error ? exception.message : undefined);
   return {
     type: "https://memoar.dev/problems/internal-error",
     title: "Internal server error",
     status,
     code: "internal_error",
+  };
+}
+
+/** The contract's problem document for a status, with the caller's own mistake spelled out. */
+function describe(status: number, detail: string | undefined): Record<string, unknown> {
+  return {
+    type: `https://memoar.dev/problems/${slug(status)}`,
+    title: title(status),
+    status,
+    code: slug(status),
+    // A 4xx is the caller's own mistake and saying what it was helps them;
+    // a 5xx is ours, and its detail belongs in the log, not the response.
+    ...(status < 500 && detail !== undefined ? { detail } : {}),
   };
 }
 

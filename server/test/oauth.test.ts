@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthService } from "../src/auth/auth.service.js";
 import { TokenService } from "../src/auth/tokens.js";
+import { BrowserSessionService } from "../src/auth/browser-sessions.js";
+import { CredentialsService } from "../src/auth/credentials.service.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 
 /**
@@ -13,7 +15,9 @@ import { DevArchiveStore } from "../src/dev-archive-store.js";
 const environment = { ...process.env };
 
 function service(): AuthService {
-  return new AuthService(new TokenService(), null, new DevArchiveStore());
+  const tokens = new TokenService();
+  const store = new DevArchiveStore();
+  return new AuthService(tokens, null, store, new BrowserSessionService(null), new CredentialsService(tokens, null, store));
 }
 
 beforeEach(() => {
@@ -22,6 +26,7 @@ beforeEach(() => {
   process.env.GOOGLE_CLIENT_ID = "google-client";
   process.env.GOOGLE_CLIENT_SECRET = "google-secret";
   process.env.MEMOAR_PUBLIC_URL = "https://api.memoar.test";
+  process.env.MEMOAR_SIGNUP = "open";
 });
 
 afterEach(() => {
@@ -89,6 +94,61 @@ describe("finishing a provider sign-in", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
 
     await expect(auth.completeOAuth("github", "a-code", state)).rejects.toThrow(/no access token/u);
+  });
+
+  /** The tenant a returned redirect actually signed the browser in to. */
+  function tenantOf(redirect: string): string {
+    const token = new URLSearchParams(new URL(redirect).hash.slice(1)).get("access_token")!;
+    return (JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString("utf8")) as { tenantId: string }).tenantId;
+  }
+
+  function providerReplies(email: string, name = "A Person"): void {
+    const responses = [
+      { ok: true, json: () => Promise.resolve({ access_token: "provider-token" }) },
+      { ok: true, json: () => Promise.resolve({ email, name }) },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(responses.shift())));
+  }
+
+  it("refuses a stranger when this archive is closed to new accounts", async () => {
+    // A closed archive that merely has GITHUB_CLIENT_ID set used to hand anyone
+    // with a GitHub account a fully scoped session, while /auth/register
+    // refused the same person by name.
+    delete process.env.MEMOAR_SIGNUP;
+    const auth = service();
+    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    providerReplies("stranger@memoar.test");
+
+    await expect(auth.completeOAuth("github", "a-code", state))
+      .rejects.toMatchObject({ response: { code: "registration_closed" } });
+  });
+
+  it("puts one address in one tenant however they signed in", async () => {
+    // The tenant used to be the user id rather than the tenant on the identity,
+    // so signing in the second way opened a second, empty archive.
+    const auth = service();
+    const registered = await auth.register("both-ways@memoar.test", "a-password-long-enough");
+    const passwordTenant = (JSON.parse(
+      Buffer.from(registered.accessToken.split(".")[1]!, "base64url").toString("utf8"),
+    ) as { tenantId: string }).tenantId;
+
+    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    providerReplies("both-ways@memoar.test");
+
+    expect(tenantOf(await auth.completeOAuth("github", "a-code", state))).toBe(passwordTenant);
+  });
+
+  it("keeps two different people in two different tenants", async () => {
+    const auth = service();
+    const first = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    providerReplies("one@memoar.test");
+    const oneTenant = tenantOf(await auth.completeOAuth("github", "a-code", first));
+
+    const second = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    providerReplies("two@memoar.test");
+    const twoTenant = tenantOf(await auth.completeOAuth("github", "a-code", second));
+
+    expect(oneTenant).not.toBe(twoTenant);
   });
 
   it("signs in the account the provider vouched for", async () => {

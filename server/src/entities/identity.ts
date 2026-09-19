@@ -37,7 +37,13 @@ export class TeamEntity extends IdentifiedEntity {
   name!: string;
 }
 
-/** Cross-tenant team membership. Deliberately not under RLS (like auth_identities): carries account metadata only, no session content. */
+/**
+ * Cross-tenant team membership. Deliberately not under RLS (like
+ * auth_identities): carries account metadata only, no session content.
+ *
+ * `status` is what makes membership two-sided: an existing member invites, and
+ * only the invited person turns their own row into a membership.
+ */
 @Entity("team_members")
 @Unique(["teamId", "userId"])
 export class TeamMemberEntity extends IdentifiedEntity {
@@ -54,8 +60,40 @@ export class TeamMemberEntity extends IdentifiedEntity {
   @Column("citext")
   email!: string;
 
+  @Column("text", { default: "active" })
+  status!: "invited" | "active";
+
   @CreateDateColumn({ type: "timestamptz" })
   addedAt!: Date;
+}
+
+/**
+ * Standing consent: sessions this tenant captures from here on are widened to
+ * this team at ingest. A null `machineId` means every machine of the tenant.
+ *
+ * Not under RLS, for the same reason `team_members` is not — consent metadata,
+ * no session content. The moment a content-bearing column appears here that
+ * rationale is void.
+ */
+@Entity("team_share_optins")
+@Unique(["teamId", "tenantId", "machineId"])
+export class TeamShareOptinEntity extends IdentifiedEntity {
+  @Index()
+  @Column("uuid")
+  teamId!: string;
+
+  @Index()
+  @Column("uuid")
+  tenantId!: string;
+
+  @Column("uuid")
+  userId!: string;
+
+  @Column("uuid", { nullable: true })
+  machineId!: string | null;
+
+  @CreateDateColumn({ type: "timestamptz" })
+  createdAt!: Date;
 }
 
 @Entity("auth_sessions")
@@ -108,7 +146,7 @@ export class ApiKeyEntity extends TenantEntity {
 @Unique(["kind", "lookupKey"])
 export class AuthIdentityEntity extends IdentifiedEntity {
   @Column("text")
-  kind!: "password" | "api_key" | "machine_token";
+  kind!: "password" | "api_key" | "machine_token" | "oauth";
 
   @Column("citext")
   lookupKey!: string;

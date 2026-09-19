@@ -31,12 +31,22 @@ jobs:
         run: rustc -vV
       - name: Check formatting
         run: cargo fmt --all -- --check
+      # The desktop app is excluded here, on every platform, so the exclusion
+      # cannot drift between them. It draws with the system WebView, which needs
+      # a GTK toolchain on Linux and an icon this repository does not ship on
+      # Windows — neither of which this workflow installs, because this workflow
+      # is about distributing the CLI and the npx launcher. `ci.yml` builds and
+      # tests it on Linux with the right packages.
+      #
+      # It had been failing on two of these three runners since the desktop
+      # crate landed on 2026-09-04, and nobody could know: this workflow only
+      # runs on pull requests, and there had not been one.
       - name: Check all targets
-        run: cargo check --workspace --all-targets
+        run: cargo check --workspace --exclude memoar-desktop --all-targets
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude memoar-desktop --all-targets -- -D warnings
       - name: Test
-        run: cargo test --workspace --all-targets
+        run: cargo test --workspace --exclude memoar-desktop --all-targets
       - name: Build release binary
         run: cargo build --release -p memoar-cli
       - name: Exercise compiled robot contract

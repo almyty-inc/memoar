@@ -130,6 +130,28 @@ describe("api keys", () => {
     });
     expect(write.status).toBe(403);
   });
+
+  it("refuses a key asking for a scope this server does not grant", async () => {
+    // Scopes were bounded only by count and string length, so `*` was askable —
+    // and the guard short-circuits on `*` before it compares anything, which
+    // made every @RequireScopes in the codebase opt-out by the caller.
+    const wildcard = await api.request("POST", "/auth/api-keys", { body: { name: "everything", scopes: ["*"] } });
+    expect(wildcard.status, "a key was minted holding the guard's wildcard").toBe(400);
+    expect(str(wildcard.body, "code")).toBe("unknown_scope");
+
+    const invented = await api.request("POST", "/auth/api-keys", { body: { name: "invented", scopes: ["archive:read", "billing:admin"] } });
+    expect(invented.status).toBe(400);
+    expect(str(invented.body, "detail")).toContain("billing:admin");
+  });
+
+  it("refuses a key that would outrank the person creating it", async () => {
+    // A signed-in person holds PASSWORD_SCOPES; materialize:read belongs to a
+    // machine credential. Delegation can only narrow.
+    const response = await api.request("POST", "/auth/api-keys", { body: { name: "promoted", scopes: ["materialize:read"] } });
+
+    expect(response.status).toBe(403);
+    expect(str(response.body, "code")).toBe("scope_escalation");
+  });
 });
 
 describe("machine credentials", () => {

@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, Reflector } from "@nestjs/core";
 import { Redis } from "ioredis";
 import { AuthController, AuthGuard, AuthService, TokenService } from "./auth.js";
+import { BrowserSessionService } from "./auth/browser-sessions.js";
+import { CredentialsService } from "./auth/credentials.service.js";
 import { CredentialFailureInterceptor, MemoryRateLimitStore, RateLimitGuard, RedisRateLimitStore, type RateLimitStore } from "./rate-limit.js";
 
 export const RATE_LIMIT_STORE = Symbol("RATE_LIMIT_STORE");
@@ -10,6 +12,8 @@ export const RATE_LIMIT_STORE = Symbol("RATE_LIMIT_STORE");
   controllers: [AuthController],
   providers: [
     TokenService,
+    BrowserSessionService,
+    CredentialsService,
     AuthService,
     AuthGuard,
     {

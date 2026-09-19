@@ -10,6 +10,7 @@ import type {
   RedactionReviewRecord,
   ShareGrantRecord,
   TeamMember,
+  TeamShareOptinRecord,
   TenantSettingsRecord,
   TransferRecord,
 } from "../records.js";
@@ -54,7 +55,8 @@ export class MemoryTables {
   readonly distillation = new Map<string, DistillationSettings>();
   readonly tenantSettings = new Map<string, TenantSettingsRecord>();
   readonly teams = new Map<string, { id: string; orgId: string; name: string }>();
-  readonly teamMembers = new Map<string, TeamMember[]>();
+  readonly teamMembers = new Map<string, (TeamMember & { status: "invited" | "active" })[]>();
+  readonly teamShareOptins = new Map<string, TeamShareOptinRecord>();
   readonly memoryDocuments = new Map<string, MemoryDocument & { tenantId: string }>();
   readonly memoryRevisions = new Map<string, MemoryRevision & { tenantId: string }>();
   readonly accountsByEmail = new Map<string, TeamMember>();

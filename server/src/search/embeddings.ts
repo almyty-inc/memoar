@@ -1,5 +1,6 @@
 import { DataSource } from "typeorm";
 import type { SessionStore, TenantContext } from "../archive-store.js";
+import { teamVisibilitySql } from "../store/team-visibility.js";
 import { excerptAround, sessionText, words, type SearchCandidate, type SearchFilters } from "./backends.js";
 
 export interface SemanticSearchProvider {
@@ -103,6 +104,7 @@ export class PostgresVectorSearchProvider implements SemanticSearchProvider {
       if (filters.workspace) { values.push(`%${filters.workspace}%`); conditions.push(`workspace ->> 'path' ILIKE $${values.length}`); }
       if (filters.from) { values.push(filters.from); conditions.push(`"capturedUpdatedAt" >= $${values.length}`); }
       if (filters.to) { values.push(filters.to); conditions.push(`"capturedUpdatedAt" <= $${values.length}`); }
+      if (filters.teamId) { values.push(filters.teamId); conditions.push(teamVisibilitySql(values.length)); }
       values.push(limit);
       // ORDER BY must be the distance alone: an HNSW index can only satisfy a
       // single distance ordering, and appending a tiebreaker made Postgres sort

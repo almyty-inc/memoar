@@ -19,7 +19,9 @@ Raw artifacts live in S3-compatible object storage. PostgreSQL stores canonical 
 
 ## Tenant and privacy boundary
 
-Every query is scoped by organization, team, and user before filters or joins are applied. Captured content is immutable. Mutable tags, notes, summaries, collections, pins, and redaction masks are stored separately. A share link or user transfer cannot widen visibility until a redaction review is complete.
+Every query is scoped by organization, team, and user before filters or joins are applied. Captured content is immutable. Mutable tags, notes, summaries, collections, pins, and redaction masks are stored separately. A share link or user transfer cannot widen visibility until a redaction review is complete, and the masks that review records are applied to everything that leaves the tenant. Widening a session to a team requires the caller to be in that team, and joining a team requires the invited person to accept: an invitation on its own grants no reads.
+
+Tenant isolation rests on Postgres row-level security, which superusers and roles holding `BYPASSRLS` ignore entirely. The API therefore refuses to start unless the role it connects as is subject to those policies; the owner connection belongs in `MIGRATION_DATABASE_URL` and nowhere else.
 
 ## Retrieval boundary
 

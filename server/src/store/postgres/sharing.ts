@@ -2,12 +2,20 @@ import { RedactionReviewEntity, ShareGrantEntity, ShareTokenEntity, TransferEnti
 import type { ArchivedSession, TenantContext } from "../context.js";
 import type { SharingStore } from "../interfaces.js";
 import type { RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TransferRecord } from "../records.js";
+import { redactionPatterns, reviewedMasks } from "../../redaction.js";
 import { copyTransferredSession } from "../transfer-copy.js";
+import type { PostgresAnnotationStore } from "./annotations.js";
+import type { PostgresSettingsStore } from "./settings.js";
 import { TenantRunner } from "./runner.js";
 import type { PostgresSessionStore } from "./sessions.js";
 
 export class PostgresSharingStore implements SharingStore {
-  constructor(private readonly runner: TenantRunner, private readonly sessions: PostgresSessionStore) {}
+  constructor(
+    private readonly runner: TenantRunner,
+    private readonly sessions: PostgresSessionStore,
+    private readonly settings: PostgresSettingsStore,
+    private readonly annotations: PostgresAnnotationStore,
+  ) {}
 
   async getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null> {
     return this.runner.inTenant(context, async (manager) => {
@@ -140,7 +148,16 @@ export class PostgresSharingStore implements SharingStore {
     };
     const source = await this.sessions.getSession(senderContext, offer.sessionId);
     if (!source) throw new Error("transfer_session_missing");
-    const copy = copyTransferredSession(source, offer.id, context.userId);
+    // The sender completed a redaction review before offering this, so the
+    // copy leaves their tenant through the same projection a share link uses.
+    const [senderSettings, senderAnnotations] = await Promise.all([
+      this.settings.getTenantSettings(senderContext),
+      this.annotations.listAnnotations(senderContext, offer.sessionId),
+    ]);
+    const copy = copyTransferredSession(source, offer.id, context.userId, "transfer", {
+      patterns: redactionPatterns(senderSettings.redaction),
+      masks: reviewedMasks(senderAnnotations),
+    });
     await this.sessions.saveSession(context, copy);
     await offerRepository.update({ id: offer.id }, { status: "accepted" });
     await this.runner.inTenant(senderContext, async (manager) => {

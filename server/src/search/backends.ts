@@ -1,5 +1,6 @@
 import { DataSource } from "typeorm";
 import type { ArchivedSession, SessionStore, TenantContext } from "../archive-store.js";
+import { isTeamVisible, teamVisibilitySql } from "../store/team-visibility.js";
 
 
 export interface SearchCandidate {
@@ -13,6 +14,13 @@ export interface SearchFilters {
   workspace?: string;
   from?: Date;
   to?: Date;
+  /**
+   * Set only by the team fan-out, which runs this query once inside each member
+   * tenant. Present, it confines results to sessions actually widened to that
+   * team — the one clause standing between a teammate and a member's private
+   * archive, since RLS is satisfied for every row of the tenant being searched.
+   */
+  teamId?: string;
 }
 
 export interface SearchBackend {
@@ -47,7 +55,9 @@ export class DeterministicLexicalBackend implements SearchBackend {
       ...(filters.to ? { to: filters.to } : {}),
     });
     const terms = [...new Set(words(query))].sort();
-    return page.items.map((session) => {
+    const teamId = filters.teamId;
+    const visible = teamId ? page.items.filter((session) => isTeamVisible(session.visibility, teamId)) : page.items;
+    return visible.map((session) => {
       const text = sessionText(session);
       const documentWords = words(text);
       const frequencies = new Map<string, number>();
@@ -77,6 +87,7 @@ export class PostgresFtsBackend implements SearchBackend {
       if (filters.workspace) { values.push(`%${filters.workspace}%`); conditions.push(`workspace ->> 'path' ILIKE $${values.length}`); }
       if (filters.from) { values.push(filters.from); conditions.push(`\"capturedUpdatedAt\" >= $${values.length}`); }
       if (filters.to) { values.push(filters.to); conditions.push(`\"capturedUpdatedAt\" <= $${values.length}`); }
+      if (filters.teamId) { values.push(filters.teamId); conditions.push(teamVisibilitySql(values.length)); }
       // ts_headline emits <b> markers by default. The client renders excerpts
       // as text and does its own <mark> highlighting, so markup here would show
       // up literally as "<b>parent</b>" on screen. Empty selectors keep the
