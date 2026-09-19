@@ -46,9 +46,16 @@ export async function exchangeCodeForProfile(provider: OAuthProvider, code: stri
   const profileEndpoint = provider === "github" ? "https://api.github.com/user" : "https://openidconnect.googleapis.com/v1/userinfo";
   const profileResponse = await fetch(profileEndpoint, { headers: authorization });
   if (!profileResponse.ok) throw new UnauthorizedException("OAuth profile lookup failed");
-  const profile = await profileResponse.json() as { email?: string; name?: string; login?: string };
+  const profile = await profileResponse.json() as { email?: string; email_verified?: boolean; name?: string; login?: string };
 
-  let email = profile.email;
+  // An address the provider has not verified is a claim, not a fact, and an
+  // address is the whole of what an account is matched on here (see
+  // resolveOAuthAccount). Google says so in the profile and the flag was never
+  // read: a Google identity whose `email_verified` is false, offered for an
+  // address that already has a password account on this archive, resolved
+  // straight onto that account's identity row and signed the caller in to
+  // somebody else's tenant.
+  let email = provider === "google" && profile.email_verified !== true ? undefined : profile.email;
   if (!email && provider === "github") {
     const emailResponse = await fetch("https://api.github.com/user/emails", { headers: authorization });
     const emails = emailResponse.ok ? await emailResponse.json() as { email: string; primary?: boolean; verified?: boolean }[] : [];

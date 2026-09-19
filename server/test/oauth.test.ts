@@ -34,9 +34,19 @@ afterEach(() => {
   process.env = { ...environment };
 });
 
+/**
+ * Begins a sign-in and keeps both halves of the state: the parameter that
+ * travels through the provider, and the nonce the browser holds as a cookie.
+ * A callback is only the end of this sign-in if it can produce both.
+ */
+function begin(auth: AuthService, provider: "github" | "google"): { state: string; nonce: string } {
+  const begun = auth.beginOAuth(provider);
+  return { state: new URL(begun.url).searchParams.get("state")!, nonce: begun.stateNonce };
+}
+
 describe("starting a provider sign-in", () => {
   it("sends the caller to the provider with a state it can check later", () => {
-    const url = new URL(service().beginOAuth("github"));
+    const url = new URL(service().beginOAuth("github").url);
 
     expect(url.origin + url.pathname).toBe("https://github.com/login/oauth/authorize");
     expect(url.searchParams.get("client_id")).toBe("github-client");
@@ -47,7 +57,7 @@ describe("starting a provider sign-in", () => {
   });
 
   it("asks Google for the scopes Google needs, and says it wants a code", () => {
-    const url = new URL(service().beginOAuth("google"));
+    const url = new URL(service().beginOAuth("google").url);
 
     expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     expect(url.searchParams.get("scope")).toBe("openid email profile");
@@ -68,32 +78,60 @@ describe("finishing a provider sign-in", () => {
   it("refuses a callback whose state it did not issue", async () => {
     // Without this, anybody who can make the browser hit the callback can begin
     // a sign-in the archive never started.
-    await expect(service().completeOAuth("github", "a-code", "a-state-nobody-issued"))
+    await expect(service().completeOAuth("github", "a-code", "a-state-nobody-issued", "a-nonce"))
       .rejects.toThrow(/Invalid OAuth state/u);
   });
 
   it("refuses a state issued for a different provider", async () => {
     const auth = service();
-    const githubState = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const github = begin(auth, "github");
 
-    await expect(auth.completeOAuth("google", "a-code", githubState))
+    await expect(auth.completeOAuth("google", "a-code", github.state, github.nonce))
       .rejects.toThrow(/Invalid OAuth state/u);
+  });
+
+  it("refuses a state the browser cannot show it started", async () => {
+    // The whole of the attack this stops: the state is minted by a public
+    // endpoint, so an attacker can hold a matching code and state of their own
+    // and get somebody else's browser to present them. Everything about the
+    // state is right — signed here, unexpired, the correct provider — and it is
+    // still not the end of a sign-in that browser began. Answering it signs
+    // that browser in to the attacker's archive, and everything the person
+    // writes afterwards lands there.
+    const attacker = service();
+    const stolen = begin(attacker, "github");
+
+    await expect(attacker.completeOAuth("github", "a-code", stolen.state, null))
+      .rejects.toThrow(/Invalid OAuth state/u);
+    await expect(attacker.completeOAuth("github", "a-code", stolen.state, "a-nonce-of-my-own"))
+      .rejects.toThrow(/Invalid OAuth state/u);
+  });
+
+  it("does not put the nonce where the state can be read", () => {
+    // The state travels through the provider, the address bar and everybody's
+    // access logs. If it carried the secret it is checked against, every one of
+    // those is a place the binding can be lifted from.
+    const { state, nonce } = begin(service(), "github");
+    const payload = Buffer.from(state.split(".")[0]!, "base64url").toString("utf8");
+
+    expect(payload).not.toContain(nonce);
+    expect(nonce.length, "a guessable nonce binds nothing").toBeGreaterThan(24);
   });
 
   it("refuses when the provider will not exchange the code", async () => {
     const auth = service();
-    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const { state, nonce } = begin(auth, "github");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, json: () => Promise.resolve({}) }));
 
-    await expect(auth.completeOAuth("github", "a-code", state)).rejects.toThrow(/token exchange failed/u);
+    await expect(auth.completeOAuth("github", "a-code", state, nonce)).rejects.toThrow(/token exchange failed/u);
   });
 
   it("refuses when the provider hands back no token", async () => {
     const auth = service();
-    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const { state, nonce } = begin(auth, "github");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
 
-    await expect(auth.completeOAuth("github", "a-code", state)).rejects.toThrow(/no access token/u);
+    await expect(auth.completeOAuth("github", "a-code", state, nonce)).rejects.toThrow(/no access token/u);
   });
 
   /** The tenant a returned redirect actually signed the browser in to. */
@@ -116,10 +154,10 @@ describe("finishing a provider sign-in", () => {
     // refused the same person by name.
     delete process.env.MEMOAR_SIGNUP;
     const auth = service();
-    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const { state, nonce } = begin(auth, "github");
     providerReplies("stranger@memoar.test");
 
-    await expect(auth.completeOAuth("github", "a-code", state))
+    await expect(auth.completeOAuth("github", "a-code", state, nonce))
       .rejects.toMatchObject({ response: { code: "registration_closed" } });
   });
 
@@ -132,35 +170,35 @@ describe("finishing a provider sign-in", () => {
       Buffer.from(registered.accessToken.split(".")[1]!, "base64url").toString("utf8"),
     ) as { tenantId: string }).tenantId;
 
-    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const { state, nonce } = begin(auth, "github");
     providerReplies("both-ways@memoar.test");
 
-    expect(tenantOf(await auth.completeOAuth("github", "a-code", state))).toBe(passwordTenant);
+    expect(tenantOf(await auth.completeOAuth("github", "a-code", state, nonce))).toBe(passwordTenant);
   });
 
   it("keeps two different people in two different tenants", async () => {
     const auth = service();
-    const first = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const first = begin(auth, "github");
     providerReplies("one@memoar.test");
-    const oneTenant = tenantOf(await auth.completeOAuth("github", "a-code", first));
+    const oneTenant = tenantOf(await auth.completeOAuth("github", "a-code", first.state, first.nonce));
 
-    const second = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const second = begin(auth, "github");
     providerReplies("two@memoar.test");
-    const twoTenant = tenantOf(await auth.completeOAuth("github", "a-code", second));
+    const twoTenant = tenantOf(await auth.completeOAuth("github", "a-code", second.state, second.nonce));
 
     expect(oneTenant).not.toBe(twoTenant);
   });
 
   it("signs in the account the provider vouched for", async () => {
     const auth = service();
-    const state = new URL(auth.beginOAuth("github")).searchParams.get("state")!;
+    const { state, nonce } = begin(auth, "github");
     const responses = [
       { ok: true, json: () => Promise.resolve({ access_token: "provider-token" }) },
       { ok: true, json: () => Promise.resolve({ email: "person@memoar.test", name: "A Person" }) },
     ];
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(responses.shift())));
 
-    const redirect = await auth.completeOAuth("github", "a-code", state);
+    const redirect = await auth.completeOAuth("github", "a-code", state, nonce);
 
     // The redirect carries the session, so the browser lands signed in rather
     // than back on the form it just came from.
@@ -168,15 +206,56 @@ describe("finishing a provider sign-in", () => {
     expect(redirect).not.toContain("provider-token");
   });
 
+  /** A Google userinfo reply, which says whether it has checked the address. */
+  function googleReplies(email: string, verified: boolean): void {
+    const responses = [
+      { ok: true, json: () => Promise.resolve({ access_token: "provider-token" }) },
+      { ok: true, json: () => Promise.resolve({ email, email_verified: verified, name: "A Person" }) },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(responses.shift())));
+  }
+
+  it("refuses an address the provider has not verified", async () => {
+    const auth = service();
+    const { state, nonce } = begin(auth, "google");
+    googleReplies("unverified@memoar.test", false);
+
+    await expect(auth.completeOAuth("google", "a-code", state, nonce)).rejects.toThrow(/verified email/u);
+  });
+
+  it("accepts one the provider has", async () => {
+    const auth = service();
+    const { state, nonce } = begin(auth, "google");
+    googleReplies("verified@memoar.test", true);
+
+    expect(await auth.completeOAuth("google", "a-code", state, nonce)).toContain("access_token=");
+  });
+
+  it("does not hand somebody else's archive to an unverified address", async () => {
+    // An account is matched on its address and nothing else, so an unchecked
+    // address is a claim on whoever already holds it. Register at the provider
+    // as an address you do not own, leave it unverified, and the callback used
+    // to resolve onto that account's identity and sign you in to their tenant.
+    const auth = service();
+    const registered = await auth.register("owner@memoar.test", "a-password-long-enough");
+    const ownerTenant = tenantOf(`https://web.memoar.test/#access_token=${registered.accessToken}`);
+
+    const { state, nonce } = begin(auth, "google");
+    googleReplies("owner@memoar.test", false);
+
+    await expect(auth.completeOAuth("google", "a-code", state, nonce), `must not reach tenant ${ownerTenant}`)
+      .rejects.toThrow(/verified email/u);
+  });
+
   it("refuses when the provider will not say who this is", async () => {
     const auth = service();
-    const state = new URL(auth.beginOAuth("google")).searchParams.get("state")!;
+    const { state, nonce } = begin(auth, "google");
     const responses = [
       { ok: true, json: () => Promise.resolve({ access_token: "provider-token" }) },
       { ok: false, status: 403, json: () => Promise.resolve({}) },
     ];
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(responses.shift())));
 
-    await expect(auth.completeOAuth("google", "a-code", state)).rejects.toThrow(/profile lookup failed/u);
+    await expect(auth.completeOAuth("google", "a-code", state, nonce)).rejects.toThrow(/profile lookup failed/u);
   });
 });
