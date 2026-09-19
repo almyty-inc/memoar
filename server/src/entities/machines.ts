@@ -18,6 +18,10 @@ export class MachineEntity extends TenantEntity {
 
   @Column("timestamptz", { nullable: true })
   lastSeenAt!: Date | null;
+
+  /** Unique per tenant where present; see `MachineRecord.installationId`. */
+  @Column("text", { nullable: true })
+  installationId!: string | null;
 }
 
 @Entity("machine_tokens")

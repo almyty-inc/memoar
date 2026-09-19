@@ -1237,11 +1237,31 @@ paths:
     post:
       tags: [Machines]
       operationId: registerMachine
+      description: >-
+        Enrols this machine. Idempotent per installationId: a client that sends
+        one is given the machine it already registered rather than a second one,
+        which is what stops every re-login from duplicating the account's memory
+        documents. A request without installationId always creates, because the
+        archive will not infer identity from a name or a platform — the agent's
+        fallback name is a constant, so unrelated machines share it.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [name, platform], properties: { name: { type: string }, platform: { type: string }, agentVersion: { type: string } } }
+            schema:
+              type: object
+              required: [name, platform]
+              properties:
+                name: { type: string }
+                platform: { type: string }
+                agentVersion: { type: string }
+                installationId:
+                  type: string
+                  minLength: 16
+                  maxLength: 128
+                  description: >-
+                    Stable opaque id for the agent installation, generated once and kept
+                    for the life of its config directory. Compared, never parsed.
       responses:
         '201':
           description: Machine registered

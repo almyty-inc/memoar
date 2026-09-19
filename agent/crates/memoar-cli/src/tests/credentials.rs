@@ -2,7 +2,7 @@ use memoar_daemon::RedactionConfig;
 use std::collections::BTreeSet;
 use std::fs;
 
-use super::mock::fixture_paths;
+use super::mock::{INSTALLATION_ID, fixture_paths};
 use crate::config::{Config, load_credential, save_config};
 // Only the two mode tests below use this, and a file mode is a unix idea, so on
 // Windows the import is dead and `-D warnings` says so.
@@ -19,6 +19,7 @@ fn credentials_are_separate_and_mode_is_private() {
         contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
         endpoint: "http://127.0.0.1:4000/v1".to_owned(),
         machine_id: "0198d8d0-977c-777b-9f8f-0f6d8416e700".to_owned(),
+        installation_id: INSTALLATION_ID.to_owned(),
         disabled_sources: BTreeSet::new(),
         redaction: RedactionConfig::disabled(),
     };

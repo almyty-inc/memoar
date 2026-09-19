@@ -331,6 +331,32 @@ for (const implementation of implementations) {
       expect(await store.getMachine(alice, "0191cafe-0000-7000-8000-0000000c000f")).toBeNull();
     });
 
+    /*
+      The same check, through the other column that resolves a machine.
+      `findMachineByInstallation` takes a value the client invented, and two
+      accounts can invent the same one. Registering resolves through it, so a
+      store that answered by installation id alone would hand one account
+      another account's machine to enrol into — the hole `getMachine` closes
+      above, reopened beside it. Row-level security is not the backstop here:
+      the in-memory store has none, and the predicate has to be explicit.
+    */
+    it("resolves a machine by installation only within the tenant that owns it", async () => {
+      const store = implementation.create();
+      const installationId = `installation-${implementation.name}-shared`;
+      const machineId = "0191cafe-0000-7000-8000-0000000c001e";
+      await store.saveMachine(alice, {
+        id: machineId, tenantId: alice.tenantId, name: `installed-${implementation.name}`,
+        platform: "darwin", agentVersion: null, sourceSettings: {}, lastSeenAt: null, installationId,
+      });
+
+      expect((await store.findMachineByInstallation(alice, installationId))?.id).toBe(machineId);
+      expect(
+        await store.findMachineByInstallation(bob, installationId),
+        "bob must not resolve alice's machine by naming her installation",
+      ).toBeNull();
+      expect(await store.findMachineByInstallation(alice, "installation-nobody-has-this")).toBeNull();
+    });
+
     it("queues, replays, and acknowledges machine commands", async () => {
       const store = implementation.create();
       const machineId = "0191cafe-0000-7000-8000-0000000c000a";

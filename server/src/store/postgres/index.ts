@@ -139,6 +139,7 @@ export class PostgresArchiveStore implements ArchiveStore {
 
   listMachines(context: TenantContext): Promise<MachineRecord[]> { return this.machines.listMachines(context); }
   getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null> { return this.machines.getMachine(context, machineId); }
+  findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> { return this.machines.findMachineByInstallation(context, installationId); }
   saveMachine(context: TenantContext, machine: MachineRecord): Promise<void> { return this.machines.saveMachine(context, machine); }
   createMachineCommand(context: TenantContext, input: { machineId: string; kind: string; payload: Record<string, unknown> }): Promise<MachineCommandRecord> { return this.machines.createMachineCommand(context, input); }
   listUnackedMachineCommands(context: TenantContext, machineId: string): Promise<MachineCommandRecord[]> { return this.machines.listUnackedMachineCommands(context, machineId); }

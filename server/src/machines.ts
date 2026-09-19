@@ -62,18 +62,44 @@ export class MachinesService {
     return { items: machines.map((machine) => machineResponse(machine, captured)) };
   }
 
+  /**
+   * Enrols a machine, or hands back the one this installation already has.
+   *
+   * Registering used to create unconditionally, and the agent registered on
+   * every `login`, so one laptop became a machine record per login — four
+   * identical rows on one dev account, and with them a duplicate of every
+   * memory document, since those are unique on (tenant, machine, path).
+   *
+   * Two registrations are the same machine when they carry the same
+   * `installationId`, and on nothing else. Not the name: the agent's fallback
+   * name is the constant `memoar-machine`, which several unrelated laptops in
+   * one account will report, and fusing those would make their instruction
+   * files overwrite each other — a worse failure than duplicating them, and an
+   * unrecoverable one. Not the platform either, which would fuse harder still.
+   * Two agents deliberately run on one host have separate config directories,
+   * hence separate installation ids, and stay two machines.
+   *
+   * A registration with no installation id creates, exactly as before. The
+   * archive will not guess an identity a client declined to state.
+   */
   async register(context: TenantContext, body: RegisterMachineDto): Promise<Record<string, unknown>> {
+    const installationId = body.installationId?.trim() || null;
+    const enrolled = installationId ? await this.store.findMachineByInstallation(context, installationId) : null;
     const machine: MachineRecord = {
-      id: uuidV7(),
-      tenantId: context.tenantId,
+      // What the installation reports now wins, so a renamed or upgraded
+      // machine is not stuck describing itself as it did on its first login.
+      ...(enrolled ?? { id: uuidV7(), tenantId: context.tenantId, sourceSettings: {}, lastSeenAt: null }),
       name: body.name.trim(),
       platform: normalizePlatform(body.platform),
-      agentVersion: body.agentVersion ?? null,
-      sourceSettings: {},
-      lastSeenAt: null,
+      agentVersion: body.agentVersion ?? enrolled?.agentVersion ?? null,
+      installationId,
     };
     await this.store.saveMachine(context, machine);
-    return machineResponse(machine, new Map());
+    // A machine enrolled before this call has captured sessions worth counting;
+    // one created just now has none, and asking would be a query for an empty
+    // answer.
+    const captured = enrolled ? await this.capturedCounts(context) : new Map<string, number>();
+    return machineResponse(machine, captured);
   }
 
   async update(context: TenantContext, machineId: string, body: UpdateMachineDto): Promise<Record<string, unknown>> {

@@ -87,6 +87,13 @@ export class MemoryMachineStore implements MachineStore {
     return machine ? copy(machine) : null;
   }
 
+  async findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> {
+    const machine = [...this.tables.machines.values()].find(
+      (candidate) => candidate.tenantId === context.tenantId && candidate.installationId === installationId,
+    );
+    return machine ? copy(machine) : null;
+  }
+
   async saveMachine(context: TenantContext, machine: MachineRecord): Promise<void> {
     if (machine.tenantId !== context.tenantId) throw new Error("tenant_mismatch");
     this.tables.machines.set(key(context.tenantId, machine.id), copy(machine));

@@ -256,6 +256,14 @@ export interface RetentionStore {
 export interface MachineStore {
   listMachines(context: TenantContext): Promise<MachineRecord[]>;
   getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null>;
+  /**
+   * The machine this agent installation already enrolled, if it has one.
+   *
+   * Scoped to the tenant like every other lookup: one account's installation id
+   * must never resolve to another account's machine, or registering would hand
+   * the caller a machine it does not own.
+   */
+  findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null>;
   saveMachine(context: TenantContext, machine: MachineRecord): Promise<void>;
   createMachineCommand(context: TenantContext, input: { machineId: string; kind: string; payload: Record<string, unknown> }): Promise<MachineCommandRecord>;
   listUnackedMachineCommands(context: TenantContext, machineId: string): Promise<MachineCommandRecord[]>;

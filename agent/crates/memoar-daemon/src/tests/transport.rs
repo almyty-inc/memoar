@@ -41,7 +41,8 @@ fn a_token_that_cannot_outlive_an_upload_is_replaced_before_the_request() {
 
     let token = transport.usable_token().expect("minting must succeed");
     assert_eq!(
-        token, "minted-token",
+        token,
+        "minted-token",
         "a token with {short}s left cannot survive a {}s upload, so it must be re-minted",
         UPLOAD_TIMEOUT.as_secs(),
     );

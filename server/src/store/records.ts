@@ -225,4 +225,18 @@ export interface MachineRecord {
   agentVersion: string | null;
   sourceSettings: Record<string, unknown>;
   lastSeenAt: string | null;
+  /**
+   * Which agent installation enrolled this machine, as that installation names
+   * itself. Opaque to the archive: it is compared, never parsed.
+   *
+   * It is the only thing that makes two registrations the same machine.
+   * Deliberately not the name or the platform — the agent's fallback name is a
+   * constant, so an account can hold several genuinely different laptops all
+   * called `memoar-machine`, and fusing those would make their memory documents
+   * overwrite each other rather than merely duplicate.
+   *
+   * Absent for a machine registered by a client that does not identify its
+   * installation, and for every machine enrolled before this existed.
+   */
+  installationId?: string | null;
 }
