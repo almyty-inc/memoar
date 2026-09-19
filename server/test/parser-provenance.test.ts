@@ -9,7 +9,7 @@ import { IngestPipeline, MemoryObjectStorage } from "../src/ingest.js";
  *
  * Every session in every archive was stamped `parserVersion: "0.1.0"` — a
  * literal in the seed, kept whatever had actually parsed the bytes. The Claude
- * Code parser calls itself `claude-code:v1:0.2.0`, so the recorded version was
+ * Code parser calls itself `claude-code:v1:0.3.0`, so the recorded version was
  * not merely uniform, it was wrong.
  *
  * It matters because reprocessing exists to replay a parser improvement over
@@ -63,7 +63,7 @@ describe("the provenance of a parsed session", () => {
 
     expect(result.status).toBe("parsed");
     const native = sessions[0]!.provenance.find((entry) => entry.kind === "native");
-    expect(native?.parserVersion).toBe("claude-code:v1:0.2.0");
+    expect(native?.parserVersion).toBe("claude-code:v1:0.3.0");
   });
 
   it("keeps no placeholder from the seed", async () => {

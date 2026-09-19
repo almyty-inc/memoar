@@ -21,6 +21,47 @@ const SOURCE_ALIASES: Readonly<Record<string, { source: string; version: string 
   "chatgpt-export": { source: "chatgpt-export", version: "2026-08" },
 };
 
+/**
+ * How far into an artifact the sniff reads, and how many lines it will judge.
+ *
+ * The old sniff looked for `"parentUuid"` in the first 2 KiB. A transcript
+ * opens with whatever bookkeeping the session happened to write first —
+ * `last-prompt`, `mode`, `permission-mode`, `ai-title`, and `attachment`
+ * records that run to kilobytes each — so the first message record is not
+ * reliably inside 2 KiB. One 71 MB transcript cleared it by 1,735 bytes.
+ */
+const SNIFF_BYTES = 64 * 1024;
+const SNIFF_LINES = 64;
+
+/**
+ * Whether bytes the client called `claude-code` look like a Claude Code
+ * transcript.
+ *
+ * Deliberately generous: the only other outcome is `unknown`, which refuses the
+ * artifact with "no parser for claude-code@unknown" and says nothing about what
+ * was in it. Anything that reaches the parser gets a refusal that names the
+ * line it failed on, so it is better to let the parser judge.
+ */
+function looksLikeClaudeCode(bytes: Uint8Array): boolean {
+  const prefix = Buffer.from(bytes.subarray(0, SNIFF_BYTES)).toString("utf8");
+  if (prefix.includes('"parentUuid"')) return true;
+  // Claude Desktop's local agent mode writes conversation records with `uuid`
+  // and `message` but no `parentUuid` at all, so the substring test above can
+  // never match one. Twelve such transcripts sat unread.
+  return prefix.split(/\r?\n/u).slice(0, SNIFF_LINES).some((line) => {
+    if (!line.startsWith("{")) return false;
+    try {
+      const record: unknown = JSON.parse(line);
+      return typeof record === "object" && record !== null
+        && typeof (record as Record<string, unknown>).uuid === "string"
+        && typeof (record as Record<string, unknown>).message === "object"
+        && (record as Record<string, unknown>).message !== null;
+    } catch {
+      return false;
+    }
+  });
+}
+
 export class FormatDetector {
   detect(sourceHeader: string, bytes: Uint8Array): { source: string; version: string } {
     const [source, statedVersion] = sourceHeader.split("@", 2);
@@ -30,7 +71,7 @@ export class FormatDetector {
       return { source, version: SQLITE_SOURCE_VERSIONS[source] };
     }
     const text = Buffer.from(bytes.subarray(0, 2048)).toString("utf8");
-    if (source === "claude-code" && text.includes('"parentUuid"')) return { source, version: "v1" };
+    if (source === "claude-code" && looksLikeClaudeCode(bytes)) return { source, version: "v1" };
     if (source === "codex" && text.includes('"session_meta"')) return { source, version: "rollout-v1" };
     if (source === "antigravity-cli" && text.includes('"parts"')) return { source, version: "v1" };
     if (source === "cursor" && text.includes('"database.rows"') || source === "cursor" && text.includes('"session"')) return { source, version: "v3" };

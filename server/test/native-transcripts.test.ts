@@ -101,11 +101,12 @@ describe("claude-code transcripts", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("reports a file that holds no messages at all", () => {
+  it("reports a file that holds no messages at all, and what it held instead", () => {
     const result = parse("claude-code", "v1", lines([{ type: "file-history-snapshot", files: [] }]));
     expect(result.kind).toBe("unknown");
     if (result.kind !== "unknown") return;
-    expect(result.diagnostic).toContain("no message records");
+    expect(result.diagnostic).toContain('none carried both "uuid" and "message"');
+    expect(result.diagnostic).toContain("file-history-snapshot×1");
   });
 });
 
