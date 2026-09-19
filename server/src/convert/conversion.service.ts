@@ -74,7 +74,17 @@ export class ConversionService {
     // Without a distributed queue there is no worker to pick the job up, which
     // is development and tests. Running it here keeps that deployment working;
     // the code that runs is the same code the worker calls.
-    if (this.queue instanceof InMemoryJobQueue) return this.run(context, id);
+    // A conversion that fails here is still a created job, and the caller asked
+    // to create one. `run` now raises so the queue can retry it, so the inline
+    // path answers with the job as it was actually recorded rather than turning
+    // a stored failure into a failed request.
+    if (this.queue instanceof InMemoryJobQueue) {
+      try {
+        return await this.run(context, id);
+      } catch {
+        return await this.get(context, id);
+      }
+    }
     return { id, sessionId: input.sessionId, target: input.target, status: "queued", createdAt };
   }
 
@@ -98,16 +108,47 @@ export class ConversionService {
       await this.store.saveJob(context, { ...job, status: "ready", result, updatedAt: new Date().toISOString() });
       return { id, sessionId: input.sessionId, target: input.target, status: "ready", createdAt, resumeCommand: bundle.resumeCommand, report: bundle.report };
     } catch (error) {
+      /*
+        Record the failure, then let it out.
+
+        This used to catch, save `failed`, and return normally, so the queue
+        recorded the job completed: `jobsProcessed{result="ok"}` counted it a
+        success, the error aggregator never saw it, and the `attempts: 3` above
+        could never be spent — the first transient blip putting the object
+        became a permanent failure. A conversion that could not reach object
+        storage is exactly what a retry is for.
+
+        Re-raising also ends the other half of it. Status is set to `running`
+        before the work, and nothing moved it out, so a worker killed mid-run
+        left the job `running` for ever: `get` answered `running`, `download`
+        and `materialize` answered 404, and only the CLI's own deadline ended
+        the wait. A job that throws goes back to the queue and is run again.
+      */
       const message = error instanceof Error ? error.message : "conversion_failed";
       await this.store.saveJob(context, { ...job, status: "failed", error: message, updatedAt: new Date().toISOString() });
-      return { id, sessionId: input.sessionId, target: input.target, status: "failed", createdAt, report: { error: message } };
+      throw error;
     }
   }
 
   async get(context: TenantContext, jobId: string): Promise<Record<string, unknown>> {
     const job = await this.store.getJob(context, jobId);
     if (!job || job.kind !== "convert") throw new NotFoundException("Conversion not found");
-    return { id: job.id, sessionId: job.payload.sessionId, target: job.payload.target, status: job.status, createdAt: job.createdAt, ...(job.result ?? {}), ...(job.error ? { report: { error: job.error } } : {}) };
+    // Named, not spread. `job.result` carries `objectKey` — the archive's own
+    // storage path, `tenants/<tenantId>/conversions/<id>.json` — and spreading
+    // it published that to every caller of this endpoint, tenant id and all,
+    // for a download that is only ever reached through a signed URL. A spread
+    // also means anything added to the stored result later is published by
+    // default; this way it has to be asked for.
+    const { resumeCommand, report, fileCount } = (job.result ?? {}) as {
+      resumeCommand?: string; report?: unknown; fileCount?: number;
+    };
+    return {
+      id: job.id, sessionId: job.payload.sessionId, target: job.payload.target,
+      status: job.status, createdAt: job.createdAt,
+      ...(resumeCommand === undefined ? {} : { resumeCommand }),
+      ...(fileCount === undefined ? {} : { fileCount }),
+      ...(job.error ? { report: { error: job.error } } : report === undefined ? {} : { report }),
+    };
   }
 
   async download(context: TenantContext, jobId: string): Promise<{ url: string }> {
