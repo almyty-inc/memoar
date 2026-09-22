@@ -92,7 +92,12 @@
 .expand-button.expanded svg { transform: rotate(180deg); }
 
 .source-list { padding: 0 var(--sp-4) var(--sp-4); border-top: 1px solid var(--line-soft); }
-.source-list-head, .source-row { display: grid; grid-template-columns: minmax(200px, 1.4fr) .6fr .7fr .8fr var(--sp-10); align-items: center; gap: var(--sp-3); }
+/* The last column sizes to its content. It was a fixed 40px, which was exactly
+   a compact switch; when that switch became a "Capture on" / "Capture off"
+   badge — because the switch set nothing — the text overflowed the card and the
+   column read as "Captur". A fixed width that matches one particular control is
+   a width that breaks when the control changes. */
+.source-list-head, .source-row { display: grid; grid-template-columns: minmax(200px, 1.4fr) .6fr .7fr .8fr max-content; align-items: center; gap: var(--sp-3); }
 .source-list-head { min-height: var(--h-lg); color: var(--quiet); font-family: var(--mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .08em; }
 .source-row { min-height: var(--h-xl); border-top: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); }
 
