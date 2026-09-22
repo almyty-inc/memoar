@@ -28,11 +28,25 @@ pub(crate) fn convert(args: &ConvertArgs, paths: &RuntimePaths) -> Result<Comman
     }
     if let Some(bundle_path) = &args.bundle {
         let target = native_target.map_err(|error| AppError::usage(error.to_string()))?;
+        // A path the person typed that is not there, or a file that is not a
+        // bundle, is theirs to correct. It used to surface as MEMOAR_UNKNOWN
+        // with "run memoar doctor", which inspects the install and knows
+        // nothing about a file named on the command line.
         let bundle_bytes = fs::read(bundle_path).map_err(|error| {
-            AppError::internal(format!("could not read {}: {error}", bundle_path.display()))
+            AppError::local(
+                format!("could not read {}: {error}", bundle_path.display()),
+                "Check the --bundle path. A bundle is what `memoar convert --target <t>` writes; without one, drop --bundle and let this command fetch it.",
+            )
         })?;
-        let bundle: ConversionBundle = serde_json::from_slice(&bundle_bytes)
-            .map_err(|error| AppError::internal(format!("invalid conversion bundle: {error}")))?;
+        let bundle: ConversionBundle = serde_json::from_slice(&bundle_bytes).map_err(|error| {
+            AppError::local(
+                format!(
+                    "{} is not a conversion bundle: {error}",
+                    bundle_path.display()
+                ),
+                "Point --bundle at the JSON bundle the archive produced for this session.",
+            )
+        })?;
         if bundle.target != target || bundle.session_id != args.session_id {
             return Err(AppError::usage(
                 "bundle target or session id does not match the command",
@@ -65,15 +79,36 @@ pub(crate) fn convert(args: &ConvertArgs, paths: &RuntimePaths) -> Result<Comman
     loop {
         match job.get("status").and_then(Value::as_str) {
             Some("ready") => break,
+            // The archive read the session and refused to convert it. That is
+            // not a network condition: it was reported as one, with
+            // `retryable: true` and "check the endpoint, connection, and
+            // credentials, then retry" — advice that cannot work, because the
+            // next attempt is refused identically. Now that a conversion can
+            // fail loudly rather than silently, the two outcomes a person has
+            // to act on differently have different codes and exits.
             Some("failed") => {
-                return Err(AppError::network(format!(
-                    "conversion failed: {}",
-                    job.get("report").cloned().unwrap_or(Value::Null)
-                )));
+                return Err(AppError::refused(
+                    "MEMOAR_CONVERSION_FAILED",
+                    format!(
+                        "the archive could not convert session {} to {}: {}",
+                        args.session_id,
+                        args.target,
+                        conversion_refusal(&job)
+                    ),
+                    "Retrying is refused the same way. Try another --target, or --fallback injection, which converts what the native format cannot carry.",
+                ));
             }
             _ if Instant::now() >= deadline => {
-                return Err(AppError::network(
-                    "conversion did not become ready before timeout",
+                return Err(AppError::timed_out(
+                    format!(
+                        "conversion job {job_id} for session {} was still {} after {}s",
+                        args.session_id,
+                        job.get("status")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unreported"),
+                        args.wait_seconds.max(1)
+                    ),
+                    "The archive accepted the job and is still working; nothing was lost. Retry with a longer --wait-seconds.",
                 ));
             }
             _ => {
@@ -89,6 +124,31 @@ pub(crate) fn convert(args: &ConvertArgs, paths: &RuntimePaths) -> Result<Comman
         ));
     }
     materialize_conversion(bundle, paths)
+}
+
+/// Why the archive refused, as a sentence.
+///
+/// The report was interpolated whole, so a refusal reached the terminal as
+/// `conversion failed: {"reason":"...","mappedTurns":0,...}` — the same
+/// wire-format-on-the-terminal defect already fixed for problem documents.
+/// Only the fields meant to be read are read, and when none of them is there
+/// the message says so rather than pasting the document.
+fn conversion_refusal(job: &Value) -> String {
+    let report = job.get("report").unwrap_or(&Value::Null);
+    let field = |source: &Value, name: &str| {
+        source
+            .get(name)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    };
+    for name in ["reason", "detail", "error", "message", "title"] {
+        if let Some(text) = field(report, name).or_else(|| field(job, name)) {
+            return text;
+        }
+    }
+    "the archive did not say why".to_owned()
 }
 
 fn materialize_conversion(

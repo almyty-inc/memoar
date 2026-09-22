@@ -3,7 +3,8 @@ use serde_json::{Value, json};
 
 use crate::CommandOutput;
 use crate::error::{
-    AppError, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK, EXIT_UNKNOWN, EXIT_USAGE,
+    AppError, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK, EXIT_REFUSED, EXIT_UNKNOWN,
+    EXIT_USAGE,
 };
 
 pub const ROBOT_ENVELOPE_VERSION: &str = "1";
@@ -60,6 +61,10 @@ pub fn introspect_value() -> Value {
             { "name": "pack", "requiresAuth": true, "network": true },
             { "name": "convert", "requiresAuth": true, "network": true },
             { "name": "memory convert", "requiresAuth": true, "network": true },
+            // `listen` was absent, while `AppError::usage` tells the reader
+            // "run memoar introspect for the command surface". Anything that
+            // believed the answer concluded the command did not exist.
+            { "name": "listen", "requiresAuth": true, "network": true },
             { "name": "doctor", "requiresAuth": true, "network": true },
             { "name": "capabilities", "requiresAuth": false, "network": false },
             { "name": "introspect", "requiresAuth": false, "network": false }
@@ -69,6 +74,9 @@ pub fn introspect_value() -> Value {
             "usage": EXIT_USAGE,
             "notInitialized": EXIT_NOT_INITIALIZED,
             "network": EXIT_NETWORK,
+            // The archive answered and said no. Separate from `network` so a
+            // wrapper can retry the one that is worth retrying.
+            "refused": EXIT_REFUSED,
             "lock": EXIT_LOCKED,
             "unknown": EXIT_UNKNOWN
         },

@@ -3,6 +3,7 @@ mod args;
 mod config;
 mod convert;
 mod credential;
+mod doctor;
 mod envelope;
 mod error;
 mod listen;
@@ -33,7 +34,8 @@ pub use crate::envelope::{
     ROBOT_ENVELOPE_VERSION, capabilities_value, error_envelope, introspect_value, success_envelope,
 };
 pub use crate::error::{
-    AppError, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK, EXIT_UNKNOWN, EXIT_USAGE,
+    AppError, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK, EXIT_REFUSED, EXIT_UNKNOWN,
+    EXIT_USAGE,
 };
 pub use crate::sse::{ServerEvent, SseDecoder};
 
@@ -41,12 +43,13 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::convert::convert;
+use crate::doctor::doctor;
 use crate::listen::listen;
 use crate::login::login;
 use crate::memory::memory;
 use crate::query::{pack, search, view};
 use crate::settings::{redaction, sources};
-use crate::status::{doctor, status};
+use crate::status::status;
 use crate::sync::sync;
 
 #[derive(Debug, Serialize)]

@@ -1,6 +1,8 @@
 mod commands;
 mod contract;
+mod convert;
 mod credentials;
+mod doctor;
 mod download;
 mod listen;
 mod login;

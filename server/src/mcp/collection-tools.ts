@@ -32,7 +32,7 @@ export const COLLECTION_TOOLS: readonly Tool[] = [
       properties: {
         name: { type: "string", minLength: 1, maxLength: 200 },
         description: { type: "string", maxLength: 2_000 },
-        teamId: { type: "string", description: "Team to scope the collection to. Refused unless the caller is a member." },
+        teamId: { type: "string", format: "uuid", description: "Team to scope the collection to. Refused unless the caller is a member." },
       },
     },
   },
@@ -43,7 +43,7 @@ export const COLLECTION_TOOLS: readonly Tool[] = [
       type: "object",
       required: ["collectionId"],
       properties: {
-        collectionId: { type: "string" },
+        collectionId: { type: "string", format: "uuid" },
         limit: { type: "integer", minimum: 1, maximum: 100, description: `Page size, default ${DEFAULT_LIMIT}.` },
         offset: { type: "integer", minimum: 0, maximum: 10_000 },
       },
@@ -52,12 +52,12 @@ export const COLLECTION_TOOLS: readonly Tool[] = [
   {
     name: "add_session_to_collection",
     description: "Put a session into a collection. Membership decides what the collection lists; it does not change who can read the session.",
-    inputSchema: { type: "object", required: ["collectionId", "sessionId"], properties: { collectionId: { type: "string" }, sessionId: { type: "string" } } },
+    inputSchema: { type: "object", required: ["collectionId", "sessionId"], properties: { collectionId: { type: "string", format: "uuid" }, sessionId: { type: "string", format: "uuid" } } },
   },
   {
     name: "remove_session_from_collection",
     description: "Take a session out of a collection. The session itself is untouched.",
-    inputSchema: { type: "object", required: ["collectionId", "sessionId"], properties: { collectionId: { type: "string" }, sessionId: { type: "string" } } },
+    inputSchema: { type: "object", required: ["collectionId", "sessionId"], properties: { collectionId: { type: "string", format: "uuid" }, sessionId: { type: "string", format: "uuid" } } },
   },
 ] as const;
 

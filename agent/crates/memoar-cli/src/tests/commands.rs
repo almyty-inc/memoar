@@ -11,7 +11,9 @@ use crate::settings::redaction;
 // Only the symlink test reads these, and that test is unix-only, so on Windows
 // the import is dead and `-D warnings` says so.
 #[cfg(unix)]
-use crate::status::{doctor, status};
+use crate::doctor::doctor;
+#[cfg(unix)]
+use crate::status::status;
 
 /// Redaction was writable at `login` and nowhere else: a CLI user who forgot
 /// the flags had to delete their configuration and sign in again, and the
@@ -69,7 +71,9 @@ fn redaction_is_changeable_after_login() {
 #[test]
 fn status_and_doctor_name_a_source_behind_a_symlink() {
     let temp = tempfile::tempdir().unwrap();
-    let (endpoint, _requests, server) = spawn_mock_api(3, None);
+    // Four: `doctor` asks about unparsed artifacts too, so the only red in
+    // this report is the symlink the test is about.
+    let (endpoint, _requests, server) = spawn_mock_api(4, None);
     let paths = configured_paths(&temp, &endpoint);
     let external = temp.path().join("external-volume/projects");
     fs::create_dir_all(external.join("a-project")).unwrap();

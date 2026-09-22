@@ -6,6 +6,17 @@ import type { AnnotationStore } from "../interfaces.js";
 import { TenantRunner } from "./runner.js";
 import type { PostgresSessionStore } from "./sessions.js";
 
+/**
+ * How many annotation rows go into one statement.
+ *
+ * Postgres refuses a statement carrying more than 65535 bind parameters, and
+ * these rows have seven columns, so roughly nine thousand is the ceiling. A
+ * thousand keeps a wide margin and bounds how much of the statement is held in
+ * memory at once, which matters because the rows this writes come one per
+ * credential found in a transcript and nothing bounds how many that is.
+ */
+const ANNOTATION_INSERT_BATCH = 1000;
+
 function toAnnotation(row: AnnotationEntity): Annotation {
   return {
     id: row.id,
@@ -80,7 +91,31 @@ export class PostgresAnnotationStore implements AnnotationStore {
         kind,
         value: origin === undefined ? value : { ...value, origin },
       }));
-      return (await repository.save(rows)).map(toAnnotation);
+      /*
+        In batches, because "whatever the count" was not true.
+
+        A transcript that leaks a credential on many lines produces one finding
+        per line, and this saved them as a single statement. Two ceilings sit
+        under that. Postgres refuses more than 65535 bind parameters in one
+        statement, and these rows carry seven columns each, so about nine
+        thousand findings is the hard limit. Below that, TypeORM builds the
+        statement by spreading the parameter list, and a spread of a large
+        array throws `Maximum call stack size exceeded` — which is not a depth
+        problem and does not go away with a bigger stack.
+
+        It surfaced as whole parses failing: seven artifacts, 470 MB of real
+        transcripts, recorded as `parse failed: Maximum call stack size
+        exceeded`, with the session, its turns and its blocks all lost over the
+        annotation write that came after them.
+      */
+      let saved: AnnotationEntity[] = [];
+      for (let index = 0; index < rows.length; index += ANNOTATION_INSERT_BATCH) {
+        // concat rather than push(...batch): the fix is about not spreading
+        // arrays whose length nothing bounds, and repeating the shape here —
+        // even at a safe size — is how the next person learns the wrong lesson.
+        saved = saved.concat(await repository.save(rows.slice(index, index + ANNOTATION_INSERT_BATCH)));
+      }
+      return saved.map(toAnnotation);
     });
   }
 

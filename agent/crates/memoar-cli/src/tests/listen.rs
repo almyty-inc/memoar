@@ -28,11 +28,25 @@ fn answer_json(mut stream: TcpStream, body: serde_json::Value) {
 /// failure and carries on, which drives the loop without needing a real
 /// conversion bundle on disk.
 fn spawn_stream(commands: usize, gap: Duration) -> String {
+    spawn_frames(
+        (0..commands)
+            .map(|index| {
+                json!({ "id": format!("command-{index}"), "kind": "unsupported" }).to_string()
+            })
+            .collect(),
+        gap,
+    )
+}
+
+/// The same stream, but with the `data:` payloads written verbatim, so a test
+/// can send something this client cannot read.
+fn spawn_frames(frames: Vec<String>, gap: Duration) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
     std::thread::spawn(move || {
         for connection in listener.incoming() {
             let Ok(mut stream) = connection else { return };
+            let frames = frames.clone();
             std::thread::spawn(move || {
                 let mut head = [0_u8; 2048];
                 let read = stream.read(&mut head).unwrap_or(0);
@@ -50,12 +64,9 @@ fn spawn_stream(commands: usize, gap: Duration) -> String {
                 }
                 let _ =
                     stream.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n");
-                for index in 0..commands {
+                for frame in &frames {
                     std::thread::sleep(gap);
-                    let event = format!(
-                        "event: command\ndata: {}\n\n",
-                        json!({ "id": format!("command-{index}"), "kind": "unsupported" }),
-                    );
+                    let event = format!("event: command\ndata: {frame}\n\n");
                     if stream.write_all(event.as_bytes()).is_err() {
                         return;
                     }
@@ -148,4 +159,76 @@ fn a_command_that_cannot_be_applied_does_not_end_the_channel() {
             "and says why: {entry}",
         );
     }
+}
+
+/// Nor must a command this client cannot even read.
+///
+/// The fix above covered the command that was applied and failed. Two paths
+/// upstream of it still propagated: a `data:` payload that is not JSON, and a
+/// command with no `id` — which cannot be acked, because there is no
+/// acknowledgement URL to ack it at. Either one ended the listener, so a
+/// single malformed row in the archive's command table made this machine deaf
+/// to everything queued behind it, with nothing on the terminal saying which
+/// row.
+///
+/// The third command is the assertion that matters: it can only be in the
+/// report if the listener was still reading after the first two.
+#[test]
+fn a_command_that_cannot_be_read_does_not_end_the_channel() {
+    let endpoint = spawn_frames(
+        vec![
+            "not json at all".to_owned(),
+            json!({ "kind": "materialize" }).to_string(),
+            json!({ "id": "command-2", "kind": "unsupported" }).to_string(),
+        ],
+        Duration::from_millis(200),
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let paths = configured_paths(&temp, &endpoint);
+
+    let output = listen(
+        &ListenArgs {
+            idle_timeout_seconds: 2,
+            max_commands: 0,
+        },
+        &paths,
+    )
+    .expect("an unreadable command is reported, not fatal");
+    let handled = output.data["handled"].as_array().expect("handled commands");
+
+    assert_eq!(
+        handled.len(),
+        3,
+        "every frame is accounted for: {handled:?}"
+    );
+    assert!(
+        handled[0]["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("was not JSON"),
+        "the unparseable frame says what was wrong: {}",
+        handled[0]
+    );
+    assert!(
+        handled[1]["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("did not include an id"),
+        "and so does the unackable one: {}",
+        handled[1]
+    );
+    assert_eq!(
+        handled[2]["id"], "command-2",
+        "the listener was still reading after both"
+    );
+    assert_eq!(output.data["applied"], 0);
+    assert_eq!(output.data["failed"], 3, "counted, not derived");
+    assert!(
+        !output.data["stoppedBecause"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty(),
+        "and says why it stopped rather than leaving it to be inferred: {}",
+        output.data
+    );
 }

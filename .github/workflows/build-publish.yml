@@ -107,10 +107,35 @@ jobs:
       # not look like a deploy happened. A warning annotation rather than a
       # failed build: a job that goes red on every push is a job people stop
       # reading, and then a real failure is invisible too.
+      # The annotation alone was not enough, and this is why.
+      #
+      # 62 commits merged to main, this job went green, and nothing deployed —
+      # dev went on running the previous merge for three days while every check
+      # on main said success. The warning was there the whole time, in the
+      # annotations, which is not where anyone looks to answer "is it out yet".
+      # A green tick that means "images built" reads as "shipped".
+      #
+      # So the run page itself says which of the two happened, in both cases,
+      # with the tag. Still not a red build, for the reason above: a job that
+      # goes red on every push is a job people stop reading. But a summary is
+      # on the page you are already looking at.
       - name: Note that nothing will be deployed
         if: env.HAS_DISPATCH != 'true'
         run: |
           echo "::warning::Images published, but INFRA_DISPATCH_TOKEN is not set so no deploy was triggered. Run it by hand: gh workflow run deploy-memoar.yml -R almyty-inc/infra -f environment=development"
+          {
+            echo "## Published, NOT deployed"
+            echo
+            echo "Images are in the registry at \`${{ steps.env.outputs.tag }}-${{ github.sha }}\`."
+            echo "\`INFRA_DISPATCH_TOKEN\` is not set, so nothing was asked to roll them out."
+            echo "Whatever is running now is still running."
+            echo
+            echo "To deploy:"
+            echo
+            echo '```'
+            echo "gh workflow run deploy-memoar.yml -R almyty-inc/infra -f environment=development"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Ask the deploy repository to roll it out
         if: env.HAS_DISPATCH == 'true'
@@ -122,3 +147,13 @@ jobs:
             -H "Authorization: Bearer $INFRA_DISPATCH_TOKEN" \
             https://api.github.com/repos/almyty-inc/infra/dispatches \
             -d '{"event_type":"deploy-memoar","client_payload":{"environment":"development","image_tag":"${{ steps.env.outputs.tag }}-${{ github.sha }}"}}'
+          # What was asked for, not what arrived: this only proves the dispatch
+          # was accepted. The deploy itself succeeds or fails in the other
+          # repository, and that run is the record of it.
+          {
+            echo "## Deploy requested"
+            echo
+            echo "Asked \`almyty-inc/infra\` to roll out \`${{ steps.env.outputs.tag }}-${{ github.sha }}\` to development."
+            echo "This says the request was accepted, not that the rollout finished —"
+            echo "the deploy run in that repository is the record of what happened."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -42,11 +42,18 @@ against a class-validator DTO instead (`server/src/mcp/arguments.ts`), with the
 same settings the HTTP surface uses: unknown fields are **refused**, nothing is
 implicitly converted, and every bound is stated. A `limit` of `"10"` is a
 malformed argument, not the number ten; an extra field is an error, not
-something to ignore. A refusal comes back as `invalid_arguments:<fields>`.
+something to ignore. A refusal comes back as `invalid_arguments:<fields>`
+followed by the constraint each field failed — "sessionId must be a UUID",
+rather than only the name of the field, which left a model nothing to correct
+and nothing to do but send the same call again.
 
 Every tool also bounds its own response. An agent calling one spends its context
 on the answer, so page sizes, character budgets and revision counts all have
-ceilings, and a result that was cut says so with `truncated`.
+ceilings, and a result that was cut says so with `truncated`. `search_sessions`
+ranks and does not page: it reports `limit`, `returned` and `truncated`, and
+carries no `nextCursor`, because a null cursor beside a capped ranking is an
+assertion that there is nothing further — which is exactly what a caller must
+not be told.
 
 ## Finding things
 
@@ -54,7 +61,7 @@ ceilings, and a result that was cut says so with `truncated`.
 | --- | --- |
 | `search_sessions` | Rank sessions by relevance to a query. Optional `agent`, `workspace`, `from`, `to`. Start here. |
 | `list_sessions` | Enumerate sessions newest-first *without* a query, filtered by `agent`, `workspace`, `machineId`, `model` or date range, paged with `cursor`. |
-| `get_excerpt` | One bounded turn span of one session. Prefer over `pack` when a single session answers the question. |
+| `get_excerpt` | One bounded turn span of one session. Prefer over `pack` when a single session answers the question. The `turnEnd` it returns is the last turn whose text fit in `maxChars`, not the one asked for; a span selecting no turn is an `empty_turn_span` error naming the session's turn count, never a blank excerpt. |
 | `pack` | Cited evidence across sessions under an explicit token budget, with evidence age and redaction status kept structured. |
 | `get_memory` | `pack` with conservative defaults for a topic. Packs *sessions*; see `list_memory_documents` for the instruction files. |
 | `get_session` | Last resort: one chunk of a whole session. Continue with `nextCursor`, keep `chunkSize` small. |
@@ -64,7 +71,7 @@ ceilings, and a result that was cut says so with `truncated`.
 
 | Tool | What it does |
 | --- | --- |
-| `list_annotations` | Read the notes, tags, pins and summaries on a session, or across the account. Bodies over `maxValueChars` come back as `{valueTruncated, valuePreview}` rather than as broken JSON. |
+| `list_annotations` | Read the notes, tags, pins and summaries on a session, or across the account, newest first — over MCP the first page is usually the only page, and the oldest fifty are not what an agent reading back its own work is asking for. Bodies over `maxValueChars` come back as `{valueTruncated, valuePreview}` rather than as broken JSON. |
 | `save_note` | Write a durable markdown note linked to a source session. |
 | `add_annotation` | Write a `tag`, `pin`, `note` or `summary`, optionally against one turn or block. The tool stamps `value.source = "mcp"`; a caller cannot claim to be something else. |
 | `list_collections` | The curated collections in this account. |
@@ -86,7 +93,11 @@ for a topic and has nothing to do with them.
 `export_project_memory` renders the notes already distilled for one workspace as
 CLAUDE.md- or AGENTS.md-style markdown, each note cited to its source session
 and turn span, bounded by `maxChars`. It reads existing notes; it does not run
-distillation.
+distillation. It gathers those notes from the 100 most recent sessions of the
+workspace — `DistillationService.exportProjectMemory` reads a fixed page and has
+no cursor — so on a long-lived workspace this is recent project memory rather
+than all of it, and the tool's description says so rather than leaving a caller
+to assume completeness.
 
 ## Seeing what is shared
 

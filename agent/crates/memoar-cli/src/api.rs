@@ -197,7 +197,29 @@ fn transport_message(error: &reqwest::Error) -> String {
     if error.is_timeout() {
         message.push_str(" (timed out)");
     }
-    message
+    redact_query(&message, error.url())
+}
+
+/// Takes the query string out of the URL `reqwest` prints.
+///
+/// A conversion bundle is fetched from a pre-signed storage URL, and the
+/// signature in its query string *is* the credential: anyone holding that
+/// string can fetch the object until it expires. `reqwest` renders a transport
+/// failure as "error sending request for url (<the whole URL>)", so any
+/// failure on that download — a reset, a proxy, a timeout — printed
+/// `X-Amz-Signature` on the terminal. `listen` then posted the same text back
+/// to the archive as the command's failure reason, so it also came to rest in
+/// the machine's command record.
+///
+/// The host and path stay, because they are the diagnosis; only the part that
+/// is a secret goes.
+fn redact_query(message: &str, url: Option<&reqwest::Url>) -> String {
+    let Some(url) = url.filter(|url| url.query().is_some()) else {
+        return message.to_owned();
+    };
+    let mut redacted = url.clone();
+    redacted.set_query(Some("<redacted>"));
+    message.replace(url.as_str(), redacted.as_str())
 }
 
 /// What to say when the archive refuses a request.

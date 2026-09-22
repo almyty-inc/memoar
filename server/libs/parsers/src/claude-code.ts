@@ -67,11 +67,37 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     let blockOrdinal = 0;
     const mintBlock = () => incrementUuid(request.seed.id, 0x8000000 + (blockOrdinal += 1));
 
+    /*
+      A uuid a transcript uses twice must still become two turns.
+
+      The turn id is derived from the record's uuid, so two records carrying one
+      uuid produced two turns with one id — and their blocks then collided on
+      the unique key over (tenant, turn, ordinal), failing the whole save.
+      Seventeen artifacts in the dev archive, 200 MB, died exactly there:
+      `duplicate key value violates unique constraint
+      "content_blocks_tenantId_turnId_ordinal_key"`, losing every turn in the
+      session over a repeat somewhere inside it.
+
+      Repeats are not corruption. A record can be rewritten as a conversation
+      goes on, and subagent transcripts — which are collected now, and were not
+      before — reuse ids from the session that spawned them. So the later
+      occurrence is given a distinct id rather than dropped: losing a turn is
+      the worse answer, and the whole point of reading these files is to keep
+      what is in them.
+
+      The first occurrence keeps the derived id, so a `parentUuid` naming it
+      still resolves to it, which is the right reading — a parent link means the
+      original.
+    */
+    const usedTurnIds = new Set<string>();
     const turns: Turn[] = records.map((record, ordinal) => {
       const message = record.message as Record<string, unknown>;
       // Claude Code writes real uuids, so this normally returns exactly what
       // the transcript said. It is here for the transcript that does not.
-      const id = turnId(stringValue(record, "uuid")!, request.seed.id);
+      const derived = turnId(stringValue(record, "uuid")!, request.seed.id);
+      let id = derived;
+      for (let attempt = 1; usedTurnIds.has(id); attempt += 1) id = incrementUuid(derived, attempt);
+      usedTurnIds.add(id);
       const roleValue = stringValue(message, "role") ?? stringValue(record, "type") ?? "user";
       const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
       const content = message.content;

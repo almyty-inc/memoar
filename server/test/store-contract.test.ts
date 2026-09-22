@@ -400,6 +400,39 @@ for (const implementation of implementations) {
       cause, sending the reader after a database bug instead of a capture
       pattern collecting the wrong files.
     */
+    /*
+      A transcript that leaked a credential on thousands of lines.
+
+      The scanner writes one annotation per finding, and the store wrote them
+      as a single statement "whatever the count". Two ceilings sat under that:
+      Postgres refuses more than 65535 bind parameters in one statement, which
+      these seven-column rows hit at about nine thousand, and below that
+      TypeORM builds the statement by spreading the parameter array, which
+      throws `Maximum call stack size exceeded` — not a depth problem, and not
+      something a bigger stack fixes.
+
+      It did not fail as "could not save the findings". It failed the whole
+      parse: seven artifacts, 470 MB of real transcripts, recorded as
+      `parse failed: Maximum call stack size exceeded`, losing the session, its
+      turns and its blocks over the annotation write that came after them.
+
+      10_000 is deliberately past the parameter ceiling, so a store that writes
+      them in one statement cannot pass this by being lucky.
+    */
+    it("writes more findings than one statement can carry", async () => {
+      const store = implementation.create();
+      await store.saveSession(alice, TEST_SESSION);
+      const findings = Array.from({ length: 10_000 }, (_, index) => ({
+        kind: "api_key", start: index * 10, end: index * 10 + 8, preview: "sk-…", basis: "artifact",
+      }));
+
+      const written = await store.replaceAnnotations(alice, TEST_SESSION.id, "redaction_mask", findings, "scanner");
+      expect(written.length, "every finding must be stored, not as many as fit in one statement").toBe(10_000);
+
+      const read = await store.listAnnotations(alice, TEST_SESSION.id);
+      expect(read.filter((row) => row.kind === "redaction_mask").length).toBe(10_000);
+    });
+
     it("names the commonest reason an artifact went unread, in both stores", async () => {
       const store = implementation.create();
       const unread = (sha: string, diagnostic: string) => ({

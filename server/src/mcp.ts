@@ -8,6 +8,7 @@ import { CONTRACT_VERSION } from "../libs/canonical/src/generated.js";
 import type { TenantContext } from "./archive-store.js";
 import { Tenant } from "./auth.js";
 import { McpToolRegistry } from "./mcp/registry.js";
+import { toolErrorText } from "./mcp/tool-error.js";
 
 function requestIdOf(body: unknown): string | number | null {
   if (typeof body === "object" && body !== null && !Array.isArray(body)) {
@@ -75,7 +76,10 @@ export class McpService {
         return { content: [{ type: "text" as const, text: JSON.stringify(result) }], structuredContent: result, isError: false };
       } catch (error) {
         return {
-          content: [{ type: "text" as const, text: error instanceof Error ? error.message : "tool_failed" }],
+          // Not `error.message`: a problem-details refusal carries its reason
+          // in `code` and `detail`, and `message` is the exception class name.
+          // See `toolErrorText`.
+          content: [{ type: "text" as const, text: toolErrorText(error) }],
           isError: true,
         };
       }
