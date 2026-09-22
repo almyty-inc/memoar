@@ -26,7 +26,7 @@ For CLI-only environments, use the matching `memoar search`, `memoar view`, and 
 
 ## Curate after work
 
-Call `save_note` after a significant result that will matter in later sessions. Save decisions, working solutions, environment constraints, and project conventions. Link the note to the source session and exact turn span. Keep temporary debugging observations out of durable memory.
+Call `save_note` after a significant result that will matter in later sessions. Save decisions, working solutions, environment constraints, and project conventions. It takes `sessionId`, `markdown` and an optional `topic` — there is no turn-span argument, so cite the turns inside the markdown. To attach a note to one turn or block instead, use `add_annotation` with its `turnId` or `blockId`. Keep temporary debugging observations out of durable memory.
 
 ## Avoid common retrieval mistakes
 

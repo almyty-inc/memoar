@@ -15,38 +15,39 @@ import {
 import { pageSize, toolNames, type McpToolGroup } from "./tool-group.js";
 
 const DEFAULT_COLLECTION_LIMIT = 50;
+const DEFAULT_SEARCH_LIMIT = 10;
 
 export const CORE_TOOLS: readonly Tool[] = [
   {
     name: "search_sessions",
-    description: "Start here. Search summaries across the archive, optionally narrowed by agent, workspace or date. Results are fields-minimal and cheaper than reading a session.",
+    description: `Start here. Search summaries across the archive, optionally narrowed by agent, workspace or date. Results are fields-minimal and cheaper than reading a session. Ranked, not paged: it returns at most limit matches (default ${DEFAULT_SEARCH_LIMIT}, maximum 50) and there is no cursor, so when truncated is true there are matches you have not seen — narrow with the filters or raise limit.`,
     inputSchema: {
       type: "object",
       required: ["query"],
       properties: {
         query: { type: "string", maxLength: 1_000 },
         mode: { enum: ["hybrid", "lexical", "semantic"] },
-        limit: { type: "integer", minimum: 1, maximum: 50 },
+        limit: { type: "integer", minimum: 1, maximum: 50, description: `Default ${DEFAULT_SEARCH_LIMIT}.` },
         agent: { type: "string", maxLength: 100, description: "Capture tool, e.g. claude-code or codex. From list_sessions or the aggregations this tool returns." },
         workspace: { type: "string", maxLength: 4_096, description: "Exact workspace path." },
         from: { type: "string", format: "date-time" },
         to: { type: "string", format: "date-time" },
-        teamId: { type: "string", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
+        teamId: { type: "string", format: "uuid", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
       },
     },
   },
   {
     name: "get_excerpt",
-    description: "Read a bounded turn span after search. Prefer this before pack when one session is enough.",
+    description: "Read a bounded turn span after search. Prefer this before pack when one session is enough. The returned turnEnd is the last turn whose text fit in maxChars, which is earlier than the one asked for when truncated is true. A span that selects no turn is an error naming the session's turn count, never an empty excerpt.",
     inputSchema: {
       type: "object",
       required: ["sessionId", "turnStart", "turnEnd"],
       properties: {
-        sessionId: { type: "string" },
+        sessionId: { type: "string", format: "uuid" },
         turnStart: { type: "integer", minimum: 0 },
-        turnEnd: { type: "integer", minimum: 0 },
+        turnEnd: { type: "integer", minimum: 0, description: "Inclusive, and not below turnStart." },
         maxChars: { type: "integer", minimum: 200, maximum: 20_000 },
-        teamId: { type: "string", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
+        teamId: { type: "string", format: "uuid", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
       },
     },
   },
@@ -74,10 +75,10 @@ export const CORE_TOOLS: readonly Tool[] = [
       type: "object",
       required: ["sessionId"],
       properties: {
-        sessionId: { type: "string" },
+        sessionId: { type: "string", format: "uuid" },
         cursor: { type: "string", maxLength: 200 },
         chunkSize: { type: "integer", minimum: 1, maximum: 200 },
-        teamId: { type: "string", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
+        teamId: { type: "string", format: "uuid", description: "A team you belong to. Present, this reads that team's shared archive — teammates' sessions widened to it — instead of your own." },
       },
     },
   },
@@ -97,7 +98,7 @@ export const CORE_TOOLS: readonly Tool[] = [
     inputSchema: {
       type: "object",
       required: ["sessionId", "markdown"],
-      properties: { sessionId: { type: "string" }, markdown: { type: "string", maxLength: 20_000 }, topic: { type: "string", maxLength: 200 } },
+      properties: { sessionId: { type: "string", format: "uuid" }, markdown: { type: "string", maxLength: 20_000 }, topic: { type: "string", maxLength: 200 } },
     },
   },
 ] as const;
@@ -150,15 +151,17 @@ export class McpCoreTools implements McpToolGroup {
    */
   private async searchSessions(context: TenantContext, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const request = parseToolArguments(SearchSessionsDto, args);
-    const limit = request.limit ?? 10;
+    const limit = request.limit ?? DEFAULT_SEARCH_LIMIT;
     const filters = {
       ...(request.agent ? { agent: request.agent } : {}),
       ...(request.workspace ? { workspace: request.workspace } : {}),
       ...(request.from ? { from: new Date(request.from) } : {}),
       ...(request.to ? { to: new Date(request.to) } : {}),
     };
-    if (request.teamId) return this.workspace.searchTeam(context, request.teamId, request.query, request.mode ?? "hybrid", filters, limit);
-    return this.search.response(context, request.query, request.mode ?? "hybrid", filters, limit);
+    const body = request.teamId
+      ? await this.workspace.searchTeam(context, request.teamId, request.query, request.mode ?? "hybrid", filters, limit)
+      : await this.search.response(context, request.query, request.mode ?? "hybrid", filters, limit);
+    return searchPage(body, limit);
   }
 
   private async excerpt(context: TenantContext, args: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -171,15 +174,39 @@ export class McpCoreTools implements McpToolGroup {
     if (!session) throw new Error("session_not_found");
     const maximum = request.maxChars ?? 4_000;
     const turns = session.turns.filter((turn) => turn.ordinal >= request.turnStart && turn.ordinal <= request.turnEnd);
-    const excerpt = turns
-      .map((turn) => `[${turn.role} ${turn.ordinal}] ${turn.blocks.map((block) => block.text ?? "").join("\n")}`)
-      .join("\n");
+    /*
+      A span that selects no turn is a wrong question, not a blank answer.
+
+      Nothing refused `turnStart: 40, turnEnd: 20`, and nothing refused turns
+      20-40 of a twelve-turn session. Both filtered to `[]`, and both came back
+      as `{ turnStart: 40, turnEnd: 20, excerpt: "", truncated: false }` —
+      which a model reads as "that part of the session is empty" and quotes as
+      an absence. The count of turns the session actually has is the one fact
+      that lets the caller fix the call, so the refusal carries it.
+    */
+    if (turns.length === 0) {
+      throw new Error(
+        `empty_turn_span: session ${session.id} has ${session.turns.length} turns `
+        + `(ordinals ${session.turns[0]?.ordinal ?? 0}-${session.turns.at(-1)?.ordinal ?? 0}); `
+        + `turnStart ${request.turnStart} to turnEnd ${request.turnEnd} selected none`,
+      );
+    }
+    const pieces = turns.map((turn) => `[${turn.role} ${turn.ordinal}] ${turn.blocks.map((block) => block.text ?? "").join("\n")}`);
+    const full = pieces.join("\n");
+    const excerpt = full.slice(0, maximum);
+    const truncated = full.length > maximum;
     return {
       sessionId: session.id,
-      turnStart: turns[0]?.ordinal ?? request.turnStart,
-      turnEnd: turns.at(-1)?.ordinal ?? request.turnEnd,
-      excerpt: excerpt.slice(0, maximum),
-      truncated: excerpt.length > maximum,
+      turnStart: turns[0]!.ordinal,
+      // The last turn whose text actually survived the budget, not the last one
+      // asked for. `PackService` learned this and cites `citedTurnEnd`; this
+      // tool kept reporting the requested end beside a cut excerpt, so an agent
+      // handed `turns 0-40, truncated: true` believed it had read to turn 40.
+      turnEnd: turns[lastKeptIndex(pieces, excerpt.length)]!.ordinal,
+      requestedTurnEnd: turns.at(-1)!.ordinal,
+      turnCount: session.turns.length,
+      excerpt,
+      truncated,
       redactionStatus: session.redactionStatus,
     };
   }
@@ -221,4 +248,38 @@ export class McpCoreTools implements McpToolGroup {
     });
     return { annotation };
   }
+}
+
+/** The index of the last piece that begins inside the first `kept` characters. */
+function lastKeptIndex(pieces: readonly string[], kept: number): number {
+  let offset = 0;
+  let last = 0;
+  for (const [index, piece] of pieces.entries()) {
+    if (offset >= kept) break;
+    last = index;
+    offset += piece.length + 1;
+  }
+  return last;
+}
+
+/**
+ * The search body, with its truncation stated instead of denied.
+ *
+ * `searchResponseBody` sends `nextCursor: null` because `/search` ranks and
+ * does not page — but on this surface `nextCursor: null` is a sentence, and
+ * every other tool here uses it to mean "that was the last of them".
+ * `list_sessions` and `get_session` both do. So a model asking
+ * `search_sessions` a bare question got ten rows out of four hundred matches
+ * and, beside them, an assertion that there were no more: the one shape this
+ * tool must never produce, because nothing downstream can notice it is wrong.
+ *
+ * There is no cursor to offer, so none is claimed. What can be said honestly is
+ * how many were asked for and whether the answer filled that bound — a full
+ * page means the ranking was cut, and the model is told to narrow or ask for
+ * more rather than to conclude it has seen the archive.
+ */
+function searchPage(body: Record<string, unknown>, limit: number): Record<string, unknown> {
+  const rest = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "nextCursor"));
+  const items = Array.isArray(body.items) ? body.items : [];
+  return { ...rest, limit, returned: items.length, truncated: items.length >= limit };
 }

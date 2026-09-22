@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TenantContext } from "../archive-store.js";
 import { requireReviewed } from "../memory/memory-redaction.js";
-import { currentText } from "../memory/memory-revisions.js";
+import { currentRevision } from "../memory/memory-revisions.js";
 import { MEMORY_SCOPES } from "../memory/memory.dto.js";
 import { MemoryService } from "../memory/memory.service.js";
 import { parseToolArguments } from "./arguments.js";
@@ -28,7 +28,7 @@ export const MEMORY_TOOLS: readonly Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        machineId: { type: "string", description: "Only files captured on this machine." },
+        machineId: { type: "string", format: "uuid", description: "Only files captured on this machine." },
         scope: { enum: [...MEMORY_SCOPES], description: "global for a user-wide file, project for one inside a workspace." },
         workspacePath: { type: "string", maxLength: 4096, description: "Exact workspace the file belongs to." },
         pathPattern: { type: "string", maxLength: 200, description: "Glob over the file name or full path, e.g. CLAUDE.md or /workspace/*/AGENTS.md." },
@@ -44,7 +44,7 @@ export const MEMORY_TOOLS: readonly Tool[] = [
       type: "object",
       required: ["documentId"],
       properties: {
-        documentId: { type: "string", description: "Document id from list_memory_documents." },
+        documentId: { type: "string", format: "uuid", description: "Document id from list_memory_documents." },
         maxChars: { type: "integer", minimum: 200, maximum: 200_000, description: `Characters of current text to return, default ${DEFAULT_MAX_CHARS}.` },
         maxRevisions: { type: "integer", minimum: 1, maximum: 50, description: `Revisions of history to return, newest first, default ${DEFAULT_MAX_REVISIONS}.` },
       },
@@ -103,14 +103,21 @@ export class McpMemoryTools implements McpToolGroup {
     requireReviewed(document);
     const maxChars = request.maxChars ?? DEFAULT_MAX_CHARS;
     // The current text is the revision the document points at, not the newest
-    // one — see `currentText`, which conversion reads through as well.
-    const text = currentText(document, revisions);
+    // one — see `currentRevision`, which conversion reads through as well.
+    const revision = currentRevision(document, revisions);
+    const text = revision?.text ?? "";
     return {
       document,
       content: {
         text: text.slice(0, maxChars),
         truncated: text.length > maxChars,
-        contentHash: document.contentHash,
+        // The hash of the revision that is actually here, not the document's.
+        // They agree whenever the document's own revision still exists, and
+        // when it does not `currentRevision` falls back to the newest — which
+        // reported one version's text under another version's hash, the exact
+        // pairing `memory-revisions.ts` exists to stop.
+        contentHash: revision?.contentHash ?? document.contentHash,
+        ...(revision ? { revisionId: revision.id } : {}),
         capturedAt: document.capturedAt,
       },
       // The history is metadata only: a document with fifty revisions of a long

@@ -9,6 +9,18 @@ import { toolNames, type McpToolGroup } from "./tool-group.js";
 const DEFAULT_MAX_CHARS = 20_000;
 
 /**
+ * How many of a workspace's sessions `DistillationService.exportProjectMemory`
+ * reads notes from — a literal `limit: 100` in that service, with no cursor and
+ * no count of what it did not look at.
+ *
+ * Restated here because the description is what a model chooses this tool by,
+ * and "the distilled notes for one workspace" is a completeness claim the
+ * implementation does not make good on. Named rather than inlined so the two
+ * are visibly the same number; if that service ever pages, this goes away.
+ */
+const EXPORT_SESSION_WINDOW = 100;
+
+/**
  * The distilled project memory for a workspace, as an agent would paste it.
  *
  * This is the one distillation capability on MCP. Running distillation spends
@@ -21,7 +33,7 @@ const DEFAULT_MAX_CHARS = 20_000;
 export const PROJECT_MEMORY_TOOLS: readonly Tool[] = [
   {
     name: "export_project_memory",
-    description: "Render the distilled notes for one workspace as CLAUDE.md- or AGENTS.md-style markdown, each note cited to its source session and turn span. Reads existing notes; it does not run distillation.",
+    description: `Render the distilled notes for one workspace as CLAUDE.md- or AGENTS.md-style markdown, each note cited to its source session and turn span. Reads existing notes; it does not run distillation. It gathers notes from the ${EXPORT_SESSION_WINDOW} most recent sessions of the workspace, so on an older workspace this is recent project memory rather than all of it, and noteCount counts what that window held.`,
     inputSchema: {
       type: "object",
       required: ["workspace"],

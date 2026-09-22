@@ -31,7 +31,7 @@ export const ARCHIVE_TOOLS: readonly Tool[] = [
         cursor: { type: "string", maxLength: 200, description: "nextCursor from a previous call." },
         agent: { type: "string", maxLength: 100, description: "Capture tool, e.g. claude-code or codex." },
         workspace: { type: "string", maxLength: 4_096, description: "Exact workspace path." },
-        machineId: { type: "string", description: "Machine id from list_machines." },
+        machineId: { type: "string", format: "uuid", description: "Machine id from list_machines." },
         model: { type: "string", maxLength: 200 },
         from: { type: "string", format: "date-time" },
         to: { type: "string", format: "date-time" },
