@@ -419,6 +419,45 @@ for (const implementation of implementations) {
       10_000 is deliberately past the parameter ceiling, so a store that writes
       them in one statement cannot pass this by being lucky.
     */
+    /*
+      A transcript that recorded a NUL.
+
+      Postgres will not store U+0000 in a text column or in jsonb, and the
+      refusal — `unsupported Unicode escape sequence` — fails the statement, so
+      it failed the save. Three real transcripts, 253 MB between them, died
+      exactly there after clearing every other fix on this branch. A tool that
+      prints a binary file puts a NUL in its output, and the transcript records
+      the output faithfully, so one stray byte in one tool result lost every
+      turn in the session.
+
+      The NUL goes into block text and into jsonb data both, because those are
+      two different columns and a fix that cleaned one would pass a test that
+      only tried it.
+    */
+    it("saves a session whose content carries a NUL", async () => {
+      const store = implementation.create();
+      const nul = String.fromCharCode(0);
+      const session = structuredClone(TEST_SESSION);
+      session.id = "0191cafe-0000-7000-8000-0000000c00aa";
+      session.turns = session.turns.map((turn) => ({
+        ...turn,
+        id: turn.id.replace(/.$/u, "a"),
+        blocks: turn.blocks.map((block) => ({
+          ...block,
+          id: block.id.replace(/.$/u, "a"),
+          text: `binary output: ${nul}${nul}after`,
+          data: { stdout: `bytes ${nul} here` },
+        })),
+      }));
+
+      await store.saveSession(alice, session);
+      const read = await store.getSession(alice, session.id);
+      expect(read, "a NUL in one tool result must not lose the session").not.toBeNull();
+      const text = read!.turns[0]!.blocks[0]!.text ?? "";
+      expect(text, "the rest of the text survives").toContain("after");
+      expect(text.includes(nul), "and the NUL itself is gone").toBe(false);
+    });
+
     it("writes more findings than one statement can carry", async () => {
       const store = implementation.create();
       await store.saveSession(alice, TEST_SESSION);
