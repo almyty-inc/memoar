@@ -99,3 +99,47 @@ fn a_transport_failure_says_why() {
         error.message
     );
 }
+
+/// A pre-signed URL is a bearer credential, and it must not survive into an
+/// error message.
+///
+/// `listen` downloads a materialize command's bundle from a pre-signed storage
+/// URL, whose query string carries `X-Amz-Signature` — anyone holding that
+/// string can fetch the object. `reqwest` renders a transport failure as
+/// "error sending request for url (<the whole URL>)", so any failure on that
+/// download — a reset, a timeout, a proxy — put the signature on the terminal,
+/// and `listen` then sent the same text to the archive as the command's
+/// failure reason, where it sat in the machine's command record.
+#[test]
+fn a_presigned_url_is_not_printed_when_its_download_fails() {
+    let anonymous = ApiClient::new("", None);
+    let signed = "http://127.0.0.1:1/bundle.json\
+                  ?X-Amz-Credential=AKIAEXAMPLE%2F20260922%2Fus-east-1\
+                  &X-Amz-Signature=8badf00ddeadbeefcafe";
+
+    let error = anonymous
+        .send_bytes(anonymous.client.get(signed))
+        .expect_err("nothing is listening on port 1");
+
+    assert!(
+        !error.message.contains("8badf00ddeadbeefcafe"),
+        "the signature reached the operator: {}",
+        error.message
+    );
+    assert!(
+        !error.message.contains("AKIAEXAMPLE"),
+        "and so did the key id: {}",
+        error.message
+    );
+    // Still diagnosable: which host, and what went wrong.
+    assert!(
+        error.message.contains("127.0.0.1:1") && error.message.contains("bundle.json"),
+        "redaction must not cost the diagnosis: {}",
+        error.message
+    );
+    assert!(
+        error.message.to_lowercase().contains("refused"),
+        "nor the reason: {}",
+        error.message
+    );
+}

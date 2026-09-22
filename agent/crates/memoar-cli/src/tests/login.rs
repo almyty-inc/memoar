@@ -6,9 +6,9 @@ use super::mock::{INSTALLATION_ID, MACHINE_ID, RETIRED_MACHINE_ID, fixture_paths
 use crate::args::LoginArgs;
 use crate::config::{Config, load_config, load_credential, save_config};
 use crate::credential::{CAPTURE_SCOPES, Credential};
+use crate::doctor::doctor;
 use crate::login::login;
 use crate::machine::resolve_machine_name;
-use crate::status::doctor;
 
 fn login_args(endpoint: &str) -> LoginArgs {
     LoginArgs {
@@ -40,7 +40,9 @@ fn registrations(requests: &[super::mock::RecordedRequest]) -> Vec<&super::mock:
 /// is `x-memoar-key`, not the bearer.
 #[test]
 fn login_trades_the_hour_long_token_for_a_capture_key() {
-    let (endpoint, requests, server) = spawn_mock_api(7, None);
+    // One more than `login` needs: `doctor` below now also asks the archive
+    // about unparsed artifacts instead of assuming the answer.
+    let (endpoint, requests, server) = spawn_mock_api(8, None);
     let temp = tempfile::tempdir().unwrap();
     let paths = fixture_paths(&temp);
     fs::create_dir_all(&paths.home).unwrap();

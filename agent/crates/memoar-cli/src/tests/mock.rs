@@ -188,6 +188,11 @@ pub(crate) fn spawn_mock(
                     200,
                     json!({"document": {"id": MACHINE_ID}, "revision": {"id": MACHINE_ID}}),
                 ),
+                // An archive that parsed everything it was sent. Serving this
+                // is what makes a healthy archive distinguishable from one
+                // that never answered — `doctor` used to report the same
+                // green for both.
+                ("GET", "/v1/ingest/unparsed") => (200, json!({"items": []})),
                 ("POST", "/v1/pack") => (202, json!({"id": "pack-job"})),
                 ("POST", "/v1/convert") => (
                     202,

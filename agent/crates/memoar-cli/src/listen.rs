@@ -57,16 +57,28 @@ pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandO
         (args.idle_timeout_seconds > 0).then(|| Duration::from_secs(args.idle_timeout_seconds));
     let mut idle_deadline = idle_window.map(|window| Instant::now() + window);
 
+    // Why the loop ended, so the report says it rather than leaving the reader
+    // to infer it from a count. A transport failure is still a failure — see
+    // the exit below — but the commands already applied are reported either
+    // way: they were acked, they wrote files, and a listener that says nothing
+    // about them leaves the operator with no local record of what changed.
+    let stopped;
     loop {
         if let Some(deadline) = idle_deadline {
             if Instant::now() >= deadline {
+                stopped = Stop::idle(args.idle_timeout_seconds);
                 break;
             }
         }
-        let read = stream
-            .read(&mut chunk)
-            .map_err(|error| AppError::network(format!("command stream ended: {error}")))?;
+        let read = match stream.read(&mut chunk) {
+            Ok(read) => read,
+            Err(error) => {
+                stopped = Stop::failed(format!("command stream ended: {error}"));
+                break;
+            }
+        };
         if read == 0 {
+            stopped = Stop::ok("the archive closed the command stream");
             break;
         }
         let text = String::from_utf8_lossy(&chunk[..read]).into_owned();
@@ -74,35 +86,111 @@ pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandO
             if event.event != "command" {
                 continue;
             }
-            let command: Value = serde_json::from_str(&event.data)
-                .map_err(|error| AppError::network(format!("invalid command payload: {error}")))?;
-            handled.push(apply_command(&machine_api, &config, paths, &command)?);
+            // A frame this client cannot parse is a fact about that frame. It
+            // was propagated, which ended the listener: one malformed payload
+            // from the archive and the machine went deaf to every command
+            // after it — the same defect already fixed one layer down, left
+            // standing here.
+            let command: Value = match serde_json::from_str(&event.data) {
+                Ok(command) => command,
+                Err(error) => {
+                    handled.push(json!({
+                        "status": "failed",
+                        "error": format!("command payload was not JSON: {error}"),
+                    }));
+                    continue;
+                }
+            };
+            handled.push(apply_command(&machine_api, &config, paths, &command));
             idle_deadline = idle_window.map(|window| Instant::now() + window);
             if args.max_commands > 0 && handled.len() >= args.max_commands {
-                return Ok(CommandOutput {
-                    command: "listen".to_owned(),
-                    data: json!({ "handled": handled }),
-                });
+                return Ok(listened(handled, Stop::ok("--max-commands reached")));
             }
         }
     }
-    Ok(CommandOutput {
+    if let Some(failure) = stopped.failure {
+        // Non-zero, because a listener that stopped listening has failed even
+        // if it did useful work first, and a wrapper that restarts it depends
+        // on hearing so. The record of the work goes with the error.
+        return Err(AppError::network(format!(
+            "{failure} (applied {} command(s) before it did)",
+            handled.len()
+        )));
+    }
+    Ok(listened(handled, stopped))
+}
+
+/// Why the listener stopped.
+struct Stop {
+    reason: String,
+    /// Set when stopping was itself the failure, rather than the window
+    /// closing or the archive hanging up politely.
+    failure: Option<String>,
+}
+
+impl Stop {
+    fn ok(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            failure: None,
+        }
+    }
+
+    fn idle(seconds: u64) -> Self {
+        Self::ok(format!("no command arrived for {seconds}s"))
+    }
+
+    fn failed(reason: impl Into<String>) -> Self {
+        let reason = reason.into();
+        Self {
+            failure: Some(reason.clone()),
+            reason,
+        }
+    }
+}
+
+fn listened(handled: Vec<Value>, stopped: Stop) -> CommandOutput {
+    CommandOutput {
         command: "listen".to_owned(),
-        data: json!({ "handled": handled }),
-    })
+        data: json!({
+            "handled": handled,
+            // Counted, not derived from the length of anything else: a
+            // listener is judged on how many commands it actually applied.
+            "applied": handled
+                .iter()
+                .filter(|entry| entry.get("status") != Some(&json!("failed")))
+                .count(),
+            "failed": handled
+                .iter()
+                .filter(|entry| entry.get("status") == Some(&json!("failed")))
+                .count(),
+            "stoppedBecause": stopped.reason,
+        }),
+    }
 }
 
 /// Applies one server command and acknowledges its outcome.
+///
+/// Never fails: every outcome, including one this client could not even read,
+/// comes back as an entry in the report. Nothing about one command is a reason
+/// to stop applying the next.
 fn apply_command(
     machine_api: &ApiClient,
     config: &Config,
     paths: &RuntimePaths,
     command: &Value,
-) -> Result<Value, AppError> {
-    let command_id = command
-        .get("id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| AppError::network("command did not include an id"))?;
+) -> Value {
+    // An id-less command cannot be acked — there is no acknowledgement URL to
+    // ack it at — but it is still only one command. Propagating it closed the
+    // channel, so a single malformed row in the archive's command table made a
+    // machine deaf to everything queued behind it.
+    let Some(command_id) = command.get("id").and_then(Value::as_str) else {
+        return json!({
+            "status": "failed",
+            "error": "command did not include an id, so it could not be acknowledged",
+            "kind": command.get("kind").and_then(Value::as_str).unwrap_or_default(),
+        });
+    };
     let kind = command
         .get("kind")
         .and_then(Value::as_str)
@@ -120,25 +208,33 @@ fn apply_command(
         Ok(_) => json!({ "status": "completed" }),
         Err(error) => json!({ "status": "failed", "error": error.message.clone() }),
     };
-    machine_api.post(
+    // A refused ack is reported, not fatal. The work is already done on this
+    // machine; the server will replay the command, and materialization is
+    // no-clobber, so a replay is cheap. Ending the listener over it is not.
+    let acked = machine_api.post(
         &format!("/machines/{}/commands/{command_id}/ack", config.machine_id),
         &ack,
-    )?;
+    );
 
     // A command this machine cannot apply is a fact about that command, not a
     // reason to stop listening. It was acked as failed — which is what tells an
     // operator why — and then returned as an error, which ended the listener.
     // One unsupported kind, or one bundle that would not materialize, and the
     // machine went deaf to every command after it.
-    match outcome {
-        Ok(result) => Ok(json!({ "id": command_id, "kind": kind, "result": result })),
-        Err(error) => Ok(json!({
+    let mut entry = match outcome {
+        Ok(result) => json!({ "id": command_id, "kind": kind, "result": result }),
+        Err(error) => json!({
             "id": command_id,
             "kind": kind,
             "status": "failed",
             "error": error.message,
-        })),
+        }),
+    };
+    if let Err(error) = acked {
+        entry["acknowledged"] = json!(false);
+        entry["acknowledgementError"] = json!(error.message);
     }
+    entry
 }
 
 /// Downloads the pre-signed bundle named by a materialize command and writes it
