@@ -95,6 +95,16 @@ function isZipBytes(bytes: Uint8Array): boolean {
   return bytes.byteLength >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 }
 
+/**
+ * The most findings one artifact can contribute.
+ *
+ * Each one becomes an annotation row and a line in somebody's redaction review,
+ * so this is a bound on a human queue rather than on memory. Ten thousand is
+ * far past any real transcript and still an order of magnitude under the count
+ * that broke the scanner.
+ */
+const MAX_SECRET_FINDINGS = 10_000;
+
 export class SecretScanner {
   /**
    * @param patterns what this tenant asked to be scanned for. Defaults to the
@@ -106,13 +116,38 @@ export class SecretScanner {
     return this.scanText(Buffer.from(bytes).toString("utf8"), patterns);
   }
 
+  /**
+   * Walked, not spread, and bounded.
+   *
+   * This was `[...text.matchAll(expression)]`. Spreading an iterator into an
+   * array literal is built on the stack in V8, so a transcript with enough
+   * matches threw `RangeError: Maximum call stack size exceeded` — inside the
+   * scanner, which runs before the session is saved, so the whole parse failed
+   * and every turn was lost. Seven artifacts in the dev archive, 470 MB of real
+   * transcripts, died there; the stack said
+   * `at RegExpStringIterator.next … at SecretScanner.scanText`.
+   *
+   * The bound is the second half of it. A 116 MB transcript can hold hundreds
+   * of thousands of matches, and a person reviewing a hundred thousand
+   * "findings" is not reviewing anything — the list stops being a review queue
+   * and becomes a way to lose the session that produced it. Past the cap the
+   * scan stops and says so, which is a true statement about a file that is
+   * saturated with matches rather than a silent truncation.
+   */
   private scanText(text: string, patterns: readonly SecretPattern[], previewPrefix = ""): SecretFinding[] {
-    return patterns.flatMap(({ kind, expression }) => [...text.matchAll(expression)].map((match) => ({
-      kind,
-      start: match.index,
-      end: match.index + match[0].length,
-      preview: `${previewPrefix}${match[0].slice(0, 4)}…${match[0].slice(-4)}`,
-    })));
+    const findings: SecretFinding[] = [];
+    for (const { kind, expression } of patterns) {
+      for (const match of text.matchAll(expression)) {
+        if (findings.length >= MAX_SECRET_FINDINGS) return findings;
+        findings.push({
+          kind,
+          start: match.index,
+          end: match.index + match[0].length,
+          preview: `${previewPrefix}${match[0].slice(0, 4)}…${match[0].slice(-4)}`,
+        });
+      }
+    }
+    return findings;
   }
 
   /**
