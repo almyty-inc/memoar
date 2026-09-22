@@ -63,8 +63,18 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
         }
     };
     if config.secrets {
+        // The body is bounded, matching the archive's copy of this rule.
+        //
+        // An unmatched header is the common case: a transcript that merely
+        // mentions `-----BEGIN RSA PRIVATE KEY-----` has no closing line, so an
+        // unbounded `.*?` scans to the end of the file. This engine is
+        // linear-time and will not blow up over it the way the archive's did —
+        // one 30 MB artifact there carried the header twice, the END line zero
+        // times, and threw — but the two halves should describe a private key
+        // the same way, and neither needs to walk a whole transcript to decide
+        // there is not one. 8000 is far past a 4096-bit key's ~3.2 kB body.
         apply(
-            r"(?is)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+            r"(?is)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.{1,8000}?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
             "[REDACTED_PRIVATE_KEY]",
         );
         apply(
