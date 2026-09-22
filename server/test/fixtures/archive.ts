@@ -7,7 +7,7 @@
  * it in an archive is a test that asked for it.
  */
 
-import type { ArchiveStore, ArchivedSession, TenantContext } from "../../src/archive-store.js";
+import type { ArchiveStore, ArchivedSession, MachineStore, TenantContext } from "../../src/archive-store.js";
 
 export const TEST_CONTEXT: TenantContext = {
   tenantId: "0191cafe-0000-7000-8000-000000000002",
@@ -79,4 +79,29 @@ export const TEST_SESSION: ArchivedSession = {
 export async function seedTestSession(store: ArchiveStore): Promise<void> {
   const existing = await store.getSession(TEST_CONTEXT, TEST_SESSION.id);
   if (!existing) await store.saveSession(TEST_CONTEXT, TEST_SESSION);
+}
+
+/**
+ * A registered machine for the tests that file something under one.
+ *
+ * Capturing a memory file and queuing a materialize command both resolve the
+ * machine id they are handed, so a test that invents one is now testing the
+ * refusal. The fixture is a real row rather than a flag on the check: the
+ * alternative is a bypass that production could also take.
+ */
+export async function seedMachine(
+  store: MachineStore,
+  context: TenantContext,
+  id: string,
+  name = "fixture-machine",
+): Promise<void> {
+  await store.saveMachine(context, {
+    id,
+    tenantId: context.tenantId,
+    name,
+    platform: "darwin",
+    agentVersion: null,
+    sourceSettings: {},
+    lastSeenAt: null,
+  });
 }

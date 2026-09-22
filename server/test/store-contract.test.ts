@@ -6,6 +6,7 @@ import type { ArchiveStore, RawArtifactRecord, TenantContext } from "../src/arch
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
+import { sessionContentDigest } from "../src/store/review-digest.js";
 import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 const alice: TenantContext = TEST_CONTEXT;
@@ -251,6 +252,74 @@ for (const implementation of implementations) {
       });
     });
 
+    /*
+      Both stores must answer the same budget, because this number is what the
+      distiller turns into `maxTokens: min(4000, remainingCents * 400)`. Postgres
+      reads it back off the row it just charged; the memory store used to report
+      the budget as it stood *before* the reservation, so every test ran against
+      a wider ceiling than production ever had.
+    */
+    it("reports the budget left after the reservation, not before it", async () => {
+      const store = implementation.create();
+      await store.saveDistillationSettings(alice, {
+        ...defaultDistillationSettings(),
+        enabled: true, monthlyBudgetCents: 100, monthlySpentCents: 0, budgetWindowStartedAt: new Date().toISOString(),
+      });
+
+      expect(await store.reserveDistillationBudget(alice, 30)).toEqual({ reserved: true, remainingCents: 70 });
+      expect(await store.reserveDistillationBudget(alice, 30)).toEqual({ reserved: true, remainingCents: 40 });
+      // A refusal charges nothing, so it reports what is still there.
+      expect(await store.reserveDistillationBudget(alice, 50)).toEqual({ reserved: false, remainingCents: 40 });
+    });
+
+    /*
+      Retention deletes what retention covers, and nothing else.
+
+      `artifact_sessions` has no foreign key to `sessions`, and deleting a
+      session by hand leaves the join row behind. The Postgres sweep used to
+      remove any artifact whose joins all failed to resolve to a live session,
+      which is also true of an artifact one day old whose session someone just
+      deleted — so a 365-day policy destroyed it and counted it as retention's
+      doing. The bytes are kept deliberately, for a parser written later.
+    */
+    it("removes only the artifacts whose every session this sweep took", async () => {
+      const store = implementation.create();
+      const handDeleted = structuredClone(TEST_SESSION);
+      handDeleted.id = "0191cafe-0000-7000-8000-0000000c0011";
+      const stale = structuredClone(TEST_SESSION);
+      stale.id = "0191cafe-0000-7000-8000-0000000c0012";
+      stale.updatedAt = "2020-01-01T00:00:00.000Z";
+      const kept = structuredClone(TEST_SESSION);
+      kept.id = "0191cafe-0000-7000-8000-0000000c0013";
+      for (const session of [handDeleted, stale, kept]) await store.saveSession(alice, session);
+
+      const orphaned = "e".repeat(64);
+      const covered = "f".repeat(64);
+      const shared = "a".repeat(64);
+      for (const [sha, sessionIds] of [
+        [orphaned, [handDeleted.id]], [covered, [stale.id]], [shared, [stale.id, kept.id]],
+      ] as [string, string[]][]) {
+        await store.saveRawArtifact(alice, artifact(sha, []));
+        await store.updateRawArtifact(alice, artifact(sha, sessionIds));
+      }
+      // Somebody removes one session by hand. It is a day old; retention is
+      // nowhere near it.
+      expect(await store.deleteSession(alice, handDeleted.id)).toBe(true);
+
+      const result = await store.applyRetention(alice, "2021-01-01T00:00:00.000Z", true);
+      expect(result.deletedSessions).toBe(1);
+      expect(result.deletedArtifacts, "only the artifact whose only session aged out").toBe(1);
+
+      expect(await store.getRawArtifact(alice, covered)).toBeNull();
+      expect(
+        await store.getRawArtifact(alice, orphaned),
+        "a hand-deleted session does not make its artifact retention's to destroy",
+      ).not.toBeNull();
+      const survivor = await store.getRawArtifact(alice, shared);
+      expect(survivor, "an artifact with a session left is an artifact with bytes left").not.toBeNull();
+      expect(survivor!.sessionIds, "the aged-out half of the join goes with it").toEqual([kept.id]);
+    });
+
     it("enumerates tenants and applies retention with the collected exemption", async () => {
       const store = implementation.create();
       const stale = structuredClone(TEST_SESSION);
@@ -308,6 +377,92 @@ for (const implementation of implementations) {
 
       expect(await store.removeTeamMember(team.id, bob.userId)).toBe(true);
       expect(await store.removeTeamMember(team.id, bob.userId)).toBe(false);
+    });
+
+    /*
+      `getMachine` is an authorization check, not just a read: capturing a
+      memory file and queuing a materialize command both resolve the machine id
+      they were handed and refuse what does not come back. A store that answered
+      by id alone would hand one account another account's machine and turn both
+      checks into no-ops, so the scoping is pinned here, where both stores are
+      held to it rather than only the one the service tests happen to run on.
+    */
+    /*
+      The reason beside the count is the commonest one, not an arbitrary one.
+
+      This is the single line a person reads to learn why their capture is not
+      being read, and all three implementations of it disagreed: Postgres took
+      `max(diagnostic)`, which sorts alphabetically and has nothing to do with
+      how often a reason occurs, and the memory store took whichever row it
+      happened to read last. On the real archive that meant a five-row "session
+      persistence failed" was reported over the twelve-hundred-row "no parser
+      for claude-code@unknown" — the signal fired correctly and named the wrong
+      cause, sending the reader after a database bug instead of a capture
+      pattern collecting the wrong files.
+    */
+    it("names the commonest reason an artifact went unread, in both stores", async () => {
+      const store = implementation.create();
+      const unread = (sha: string, diagnostic: string) => ({
+        ...artifact(sha, []), status: "unknown_format" as const, diagnostic,
+      });
+      // The shas differ in their first five characters because `artifact()`
+      // builds the row id out of those; sharing them would collapse all four
+      // into one row and the count would prove nothing.
+      //
+      // The rare reason is written last and sorts last, so it is what both old
+      // implementations would have reported: Postgres by `max(diagnostic)`,
+      // which sorts, and the memory store by keeping whichever it read last.
+      // Writing it first would let the memory store pass by luck.
+      for (const sha of ["b0de0002", "c0de0003", "d0de0004"]) {
+        await store.saveRawArtifact(alice, unread(sha, "aaa common reason"));
+      }
+      await store.saveRawArtifact(alice, unread("a0de0001", "zzz rare reason"));
+
+      const [row] = await store.countUnparsedArtifactsBySource(alice);
+      expect(row?.artifacts, "every unread artifact counts, whatever its reason").toBe(4);
+      expect(
+        row?.diagnostic,
+        "the reason reported must be the one most artifacts actually gave",
+      ).toBe("aaa common reason");
+    });
+
+    it("resolves a machine only within the tenant that owns it", async () => {
+      const store = implementation.create();
+      const machineId = "0191cafe-0000-7000-8000-0000000c000e";
+      await store.saveMachine(alice, {
+        id: machineId, tenantId: alice.tenantId, name: `scoped-${implementation.name}`,
+        platform: "darwin", agentVersion: null, sourceSettings: {}, lastSeenAt: null,
+      });
+
+      expect((await store.getMachine(alice, machineId))?.id).toBe(machineId);
+      expect(await store.getMachine(bob, machineId), "bob must not resolve alice's machine").toBeNull();
+      expect(await store.getMachine(alice, "0191cafe-0000-7000-8000-0000000c000f")).toBeNull();
+    });
+
+    /*
+      The same check, through the other column that resolves a machine.
+      `findMachineByInstallation` takes a value the client invented, and two
+      accounts can invent the same one. Registering resolves through it, so a
+      store that answered by installation id alone would hand one account
+      another account's machine to enrol into — the hole `getMachine` closes
+      above, reopened beside it. Row-level security is not the backstop here:
+      the in-memory store has none, and the predicate has to be explicit.
+    */
+    it("resolves a machine by installation only within the tenant that owns it", async () => {
+      const store = implementation.create();
+      const installationId = `installation-${implementation.name}-shared`;
+      const machineId = "0191cafe-0000-7000-8000-0000000c001e";
+      await store.saveMachine(alice, {
+        id: machineId, tenantId: alice.tenantId, name: `installed-${implementation.name}`,
+        platform: "darwin", agentVersion: null, sourceSettings: {}, lastSeenAt: null, installationId,
+      });
+
+      expect((await store.findMachineByInstallation(alice, installationId))?.id).toBe(machineId);
+      expect(
+        await store.findMachineByInstallation(bob, installationId),
+        "bob must not resolve alice's machine by naming her installation",
+      ).toBeNull();
+      expect(await store.findMachineByInstallation(alice, "installation-nobody-has-this")).toBeNull();
     });
 
     it("queues, replays, and acknowledges machine commands", async () => {
@@ -378,6 +533,71 @@ for (const implementation of implementations) {
       expect(await store.getReview(alice, "0191cafe-0000-7000-8000-00000000dead")).toBeNull();
       // And it belongs to its tenant.
       expect(await store.getReview(bob, review.id)).toBeNull();
+    });
+
+    /*
+      A transfer is the one operation that deliberately writes one tenant's
+      content into another, so every guard on it is application code: RLS is
+      satisfied on both sides of the copy and has nothing to say about whether
+      the copy should happen at all.
+
+      Three things are pinned here, on both stores, because each was wrong on
+      one of them.
+
+       1. The recipient can see what they were offered. `transfers` is under RLS
+          and holds the sender's row only, so reading it by tenant answered half
+          the contract's "Incoming and outgoing transfers" — the half without
+          the Accept button. The in-memory store's single shared table hid it.
+       2. Accepting re-reads the sender's review against the session as it is
+          now. An offer sits until somebody acts on it and the transcript it
+          names keeps growing; the review that authorized the offer described
+          what was there the day it was sent.
+       3. One offer is answered once. Both callers read it as pending and both
+          wrote a copy, because the status was only overwritten after the copy
+          had landed.
+    */
+    it("lets the addressee find a cross-tenant offer, and answers it once on a review that still holds", async () => {
+      const store = implementation.create();
+      if (implementation.name === "memory") {
+        (store as DevArchiveStore).accountsByEmail.set("bob@example.test", { userId: bob.userId, tenantId: bob.tenantId, email: "bob@example.test" });
+      }
+      const suffix = implementation.name === "postgres" ? "70" : "71";
+      const session = structuredClone(TEST_SESSION);
+      session.id = `0191cafe-0000-7000-8000-0000000c00${suffix}`;
+      await store.saveSession(alice, session);
+      const transferId = `0191cafe-0000-7000-8000-0000000c01${suffix}`;
+      await store.saveTransfer(alice, {
+        id: transferId, tenantId: alice.tenantId, sessionId: session.id, senderEmail: "alice@example.test",
+        recipientEmail: "bob@example.test", status: "pending", createdAt: new Date().toISOString(),
+      });
+      await store.createTransferOffer(alice, { id: transferId, sessionId: session.id, recipientEmail: "bob@example.test" });
+
+      expect((await store.listTransfers(bob)).map((transfer) => transfer.id), "addressed to bob, so bob can see it").toContain(transferId);
+      expect((await store.listTransfers(alice)).map((transfer) => transfer.id), "and the sender still sees their own").toContain(transferId);
+
+      // Unreviewed content does not cross the boundary, whoever asks.
+      await expect(store.acceptTransferOffer(bob, transferId)).rejects.toThrow("transfer_review_stale");
+
+      const stored = (await store.getSession(alice, session.id))!;
+      const digest = sessionContentDigest(stored);
+      await store.saveReview(alice, {
+        id: `0191cafe-0000-7000-8000-0000000c02${suffix}`, tenantId: alice.tenantId, sessionId: session.id,
+        reviewerUserId: alice.userId, status: "completed", contentDigest: digest, masks: [],
+        completedAt: new Date().toISOString(),
+      });
+      expect((await store.getCurrentReview(alice, session.id, digest))?.contentDigest).toBe(digest);
+      expect(await store.getCurrentReview(alice, session.id, "b".repeat(64)), "a digest of other content is not this review").toBeNull();
+      expect(await store.getCurrentReview(bob, session.id, digest), "bob must not resolve alice's review").toBeNull();
+
+      const outcomes = await Promise.allSettled([
+        store.acceptTransferOffer(bob, transferId),
+        store.acceptTransferOffer(bob, transferId),
+      ]);
+      expect(outcomes.filter((outcome) => outcome.status === "fulfilled"), "one accept wins").toHaveLength(1);
+      const copies = (await store.listSessions(bob, { limit: 50 })).items
+        .filter((held) => held.provenance.at(-1)?.sourceId === `transfer:${transferId}:${session.id}`);
+      expect(copies, "and the recipient holds exactly one copy").toHaveLength(1);
+      expect(copies[0]!.visibility).toEqual({ scope: "private", ownerId: bob.userId });
     });
 
   });

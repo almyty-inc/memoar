@@ -208,6 +208,10 @@ export function TimelineView({ groups, machines, archived, asOf, onOpen, onSearc
               <ChevronDown size={13} />
             </label>
             <label className="select-control">
+              {/* Its two neighbours name themselves and this one did not, so a
+                  reader who cannot see the calendar icon was offered a control
+                  announced as nothing but its current value. */}
+              <span className="sr-only">Filter by date</span>
               <CalendarDays size={14} />
               <select value={within} onChange={(event) => chooseRange(event.target.value)}>
                 {RANGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}

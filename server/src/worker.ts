@@ -57,6 +57,12 @@ export async function runWorker(): Promise<void> {
       if (result.sweptTenants > 0) {
         console.log(`[retention] swept ${result.sweptTenants} tenants: ${result.deletedSessions} sessions, ${result.deletedArtifacts} artifacts deleted`);
       }
+      // An account whose deletion policy did not run is the one thing here
+      // worth waking somebody for, and it is now the only thing that does not
+      // stop the rest of the sweep — so it has to be said out loud per account.
+      for (const failure of result.failedTenants) {
+        console.error(`[retention] tenant ${failure.tenantId} was not swept: ${failure.error}`);
+      }
     } catch (error) {
       console.error("[retention] sweep failed", error);
     }

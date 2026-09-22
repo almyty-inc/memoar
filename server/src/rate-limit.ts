@@ -248,7 +248,14 @@ export class CredentialFailureInterceptor implements NestInterceptor {
         // Only a rejected credential counts. A malformed body is the caller
         // getting the shape wrong, not an attempt at somebody's account.
         if (REJECTED_CREDENTIAL.includes(status)) {
-          void this.store.hit(credentialFailureKey(request), window);
+          // Recorded beside the response rather than in front of it, so the
+          // caller is not made to wait on the store — but the rejection has to
+          // be caught. An unhandled rejection is fatal under Node's default, so
+          // a store that was briefly unreachable during a failed sign-in took
+          // the whole process down: one Redis blip, at exactly the moment
+          // somebody is guessing passwords, and the API stops answering anyone.
+          // An unrecorded failure is the right cost; a crash is not.
+          void this.store.hit(credentialFailureKey(request), window).catch(() => undefined);
         }
         return throwError(() => error);
       }),

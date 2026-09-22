@@ -16,6 +16,10 @@ pub(crate) fn fixture_paths(temp: &tempfile::TempDir) -> RuntimePaths {
 }
 
 pub(crate) const MACHINE_ID: &str = "0198d8d0-977c-777b-9f8f-0f6d8416e700";
+pub(crate) const INSTALLATION_ID: &str = "0198d8d0-977c-777b-9f8f-0f6d8416e701";
+/// A machine id the mock archive does not list: what a config left pointing at
+/// a machine somebody deleted, or at another archive's machine, looks like.
+pub(crate) const RETIRED_MACHINE_ID: &str = "0198d8d0-977c-777b-9f8f-0f6d8416e702";
 
 #[derive(Debug, Clone)]
 pub(crate) struct RecordedRequest {
@@ -229,6 +233,7 @@ pub(crate) fn configured_paths(temp: &tempfile::TempDir, endpoint: &str) -> Runt
             contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
             endpoint: endpoint.to_owned(),
             machine_id: MACHINE_ID.to_owned(),
+            installation_id: INSTALLATION_ID.to_owned(),
             disabled_sources: BTreeSet::new(),
             redaction: RedactionConfig::disabled(),
         },

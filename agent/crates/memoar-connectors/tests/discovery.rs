@@ -85,11 +85,24 @@ fn a_source_reads_only_the_records_its_pattern_names() {
             ],
         ),
         (
+            // The CLI's sessions are in `session-store.db`, and the parser
+            // opens nothing else. This case used to name
+            // `session-state/state.json` as the record to keep, which is a file
+            // the CLI does not write: on Copilot CLI 1.0.59 with a recorded
+            // session, `session-state/<id>/` holds `workspace.yaml` and
+            // `checkpoints/index.md` and no JSON at any depth. So the test
+            // agreed with four patterns that could only ever collect something
+            // the parser refuses.
             "copilot",
             OperatingSystem::Linux,
-            ".copilot/session-state",
-            "state.json",
-            &["debug.log", "cache.bin"],
+            ".copilot",
+            "session-store.db",
+            &[
+                "session-store.db-wal",
+                "config.json",
+                "session-state/s-1/session.json",
+                "session-state/s-1/workspace.yaml",
+            ],
         ),
         (
             "roo",
@@ -147,8 +160,15 @@ fn a_source_reads_only_the_records_its_pattern_names() {
             "{id}: the record the pattern names was lost: {found:?}"
         );
         for name in junk.iter().chain(std::iter::once(&"index.js")) {
+            // `names` gives file names, and a junk entry may be written a few
+            // directories down — which is where the patterns that took it put
+            // it. Comparing the whole relative path against a file name never
+            // matched, so `storage/project/global.json` and
+            // `session-state/<id>/session.json` were listed as junk and never
+            // actually checked.
+            let leaf = name.rsplit('/').next().unwrap();
             assert!(
-                !found.iter().any(|found| found == name),
+                !found.iter().any(|found| found == leaf),
                 "{id}: {name} is not a session store, got {found:?}"
             );
         }

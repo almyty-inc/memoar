@@ -173,18 +173,26 @@ export class AuthService {
     return { id: user.id, email: user.email, displayName: user.displayName };
   }
 
-  beginOAuth(provider: string): string {
+  /**
+   * Where to send the browser, and the nonce that browser must keep.
+   *
+   * The nonce is the caller's to store — as a cookie, in the controller — and
+   * it is the only thing distinguishing this browser's sign-in from a state
+   * anybody could have obtained from the same public endpoint.
+   */
+  beginOAuth(provider: string): { url: string; stateNonce: string } {
     const normalized = provider.toLowerCase();
     if (!isOAuthProvider(normalized)) throw new UnauthorizedException("Unsupported OAuth provider");
     const { clientId } = providerCredentials(normalized);
     const authorize = normalized === "github" ? "https://github.com/login/oauth/authorize" : "https://accounts.google.com/o/oauth2/v2/auth";
+    const { state, nonce } = this.tokens.issueOAuthState(normalized);
     const url = new URL(authorize);
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", callbackUrl(normalized));
     url.searchParams.set("scope", normalized === "github" ? "read:user user:email" : "openid email profile");
-    url.searchParams.set("state", this.tokens.issueOAuthState(normalized));
+    url.searchParams.set("state", state);
     if (normalized === "google") url.searchParams.set("response_type", "code");
-    return url.toString();
+    return { url: url.toString(), stateNonce: nonce };
   }
 
   /**
@@ -202,10 +210,16 @@ export class AuthService {
    * tenants and, the second time, an empty archive. No identity row was written
    * at all, which is also why looking a colleague up by email to add them to a
    * team could never find anybody who had only ever signed in with a provider.
+   *
+   * The state was also checked without any reference to the browser presenting
+   * it, so a signed, unexpired state obtained from the public begin endpoint
+   * finished a sign-in in anybody's browser: see oauth-state-cookie.ts. The
+   * nonce that browser is holding decides, and it is checked before the code is
+   * exchanged, so a forged callback costs the provider nothing.
    */
-  async completeOAuth(provider: string, code: string, state: string): Promise<string> {
+  async completeOAuth(provider: string, code: string, state: string, stateNonce: string | null): Promise<string> {
     const normalized = provider.toLowerCase();
-    if (!isOAuthProvider(normalized) || !this.tokens.verifyOAuthState(state, normalized)) {
+    if (!isOAuthProvider(normalized) || !this.tokens.verifyOAuthState(state, normalized, stateNonce)) {
       throw new UnauthorizedException("Invalid OAuth state");
     }
     const profile = await exchangeCodeForProfile(normalized, code);

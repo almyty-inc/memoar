@@ -1,9 +1,10 @@
 import { AlertCircle, Check, CircleSlash, Code2, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
 import type { MachineSource, UnparsedSource } from '../../lib/types';
-import { cn, formatRelative } from '../../components/ui';
+import { Badge, cn, formatRelative } from '../../components/ui';
 
-const stateCopy: Record<MachineSource['state'], string> = {
+type SourceState = NonNullable<MachineSource['state']>;
+
+const stateCopy: Record<SourceState, string> = {
   synced: 'Synced',
   syncing: 'Syncing now',
   attention: 'Needs attention',
@@ -18,7 +19,7 @@ const stateCopy: Record<MachineSource['state'], string> = {
   deliberately switched off was flagged as needing attention, beside the word
   "Disabled". Turning something off is not a fault.
 */
-const stateIcon: Record<MachineSource['state'], typeof Check> = {
+const stateIcon: Record<SourceState, typeof Check> = {
   synced: Check,
   syncing: RefreshCw,
   attention: AlertCircle,
@@ -34,8 +35,7 @@ export function SourceRow({ source, unparsed }: {
    */
   unparsed?: UnparsedSource | undefined;
 }) {
-  const [enabled, setEnabled] = useState(source.enabled);
-  const StateIcon = stateIcon[source.state];
+  const StateIcon = source.state ? stateIcon[source.state] : null;
   /*
     Collecting files and archiving none of them is the one way capture fails
     without failing. It is said here, beside the source, because the sync column
@@ -60,10 +60,22 @@ export function SourceRow({ source, unparsed }: {
         </div>
       </div>
       <span><strong>{source.sessionCount}</strong> sessions</span>
-      <span>{formatRelative(source.lastSyncAt)}</span>
-      <span className={cn('source-state', `source-state-${source.state}`)}><StateIcon size={13} aria-hidden="true" />{stateCopy[source.state]}</span>
+      {/* "Never" is a claim. Nothing reports a per-source sync time, so an
+          absent one is shown as absent. */}
+      <span>{source.lastSyncAt ? formatRelative(source.lastSyncAt) : '—'}</span>
+      <span className={cn('source-state', source.state && `source-state-${source.state}`)}>
+        {StateIcon && source.state ? <><StateIcon size={13} aria-hidden="true" />{stateCopy[source.state]}</> : '—'}
+      </span>
 
-      <button className={cn('switch compact', enabled && 'switch-on')} type="button" role="switch" aria-checked={enabled} aria-label={`${enabled ? 'Disable' : 'Enable'} ${source.label}`} onClick={() => setEnabled(!enabled)}><span /></button>
+      {/*
+        Read, not set. This was a switch wired to component state and nothing
+        else: flipping it moved the thumb, sent nothing anywhere, and was gone
+        the next time the page was drawn — so a reader who switched a source
+        off had every reason to believe capture had stopped, and it had not.
+        Which stores the agent reads is that machine's own configuration, so
+        this reports it and the machine changes it.
+      */}
+      <Badge>{source.enabled ? 'Capture on' : 'Capture off'}</Badge>
     </div>
   );
 }

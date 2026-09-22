@@ -13,6 +13,74 @@ export function parseJsonLines(raw: Uint8Array): Record<string, unknown>[] | nul
   }
 }
 
+/** What a JSONL read actually saw, so a refusal can say more than "not JSONL". */
+export interface JsonLinesReport {
+  /** The lines that were a JSON object, in file order. */
+  records: Record<string, unknown>[];
+  /** Non-blank lines the artifact held. */
+  total: number;
+  /** Non-blank lines that were not JSON, or were JSON but not an object. */
+  invalid: number;
+  /** Where the reading first went wrong, and what the line looked like. */
+  firstInvalid: { line: number; reason: string; sample: string } | null;
+  /** NUL bytes: something binary was offered as a transcript. */
+  binary: boolean;
+}
+
+const SAMPLE_LIMIT = 96;
+
+/**
+ * A short, printable stand-in for a line, safe to put in a diagnostic.
+ *
+ * Diagnostics are read by people and stored next to the artifact, so a sample
+ * must not carry control characters, a decoder's replacement characters, or
+ * enough of the line to amount to a copy of its content.
+ */
+export function sampleOf(line: string): string {
+  const clipped = line.length > SAMPLE_LIMIT ? `${line.slice(0, SAMPLE_LIMIT)}…` : line;
+  return clipped.replace(/[\p{Cc}\p{Cf}�]/gu, (char) => `\\x${char.codePointAt(0)!.toString(16).padStart(2, "0")}`);
+}
+
+/**
+ * Every JSON object the artifact holds, plus an account of what it could not
+ * read.
+ *
+ * `parseJsonLines` above gives up on the whole artifact at the first line that
+ * is not JSON. A 26,462-line transcript with 16 corrupt lines parsed as zero
+ * turns — 71 MB of session lost over 0.06% of its lines. Reading line by line
+ * keeps the 26,445 that were fine and lets the caller judge the remainder.
+ */
+export function readJsonLines(raw: Uint8Array): JsonLinesReport {
+  const buffer = Buffer.from(raw);
+  const records: Record<string, unknown>[] = [];
+  let total = 0;
+  let invalid = 0;
+  let firstInvalid: JsonLinesReport["firstInvalid"] = null;
+  // The reason is sanitised too: V8 quotes the offending line back inside its
+  // own message, so an unescaped byte would reach the diagnostic through it.
+  const note = (line: number, reason: string, text: string): void => {
+    invalid += 1;
+    firstInvalid ??= { line, reason: sampleOf(reason), sample: sampleOf(text) };
+  };
+  for (const [index, line] of buffer.toString("utf8").split(/\r?\n/u).entries()) {
+    if (!line) continue;
+    total += 1;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch (error) {
+      note(index + 1, error instanceof Error ? error.message : "not JSON", line);
+      continue;
+    }
+    if (!isRecord(value)) {
+      note(index + 1, `a JSON ${Array.isArray(value) ? "array" : typeof value}, not an object`, line);
+      continue;
+    }
+    records.push(value);
+  }
+  return { records, total, invalid, firstInvalid, binary: buffer.includes(0) };
+}
+
 export function stringValue(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return typeof value === "string" ? value : null;

@@ -1,6 +1,7 @@
 use memoar_connectors::{OperatingSystem, discover};
 use memoar_daemon::{DaemonError, HttpTransport};
 use serde_json::{Value, json};
+use std::ffi::OsString;
 use uuid::Uuid;
 
 use crate::api::ApiClient;
@@ -39,17 +40,26 @@ pub(crate) fn patch_machine_state(
     Ok(())
 }
 
-pub(crate) fn verify_machine(api: &ApiClient, machine_id: &str) -> Result<(), AppError> {
+/// Whether this account still has the machine, separated from why it might not.
+///
+/// `login` has to tell "the archive does not know this machine" apart from "the
+/// archive could not be reached": the first is a reason to enrol afresh, the
+/// second is a reason to stop. Folding both into one error made that
+/// undecidable, so the lookup reports absence and leaves failure to propagate.
+pub(crate) fn machine_exists(api: &ApiClient, machine_id: &str) -> Result<bool, AppError> {
     let machines = api.get("/machines")?;
-    let found = machines
+    Ok(machines
         .get("items")
         .and_then(Value::as_array)
         .is_some_and(|items| {
             items
                 .iter()
                 .any(|machine| machine.get("id").and_then(Value::as_str) == Some(machine_id))
-        });
-    if !found {
+        }))
+}
+
+pub(crate) fn verify_machine(api: &ApiClient, machine_id: &str) -> Result<(), AppError> {
+    if !machine_exists(api, machine_id)? {
         return Err(AppError::network(format!(
             "machine {machine_id} is not registered for this credential"
         )));
@@ -117,8 +127,58 @@ pub(crate) fn validate_uuid_v7(label: &str, value: &str) -> Result<(), AppError>
     Ok(())
 }
 
+/// What this computer is called in the machine list.
+///
+/// `HOSTNAME` is a shell variable, not an exported one: a process spawned from
+/// bash almost never sees it, and `COMPUTERNAME` exists only on Windows. So the
+/// old two-variable lookup fell through to the literal `memoar-machine` on
+/// essentially every Unix machine, and an account's machine list read as several
+/// rows all called the same thing. Asking the system for its hostname is what
+/// the variables were standing in for; they still win where they are set, so
+/// exporting one deliberately keeps working.
+///
+/// This is a label and nothing more. Nothing identifies a machine by it — see
+/// `Config::installation_id` — precisely because hostnames are neither unique
+/// nor stable.
 pub(crate) fn machine_name() -> String {
-    std::env::var("HOSTNAME")
-        .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "memoar-machine".to_owned())
+    resolve_machine_name(
+        std::env::var_os("HOSTNAME"),
+        std::env::var_os("COMPUTERNAME"),
+        system_hostname,
+    )
+}
+
+/// Takes the values rather than reading the environment, because a test that
+/// sets process-wide environment variables races every other test in the binary.
+/// `system` is lazy so the fallback costs nothing when a variable is set.
+pub(crate) fn resolve_machine_name(
+    hostname: Option<OsString>,
+    computer_name: Option<OsString>,
+    system: impl FnOnce() -> Option<String>,
+) -> String {
+    let usable = |value: OsString| {
+        value
+            .to_str()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+    };
+    hostname
+        .and_then(usable)
+        .or_else(|| computer_name.and_then(usable))
+        .or_else(system)
+        .unwrap_or_else(|| "memoar-machine".to_owned())
+}
+
+/// The hostname as the operating system reports it, or nothing.
+///
+/// `hostname` is present on macOS, Linux and Windows. A name is decoration, so
+/// every way this can fail — no such binary, a non-zero exit, bytes that are not
+/// UTF-8 — is answered with "no name", never an error that would stop a login.
+fn system_hostname() -> Option<String> {
+    let output = std::process::Command::new("hostname").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    (!name.is_empty()).then_some(name)
 }

@@ -1,16 +1,43 @@
 import { In, type EntityManager } from "typeorm";
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
-import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity, type ContentBlockRow, type SessionRow, type TurnRow } from "../../entities.js";
+import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
+import { assembleSession } from "./assemble.js";
 import { decodeCursor, encodeCursor, TenantRunner, TenantScope } from "./runner.js";
 
 export class PostgresSessionStore implements SessionStore {
   constructor(private readonly runner: TenantRunner) {}
 
+  /**
+   * Replaces a session and everything under it, one saver at a time.
+   *
+   * Two uploads resolving to one canonical session id is the design — the agent
+   * re-sends a growing transcript as a new sha on every append — so with four
+   * workers, concurrent saves of one session happen by construction. They
+   * deadlocked, and the report names the cycle:
+   *
+   *   Process 87 waits for ShareLock on transaction 743; blocked by process 85.
+   *   Process 85 waits for ShareLock on transaction 740; blocked by process 87.
+   *   Process 87: UPDATE "content_blocks" SET "text" = $1 WHERE "id" = $2
+   *   Process 85: UPDATE "sessions" SET "title" = $1, ... WHERE "id" = $4
+   *
+   * The two rows are the session and one of its blocks, taken in opposite
+   * orders. A saver whose DELETE found the rows takes the block first and the
+   * session row after; a saver that arrived while the first held them deletes
+   * nothing, reaches the session row first, and then finds the blocks already
+   * there — so `save()` turns into the UPDATE above, behind the session row it
+   * is already holding. Same code, inverted order, cycle.
+   *
+   * The lock is on the session id, because that is the granularity the cycle
+   * lives at, and it is transaction-scoped, so it is released by the commit or
+   * the rollback and never outlives either. It also removes the wasted half of
+   * the race: the loser no longer rewrites rows the winner just wrote.
+   */
   async saveSession(context: TenantContext, session: ArchivedSession): Promise<void> {
     await this.runner.inTenant(context, async (manager) => {
+      await manager.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", [context.tenantId, session.id]);
       const sessionRepository = manager.getRepository(SessionEntity);
       const turnRepository = manager.getRepository(TurnEntity);
       const blockRepository = manager.getRepository(ContentBlockEntity);
@@ -249,49 +276,4 @@ export class PostgresSessionStore implements SessionStore {
       return (result.affected ?? 0) > 0;
     });
   }
-}
-
-/** Builds a canonical session from its already-loaded rows. */
-function assembleSession(
-  session: SessionRow,
-  turns: readonly TurnRow[],
-  blocksByTurn: ReadonlyMap<string, readonly ContentBlockRow[]>,
-): ArchivedSession {
-  return {
-      id: session.id,
-      source: session.source,
-      workspace: session.workspace,
-      createdAt: session.capturedCreatedAt.toISOString(),
-      updatedAt: session.capturedUpdatedAt.toISOString(),
-      title: session.title,
-      ...(session.summary ? { summary: session.summary } : {}),
-      models: session.models,
-      tokenTotals: session.tokenTotals,
-      provenance: session.provenance,
-      visibility: session.visibility,
-      turns: turns.map((turn) => ({
-        id: turn.id,
-        ordinal: turn.ordinal,
-        parentId: turn.parentId,
-        role: turn.role,
-        createdAt: turn.capturedAt.toISOString(),
-        ...(turn.model ? { model: turn.model } : {}),
-        ...(turn.tokens ? { tokens: turn.tokens } : {}),
-        blocks: (blocksByTurn.get(turn.id) ?? []).map((block) => ({
-          id: block.id,
-          kind: block.kind,
-          ...(block.text !== null ? { text: block.text } : {}),
-          ...(block.name !== null ? { name: block.name } : {}),
-          ...(block.callId !== null ? { callId: block.callId } : {}),
-          ...(block.language !== null ? { language: block.language } : {}),
-          ...(block.mimeType !== null ? { mimeType: block.mimeType } : {}),
-          ...(block.artifactRef !== null ? { artifactRef: block.artifactRef } : {}),
-          ...(block.data !== null ? { data: block.data } : {}),
-          ...(block.ext !== null ? { ext: block.ext } : {}),
-        })),
-        ...(turn.ext ? { ext: turn.ext } : {}),
-      })),
-      ...(session.ext ? { ext: session.ext } : {}),
-      redactionStatus: session.redactionStatus,
-  };
 }

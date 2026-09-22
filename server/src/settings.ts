@@ -58,24 +58,42 @@ export class SettingsService {
 
 export const RETENTION_SYSTEM_USER = "00000000-0000-7000-8000-000000000001";
 
+/**
+ * Applies every account's deletion policy, one account at a time.
+ *
+ * One tenant's failure used to end the whole sweep: the loop had no guard, so a
+ * deadlock against a concurrent parse, or a single unreadable settings row,
+ * threw out of here and the worker logged "[retention] sweep failed" and tried
+ * again in an hour — from the top of the same list, in the same order, hitting
+ * the same tenant. Every account behind it kept data it had asked to have
+ * deleted, for as long as the first one stayed broken, and nothing said which
+ * accounts those were. A deletion policy that silently stops deleting is the
+ * worst way for this to fail, so a tenant that cannot be swept is counted and
+ * named and the rest of the list is still swept.
+ */
 export async function runRetentionSweep(
   store: SettingsStore & RetentionStore,
   now = new Date(),
-): Promise<{ sweptTenants: number; deletedSessions: number; deletedArtifacts: number }> {
+): Promise<{ sweptTenants: number; deletedSessions: number; deletedArtifacts: number; failedTenants: { tenantId: string; error: string }[] }> {
   let sweptTenants = 0;
   let deletedSessions = 0;
   let deletedArtifacts = 0;
+  const failedTenants: { tenantId: string; error: string }[] = [];
   for (const tenantId of await store.listTenantIds()) {
     const context: TenantContext = { tenantId, userId: RETENTION_SYSTEM_USER, scopes: ["*"], authType: "machine" };
-    const settings = await store.getTenantSettings(context);
-    if (settings.retention.policy !== "days" || !settings.retention.days) continue;
-    const cutoff = new Date(now.getTime() - settings.retention.days * 24 * 3600 * 1000).toISOString();
-    const result = await store.applyRetention(context, cutoff, settings.retention.exemptCollected);
-    sweptTenants += 1;
-    deletedSessions += result.deletedSessions;
-    deletedArtifacts += result.deletedArtifacts;
+    try {
+      const settings = await store.getTenantSettings(context);
+      if (settings.retention.policy !== "days" || !settings.retention.days) continue;
+      const cutoff = new Date(now.getTime() - settings.retention.days * 24 * 3600 * 1000).toISOString();
+      const result = await store.applyRetention(context, cutoff, settings.retention.exemptCollected);
+      sweptTenants += 1;
+      deletedSessions += result.deletedSessions;
+      deletedArtifacts += result.deletedArtifacts;
+    } catch (error) {
+      failedTenants.push({ tenantId, error: error instanceof Error ? error.message : String(error) });
+    }
   }
-  return { sweptTenants, deletedSessions, deletedArtifacts };
+  return { sweptTenants, deletedSessions, deletedArtifacts, failedTenants };
 }
 
 @Controller("settings")

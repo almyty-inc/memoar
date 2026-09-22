@@ -23,19 +23,27 @@ pub type TokenMinter = Box<dyn Fn() -> Result<(String, Option<String>), DaemonEr
 
 /// How much life a machine token must have left before a request will use it.
 ///
-/// A machine token lives 900 seconds. A single upload may run for
-/// `UPLOAD_TIMEOUT`. The server validates the bearer once the body has
-/// arrived, so a large transcript pushed on a token minted at the start of a
-/// batch was authenticated against a credential that had already expired —
-/// twenty-six artifacts in a real drain died on
+/// The server validates the bearer once the body has arrived, so a large
+/// transcript pushed on a token minted at the start of a batch was
+/// authenticated against a credential that had already expired — twenty-six
+/// artifacts in a real drain died on
 /// `401 Valid bearer, machine, or API-key credentials are required`, having
 /// uploaded every byte first.
 ///
-/// Re-minting before each request cannot make a token outlive its own TTL, so
-/// an upload slower than the full lifetime still cannot be authenticated. What
-/// it does guarantee is that no request ever *starts* on a credential that is
-/// about to die, which is what was actually happening.
-const CREDENTIAL_MARGIN: Duration = Duration::from_secs(300);
+/// Re-minting before each request fixed the batch case, but the margin was 300
+/// seconds against an `UPLOAD_TIMEOUT` of 1800, so a request could still begin
+/// with 301 seconds of credential and then run for half an hour. The ceiling is
+/// 256 MiB and the timeout was raised to 30 minutes precisely because uploads
+/// that long are ordinary; every one of them past the fifth minute uploaded in
+/// full and was refused at the end. The 30-minute timeout and the 300-second
+/// margin described two different beliefs about how long an upload may take.
+///
+/// So the margin is the timeout: a request may only start on a credential that
+/// outlives the request's own deadline. That makes the token lifetime a real
+/// constraint rather than a hope — it has to exceed this, or a freshly minted
+/// token is born unusable and the transport mints for ever. `machine token
+/// lifetime covers the upload window` in the archive holds the other end.
+const CREDENTIAL_MARGIN: Duration = UPLOAD_TIMEOUT;
 
 pub struct HttpTransport {
     client: Client,
@@ -111,7 +119,7 @@ impl HttpTransport {
     /// A transport with no minter keeps whatever it was given: that is the
     /// single-shot case, and failing here would turn a working call into an
     /// error over a token that may well still be good.
-    fn usable_token(&self) -> Result<String, DaemonError> {
+    pub(crate) fn usable_token(&self) -> Result<String, DaemonError> {
         let mut credential = self
             .credential
             .lock()

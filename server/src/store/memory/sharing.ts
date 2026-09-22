@@ -3,6 +3,7 @@ import type { ArchivedSession, TenantContext } from "../context.js";
 import type { DirectoryStore, SharingStore, TeamStore } from "../interfaces.js";
 import type { CollectionRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup, TeamInvitation, TeamMember, TeamMemberSummary, TeamRecord, TransferRecord } from "../records.js";
 import { redactionPatterns, reviewedMasks } from "../../redaction.js";
+import { sessionContentDigest } from "../review-digest.js";
 import { copyTransferredSession } from "../transfer-copy.js";
 import { uuidV7 } from "../../ids.js";
 import { isTeamVisible } from "../team-visibility.js";
@@ -14,6 +15,26 @@ export class MemorySharingStore implements SharingStore {
   async getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null> {
     const review = this.tables.reviews.get(key(context.tenantId, reviewId));
     return review ? copy(review) : null;
+  }
+
+  /**
+   * Only the addressee may accept or decline. The Postgres store has always
+   * enforced this by looking the caller's email up; this store enforced nothing,
+   * so anyone could act on anyone's transfer.
+   */
+  private assertAddressedTo(context: TenantContext, recipientEmail: string): void {
+    if (!this.addressesFor(context).has(recipientEmail.trim().toLowerCase())) {
+      throw new Error("transfer_not_addressed_to_caller");
+    }
+  }
+
+  async getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null> {
+    for (const review of this.tables.reviews.values()) {
+      if (review.tenantId !== context.tenantId || review.sessionId !== sessionId) continue;
+      if (review.status !== "completed" || review.contentDigest !== contentDigest) continue;
+      return copy(review);
+    }
+    return null;
   }
 
   async saveReview(context: TenantContext, review: RedactionReviewRecord): Promise<void> {
@@ -46,9 +67,28 @@ export class MemorySharingStore implements SharingStore {
     this.tables.transfers.set(key(context.tenantId, transfer.id), copy(transfer));
   }
 
+  /**
+   * Every address this caller answers to.
+   *
+   * The dev convention `<userId>@local.invalid` was the only one this store
+   * knew, so a transfer addressed to the account's real email — which is what
+   * the Postgres store matches on, and what `seedAccount` gives a contract test
+   * — was neither listed nor acceptable here. The two stores then disagreed
+   * about who a transfer was for, which is the one thing this pair is meant to
+   * agree on.
+   */
+  private addressesFor(context: TenantContext): Set<string> {
+    const addresses = new Set([`${context.userId}@local.invalid`.toLowerCase()]);
+    for (const [email, account] of this.tables.accountsByEmail) {
+      if (account.userId === context.userId) addresses.add(email.trim().toLowerCase());
+    }
+    return addresses;
+  }
+
   async listTransfers(context: TenantContext): Promise<TransferRecord[]> {
+    const addresses = this.addressesFor(context);
     return [...this.tables.transfers.values()]
-      .filter((item) => item.tenantId === context.tenantId || item.recipientEmail === `${context.userId}@local.invalid`)
+      .filter((item) => item.tenantId === context.tenantId || addresses.has(item.recipientEmail.toLowerCase()))
       .map(copy);
   }
 
@@ -71,7 +111,7 @@ export class MemorySharingStore implements SharingStore {
   async declineTransferOffer(context: TenantContext, transferId: string): Promise<void> {
     const offer = this.tables.transferOffers.get(transferId);
     if (!offer || offer.status !== "pending") throw new Error("transfer_not_found");
-    assertAddressedTo(context, offer.recipientEmail);
+    this.assertAddressedTo(context, offer.recipientEmail);
     offer.status = "declined";
     const transfer = this.tables.transfers.get(key(offer.senderTenantId, transferId));
     if (transfer) transfer.status = "declined";
@@ -80,22 +120,38 @@ export class MemorySharingStore implements SharingStore {
   async acceptTransferOffer(context: TenantContext, transferId: string): Promise<ArchivedSession> {
     const offer = this.tables.transferOffers.get(transferId);
     if (!offer || offer.status !== "pending") throw new Error("transfer_not_found");
-    assertAddressedTo(context, offer.recipientEmail);
+    this.assertAddressedTo(context, offer.recipientEmail);
+    // Claimed before the first await, so a second accept of the same offer
+    // finds it spent rather than interleaving with this one and writing the
+    // recipient a second copy. Restored below if nothing is copied.
+    offer.status = "accepted";
+    const copied = await this.copyOffered(context, offer).catch((error: unknown) => {
+      offer.status = "pending";
+      throw error;
+    });
+    this.tables.sessions.set(key(context.tenantId, copied.id), copy(copied));
+    const transfer = this.tables.transfers.get(key(offer.senderTenantId, transferId));
+    if (transfer) transfer.status = "accepted";
+    return copied;
+  }
+
+  private async copyOffered(context: TenantContext, offer: { id: string; senderTenantId: string; senderUserId: string; sessionId: string }): Promise<ArchivedSession> {
     const source = this.tables.sessions.get(key(offer.senderTenantId, offer.sessionId));
     if (!source) throw new Error("transfer_session_missing");
+    // The review that authorized the offer described the session as it was
+    // then, and an offer sits until the recipient acts on it.
+    const senderContext: TenantContext = { ...context, tenantId: offer.senderTenantId, userId: offer.senderUserId };
+    if (!await this.getCurrentReview(senderContext, offer.sessionId, sessionContentDigest(source))) {
+      throw new Error("transfer_review_stale");
+    }
     // The sender completed a redaction review before offering this. Copying it
     // without applying what that review masked would make the review a
     // formality on the transfer path exactly as it was on the share path.
-    const copied = copyTransferredSession(copy(source), offer.id, context.userId, "transfer", {
+    return copyTransferredSession(copy(source), offer.id, context.userId, "transfer", {
       patterns: redactionPatterns(this.tables.tenantSettings.get(offer.senderTenantId)?.redaction),
       masks: reviewedMasks([...this.tables.annotations.values()]
         .filter((annotation) => annotation.tenantId === offer.senderTenantId && annotation.sessionId === offer.sessionId)),
     });
-    this.tables.sessions.set(key(context.tenantId, copied.id), copy(copied));
-    offer.status = "accepted";
-    const transfer = this.tables.transfers.get(key(offer.senderTenantId, transferId));
-    if (transfer) transfer.status = "accepted";
-    return copied;
   }
 }
 
@@ -206,14 +262,3 @@ export class MemoryTeamStore implements TeamStore, DirectoryStore {
   }
 }
 
-/**
- * Only the addressee may accept or decline. The Postgres store has always
- * enforced this by looking the caller's email up; this store enforced nothing,
- * so anyone could act on anyone's transfer. Dev identities are addressed by the
- * same `<userId>@local.invalid` convention listTransfers already uses.
- */
-function assertAddressedTo(context: TenantContext, recipientEmail: string): void {
-  if (recipientEmail.toLowerCase() !== `${context.userId}@local.invalid`.toLowerCase()) {
-    throw new Error("transfer_not_addressed_to_caller");
-  }
-}

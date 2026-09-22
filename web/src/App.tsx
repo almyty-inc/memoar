@@ -1,7 +1,9 @@
 import { LoaderCircle } from 'lucide-react';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { emptyConnectedDashboard, routeFromLocation } from './app/bootstrap';
+import { emptyConnectedDashboard, initialLocation, mergeTimelinePage, placeToReturnTo, routeFromLocation } from './app/bootstrap';
+import { useExpiryWarning } from './app/session-expiry';
+import { SessionExpiryBanner } from './components/SessionExpiryBanner';
 import { Shell } from './components/Shell';
 import { memoarApi } from './lib/api';
 import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
@@ -23,24 +25,10 @@ import { TimelineView } from './views/Timeline';
 import { WorkspaceView } from './views/Workspace';
 
 export function App() {
-  const [route, setRoute] = useState<Route>(() => {
-    const current = routeFromLocation();
-    if (!memoarApi.configured || memoarApi.authenticated) return current;
-    return current.creating ? { view: 'signin', creating: true } : { view: 'signin' };
-  });
+  const [start] = useState(() => initialLocation(!memoarApi.configured || memoarApi.authenticated));
+  const [route, setRoute] = useState<Route>(start.route);
   const view = route.view;
-  /*
-    Where they were going before being asked to sign in. Following a link to a
-    session while signed out otherwise dropped you on the timeline afterwards,
-    with the thing you were sent still one search away.
-  */
-  const [intended] = useState<Route | null>(() => {
-    if (!memoarApi.configured || memoarApi.authenticated) return null;
-    const current = routeFromLocation();
-    // An address with no screen is not somewhere to be returned to afterwards.
-    return current.view === 'signin' || current.view === 'not-found' ? null : current;
-
-  });
+  const [intended, setIntended] = useState<Route | null>(start.intended);
   const [dashboard, setDashboard] = useState<DashboardState>(emptyConnectedDashboard);
   const [loading, setLoading] = useState(() => !memoarApi.configured || memoarApi.authenticated);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -50,6 +38,8 @@ export function App() {
   // Stamped when the archive loads so views can do time maths without reading
   // the clock while rendering.
   const [loadedAt, setLoadedAt] = useState(0);
+  // Null except in the last few minutes of the signed-in session.
+  const expiringIn = useExpiryWarning(memoarApi.expiresAt);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -87,16 +77,31 @@ export function App() {
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    const onUnauthorized = () => {
-      setRoute({ view: 'signin' });
-      window.history.replaceState(null, '', pathForRoute({ view: 'signin' }));
-    };
-    window.addEventListener('memoar:unauthorized', onUnauthorized);
-    return () => {
-      window.removeEventListener('memoar:unauthorized', onUnauthorized);
-    };
+  /*
+    Being asked to sign in again does not forget where you were.
+
+    A token lives an hour and is not refreshed, so this fires in the middle of
+    whatever somebody was doing. It used to replace the screen with the sign-in
+    form and remember nothing, which is how opening a form on one screen and
+    coming back signed in on the timeline lost both.
+  */
+  const askToSignIn = useCallback(() => {
+    // Read before the address is rewritten below: a state updater runs during
+    // the render that follows, by which time the address says /login.
+    // Read before the address is rewritten below: a state updater runs during
+    // the render that follows, by which time the address says /login.
+    const from = placeToReturnTo(routeFromLocation());
+    setIntended((current) => current ?? from);
+    setRoute({ view: 'signin' });
+    window.history.replaceState(null, '', pathForRoute({ view: 'signin' }));
   }, []);
+
+  useEffect(() => {
+    window.addEventListener('memoar:unauthorized', askToSignIn);
+    return () => {
+      window.removeEventListener('memoar:unauthorized', askToSignIn);
+    };
+  }, [askToSignIn]);
 
   const go = useCallback((next: Route) => {
     setRoute(next);
@@ -154,14 +159,11 @@ export function App() {
     setLoadingMore(true);
     try {
       const page = await memoarApi.loadTimelinePage(dashboard.nextTimelineCursor);
-      setDashboard((current) => {
-        const byDate = new Map(current.timeline.map((group) => [group.date, [...group.sessions]]));
-        for (const group of page.groups) {
-          const known = new Set((byDate.get(group.date) ?? []).map((session) => session.id));
-          byDate.set(group.date, [...(byDate.get(group.date) ?? []), ...group.sessions.filter((session) => !known.has(session.id))]);
-        }
-        return { ...current, timeline: [...byDate].map(([date, sessions]) => ({ date, sessions })), nextTimelineCursor: page.nextCursor };
-      });
+      setDashboard((current) => ({
+        ...current,
+        timeline: mergeTimelinePage(current.timeline, page.groups),
+        nextTimelineCursor: page.nextCursor,
+      }));
     } catch (error) {
       // Every other failure in this file sets `connectionError`; this one had
       // no catch at all, and the callers invoke it as `void onLoadMore()`, so a
@@ -291,6 +293,7 @@ export function App() {
   return (
     <Shell view={view} user={user} machines={dashboard.machines} reachable={connectionError === null && !loading} onNavigate={navigate}>
       {loading ? <div className="connection-toast" role="status" aria-label="Connection status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
+      {expiringIn === null ? null : <SessionExpiryBanner msLeft={expiringIn} onSignIn={askToSignIn} />}
       {content}
     </Shell>
   );

@@ -85,6 +85,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   saveCollection(context: TenantContext, collection: CollectionRecord): Promise<void> { return this.collections.saveCollection(context, collection); }
 
   getReview(context: TenantContext, reviewId: string): Promise<RedactionReviewRecord | null> { return this.sharing.getReview(context, reviewId); }
+  getCurrentReview(context: TenantContext, sessionId: string, contentDigest: string): Promise<RedactionReviewRecord | null> { return this.sharing.getCurrentReview(context, sessionId, contentDigest); }
   saveReview(context: TenantContext, review: RedactionReviewRecord): Promise<void> { return this.sharing.saveReview(context, review); }
   listShareGrants(context: TenantContext): Promise<ShareGrantRecord[]> { return this.sharing.listShareGrants(context); }
   saveShareGrant(context: TenantContext, grant: ShareGrantRecord): Promise<void> { return this.sharing.saveShareGrant(context, grant); }
@@ -139,6 +140,7 @@ export class PostgresArchiveStore implements ArchiveStore {
 
   listMachines(context: TenantContext): Promise<MachineRecord[]> { return this.machines.listMachines(context); }
   getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null> { return this.machines.getMachine(context, machineId); }
+  findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> { return this.machines.findMachineByInstallation(context, installationId); }
   saveMachine(context: TenantContext, machine: MachineRecord): Promise<void> { return this.machines.saveMachine(context, machine); }
   createMachineCommand(context: TenantContext, input: { machineId: string; kind: string; payload: Record<string, unknown> }): Promise<MachineCommandRecord> { return this.machines.createMachineCommand(context, input); }
   listUnackedMachineCommands(context: TenantContext, machineId: string): Promise<MachineCommandRecord[]> { return this.machines.listUnackedMachineCommands(context, machineId); }

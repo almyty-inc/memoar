@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Query, Redirect, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Query, Redirect, Post, Req, Res } from "@nestjs/common";
+import type { Response } from "express";
 
 import type { TenantContext } from "../archive-store.js";
 
@@ -6,6 +7,8 @@ import { Public, Tenant } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
 import { CreateApiKeyDto, EmailLoginDto, EmailRegisterDto, IssueMachineTokenDto } from "./auth.dto.js";
+import { clearedOAuthStateCookie, oauthStateCookie, oauthStateNonce } from "./oauth-state-cookie.js";
+import type { RequestLike } from "./types.js";
 import { CREDENTIAL_LIMIT, Throttle } from "../rate-limit.js";
 
 @Controller("auth")
@@ -51,7 +54,12 @@ export class AuthController {
    */
   @Post("logout")
   @HttpCode(204)
-  logout(@Headers("authorization") authorization: string): Promise<void> {
+  logout(@Headers("authorization") authorization?: string): Promise<void> {
+    // A caller authenticated by `x-memoar-key` reaches this handler with no
+    // Authorization header at all, and slicing it threw — so signing out with
+    // an API key in hand answered 500 instead of "there is no session to end".
+    // Signing out is idempotent; having nothing to sign out is the same case.
+    if (!authorization?.startsWith("Bearer ")) return Promise.resolve();
     return this.auth.logout(authorization.slice("Bearer ".length));
   }
 
@@ -69,8 +77,12 @@ export class AuthController {
   @Throttle(CREDENTIAL_LIMIT)
   @Get("oauth/:provider")
   @Redirect(undefined, 302)
-  beginOAuth(@Param("provider") provider: string): { url: string } {
-    return { url: this.auth.beginOAuth(provider) };
+  beginOAuth(@Param("provider") provider: string, @Res({ passthrough: true }) response: Response): { url: string } {
+    const begun = this.auth.beginOAuth(provider);
+    // The half of the state that stays with this browser. Without it the
+    // callback proves only that some browser somewhere started a sign-in.
+    response.setHeader("Set-Cookie", oauthStateCookie(begun.stateNonce));
+    return { url: begun.url };
   }
 
   @Public()
@@ -80,8 +92,14 @@ export class AuthController {
     @Param("provider") provider: string,
     @Query("code") code: string,
     @Query("state") state: string,
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<{ url: string }> {
-    return { url: await this.auth.completeOAuth(provider, code, state) };
+    const nonce = oauthStateNonce(request.headers.cookie);
+    // Cleared whatever happens next, which is what makes one state good for one
+    // callback: a replay reaches a browser that no longer holds the nonce.
+    response.setHeader("Set-Cookie", clearedOAuthStateCookie());
+    return { url: await this.auth.completeOAuth(provider, code, state, nonce) };
   }
 
   @Get("api-keys")

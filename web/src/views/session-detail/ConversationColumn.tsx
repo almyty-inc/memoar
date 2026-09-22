@@ -38,7 +38,7 @@ export function ConversationColumn({ detail, session, showThinking, setShowThink
               </header>
               <div className="turn-blocks">
                 {turn.blocks.map((block) => (
-                  <BlockView key={block.id} block={block} showThinking={showThinking} />
+                  <BlockView key={block.id} block={block} showThinking={showThinking} onShowThinking={() => setShowThinking(true)} />
                 ))}
               </div>
               {turn.tokens ? <footer>{formatNumber(turn.tokens.input)} in · {formatNumber(turn.tokens.output)} out</footer> : null}

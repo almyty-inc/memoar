@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 import type { TokenClaims } from "./types.js";
 
@@ -26,21 +26,46 @@ export class TokenService {
     return { token: `${encoded}.${signature}`, expiresAt: new Date(payload.exp * 1000).toISOString() };
   }
 
-  issueOAuthState(provider: string): string {
-    const payload = base64(JSON.stringify({ provider, nonce: randomBytes(16).toString("hex"), exp: Math.floor(Date.now() / 1000) + 600 }));
+  /**
+   * A state parameter and the secret the browser must hand back beside it.
+   *
+   * Only the digest of the nonce goes into the state, so the value travelling
+   * through the provider, the browser's address bar and everybody's logs is not
+   * the value that proves the flow was started here. See oauth-state-cookie.ts
+   * for what the second half is for.
+   */
+  issueOAuthState(provider: string): { state: string; nonce: string } {
+    const nonce = randomBytes(32).toString("base64url");
+    const payload = base64(JSON.stringify({
+      provider,
+      nonce: createHash("sha256").update(nonce).digest("base64url"),
+      exp: Math.floor(Date.now() / 1000) + 600,
+    }));
     const signature = createHmac("sha256", this.signingKey).update(payload).digest("base64url");
-    return `${payload}.${signature}`;
+    return { state: `${payload}.${signature}`, nonce };
   }
 
-  verifyOAuthState(state: string, provider: string): boolean {
+  /**
+   * Whether this callback ends a sign-in this browser began.
+   *
+   * The signature says the state came from here, which is no distinction at all
+   * — `GET /auth/oauth/:provider` is public and hands one to anybody. The nonce
+   * is what narrows "from this server" to "from this browser".
+   */
+  verifyOAuthState(state: string, provider: string, nonce: string | null): boolean {
+    if (!nonce) return false;
     const [payload, signature] = state.split(".");
     if (!payload || !signature) return false;
     const expected = createHmac("sha256", this.signingKey).update(payload).digest();
     const received = Buffer.from(signature, "base64url");
     if (expected.length !== received.length || !timingSafeEqual(expected, received)) return false;
     try {
-      const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { provider?: string; exp?: number };
-      return decoded.provider === provider && typeof decoded.exp === "number" && decoded.exp > Math.floor(Date.now() / 1000);
+      const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { provider?: string; nonce?: string; exp?: number };
+      if (decoded.provider !== provider) return false;
+      if (typeof decoded.exp !== "number" || decoded.exp <= Math.floor(Date.now() / 1000)) return false;
+      const bound = Buffer.from(String(decoded.nonce ?? ""));
+      const presented = Buffer.from(createHash("sha256").update(nonce).digest("base64url"));
+      return bound.length === presented.length && timingSafeEqual(bound, presented);
     } catch {
       return false;
     }

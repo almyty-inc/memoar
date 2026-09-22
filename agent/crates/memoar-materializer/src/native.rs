@@ -63,6 +63,32 @@ pub(crate) fn parse_time(value: &str) -> DateTime<Utc> {
         .unwrap_or_else(|_| Utc::now())
 }
 
+/// What a degraded block still says once its native shape is gone.
+///
+/// `text` alone was taken, and a block that has no text carried nothing: a
+/// `tool_call` converted for Codex — which has no native tool shape — became
+/// the literal `[memoar converted tool_call] `, with the tool's name and its
+/// arguments gone and the conversion reporting it as *degraded*. Degraded means
+/// the shape was lost, not the content. The order is the server's
+/// (`server/src/convert/types.ts::textForDegraded`), so the two halves describe
+/// the same block the same way.
+fn degraded_payload(block: &ContentBlock) -> String {
+    if let Some(text) = &block.text {
+        return text.clone();
+    }
+    if let Some(name) = &block.name {
+        return name.clone();
+    }
+    if let Some(reference) = &block.artifact_ref {
+        return reference.clone();
+    }
+    block
+        .data
+        .as_ref()
+        .and_then(|data| serde_json::to_string(data).ok())
+        .unwrap_or_else(|| "{}".to_owned())
+}
+
 pub(crate) fn degraded_text(block: &ContentBlock) -> String {
     let kind = match block.kind {
         ContentBlockKind::Text => "text",
@@ -75,10 +101,7 @@ pub(crate) fn degraded_text(block: &ContentBlock) -> String {
         ContentBlockKind::System => "system",
         ContentBlockKind::Error => "error",
     };
-    format!(
-        "[memoar converted {kind}] {}",
-        block.text.clone().unwrap_or_default()
-    )
+    format!("[memoar converted {kind}] {}", degraded_payload(block))
 }
 
 pub(crate) fn report(session: &Session, degraded_blocks: usize) -> ConversionReport {

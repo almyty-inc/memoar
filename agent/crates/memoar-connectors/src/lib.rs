@@ -8,6 +8,8 @@ mod sources;
 mod spec;
 
 #[cfg(test)]
+mod collection_tests;
+#[cfg(test)]
 mod tests;
 
 pub use crate::discovery::{

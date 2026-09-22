@@ -41,9 +41,14 @@ pub(crate) fn materialize_antigravity(
         }));
     }
     let report = report(session, degraded);
+    // Every figure here is read from the report. `Dropped blocks: 0` was
+    // written as prose beside two numbers that were not — true while nothing
+    // can drop a block, and a lie in a file a person reads the moment anything
+    // can. The other two would have stayed correct and this one would not,
+    // which is the worst way for a summary to be wrong.
     let summary = format!(
-        "# Memoar conversion\n\nSession: `{}`\n\nMapped turns: {}\n\nDegraded blocks: {}\n\nDropped blocks: 0\n",
-        session.id, report.mapped_turns, report.degraded_blocks
+        "# Memoar conversion\n\nSession: `{}`\n\nMapped turns: {}\n\nDegraded blocks: {}\n\nDropped blocks: {}\n",
+        session.id, report.mapped_turns, report.degraded_blocks, report.dropped_blocks
     );
     let seed = serde_json::to_vec(&json!({
         "id": session.id,

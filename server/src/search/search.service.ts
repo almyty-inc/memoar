@@ -30,6 +30,14 @@ export function fuse(...lists: readonly (readonly SearchCandidate[])[]): SearchC
     .map(({ fused: score, ...candidate }) => ({ ...candidate, score }));
 }
 
+function asError(reason: unknown): Error {
+  return reason instanceof Error ? reason : new Error(String(reason));
+}
+
+function semanticFailureOf(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "semantic_provider_failed";
+}
+
 export interface SearchResult {
   candidates: SearchCandidate[];
   requestedMode: "hybrid" | "lexical" | "semantic";
@@ -51,21 +59,33 @@ export class SearchService {
     filters: SearchFilters = {},
     limit = 30,
   ): Promise<SearchResult> {
-    const lexicalPromise = this.backend.lexical(context, query, filters, limit);
-    if (requestedMode === "lexical") return { candidates: await lexicalPromise, requestedMode, realizedMode: "lexical", semanticFailure: null };
-    try {
-      const semantic = await this.semantic.search(context, query, filters, limit);
-      if (requestedMode === "semantic") return { candidates: semantic, requestedMode, realizedMode: "semantic", semanticFailure: null };
-      const lexical = await lexicalPromise;
-      return { candidates: fuse(lexical, semantic).slice(0, limit), requestedMode, realizedMode: "hybrid", semanticFailure: null };
-    } catch (error) {
-      return {
-        candidates: await lexicalPromise,
-        requestedMode,
-        realizedMode: "lexical",
-        semanticFailure: error instanceof Error ? error.message : "semantic_provider_failed",
-      };
+    if (requestedMode === "lexical") {
+      return { candidates: await this.backend.lexical(context, query, filters, limit), requestedMode, realizedMode: "lexical", semanticFailure: null };
     }
+    // A semantic search runs the semantic leg and nothing else. Starting the
+    // lexical query up front bought a round trip that the success path then
+    // threw away, and left its promise unread: a rejection with no handler
+    // attached is, on Node's defaults, a process exit rather than a 500.
+    if (requestedMode === "semantic") {
+      try {
+        return { candidates: await this.semantic.search(context, query, filters, limit), requestedMode, realizedMode: "semantic", semanticFailure: null };
+      } catch (error) {
+        return { candidates: await this.backend.lexical(context, query, filters, limit), requestedMode, realizedMode: "lexical", semanticFailure: semanticFailureOf(error) };
+      }
+    }
+    // Hybrid runs both legs together, and settles both before reading either.
+    // Awaiting the semantic leg first left the same window open: a lexical
+    // failure landing while an embedding call was still in flight was an
+    // unhandled rejection, not a failed request.
+    const [lexical, semantic] = await Promise.allSettled([
+      this.backend.lexical(context, query, filters, limit),
+      this.semantic.search(context, query, filters, limit),
+    ]);
+    if (lexical.status === "rejected") throw asError(lexical.reason);
+    if (semantic.status === "rejected") {
+      return { candidates: lexical.value, requestedMode, realizedMode: "lexical", semanticFailure: semanticFailureOf(semantic.reason) };
+    }
+    return { candidates: fuse(lexical.value, semantic.value).slice(0, limit), requestedMode, realizedMode: "hybrid", semanticFailure: null };
   }
 
   async response(context: TenantContext, query: string, mode: "hybrid" | "lexical" | "semantic", filters: SearchFilters, limit: number): Promise<Record<string, unknown>> {
@@ -110,6 +130,40 @@ export interface PackRequest {
   staleAfterDays?: number;
 }
 
+/**
+ * The last ordinal whose text actually survived the excerpt budget.
+ *
+ * `[turn 0] ...\n[turn 1] ...` cut to eighty characters carries turn 0 and not
+ * one character of turn 1, so a citation reading `turns 0-1` points a reader —
+ * or an agent calling `get_excerpt` — at text the pack never quoted. Only turns
+ * that begin inside the kept prefix are cited.
+ */
+function citedTurnEnd(turns: readonly { ordinal: number }[], pieces: readonly string[], keptLength: number): number {
+  let offset = 0;
+  let last = 0;
+  for (const [index, piece] of pieces.entries()) {
+    if (offset >= keptLength) break;
+    last = index;
+    offset += piece.length + 1;
+  }
+  return turns[last]!.ordinal;
+}
+
+/**
+ * Sessions are `clear | findings | reviewed`; a pack is `clear | findings |
+ * mixed`. Two vocabularies, and this is the only place they meet.
+ *
+ * Testing for `"findings"` alone silently mapped `"reviewed"` — findings that
+ * a human has since masked, not the absence of findings — onto `"clear"`, so a
+ * pack assembled entirely out of reviewed sessions told its caller there was
+ * nothing sensitive in it.
+ */
+function packRedactionStatus(statuses: ReadonlySet<RedactionStatus>): "clear" | "findings" | "mixed" {
+  const sensitive = statuses.has("findings") || statuses.has("reviewed");
+  if (!sensitive) return "clear";
+  return statuses.has("clear") ? "mixed" : "findings";
+}
+
 export interface PackEvidence {
   sessionId: string;
   turnStart: number;
@@ -145,13 +199,17 @@ export class PackService {
       })).filter((turn) => turn.text.length > 0);
       if (!textualTurns.length) continue;
       const turnStart = textualTurns[0]!.ordinal;
-      const turnEnd = textualTurns.at(-1)!.ordinal;
-      const heading = `\n## [${evidence.length + 1}] ${candidate.session.id} turns ${turnStart}-${turnEnd} age ${ageDays}d\n`;
-      const fullExcerpt = textualTurns.map((turn) => `[turn ${turn.ordinal}] ${turn.text}`).join("\n");
-      const availableExcerpt = Math.min(request.maxExcerptChars, Math.max(0, remaining - heading.length - 1));
+      const pieces = textualTurns.map((turn) => `[turn ${turn.ordinal}] ${turn.text}`);
+      const fullExcerpt = pieces.join("\n");
+      const heading = (turnEnd: number): string => `\n## [${evidence.length + 1}] ${candidate.session.id} turns ${turnStart}-${turnEnd} age ${ageDays}d\n`;
+      // Budget against the widest heading this section could print. The real
+      // one names a turn no later than the last, so it is never longer.
+      const widestHeading = heading(textualTurns.at(-1)!.ordinal);
+      const availableExcerpt = Math.min(request.maxExcerptChars, Math.max(0, remaining - widestHeading.length - 1));
       if (availableExcerpt < 1) break;
       const excerpt = fullExcerpt.slice(0, availableExcerpt);
-      const section = `${heading}${excerpt}\n`;
+      const turnEnd = citedTurnEnd(textualTurns, pieces, excerpt.length);
+      const section = `${heading(turnEnd)}${excerpt}\n`;
       if (section.length > remaining) break;
       remaining -= section.length;
       sections.push(section);
@@ -161,9 +219,7 @@ export class PackService {
       redactions.add(candidate.session.redactionStatus);
     }
     const markdown = `${prefix}${sections.join("")}`.slice(0, maximumCharacters);
-    const redactionStatus = redactions.has("findings")
-      ? redactions.size > 1 ? "mixed" : "findings"
-      : "clear";
+    const redactionStatus = packRedactionStatus(redactions);
     return {
       query: request.query,
       markdown,

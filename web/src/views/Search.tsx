@@ -45,6 +45,7 @@ export function SearchView({ onOpen, workspaces = [] }: {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const [activeSource, setActiveSource] = useState<string | null>(null);
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState<'relevance' | 'recent'>('relevance');
   const [packOpen, setPackOpen] = useState(false);
@@ -83,13 +84,16 @@ export function SearchView({ onOpen, workspaces = [] }: {
   }, [query]);
 
   const items = useMemo(() => {
-    const filtered = (response?.items ?? []).filter((session) => !activeSource || session.sourceLabel === activeSource);
+    const filtered = (response?.items ?? []).filter((session) => (
+      (!activeSource || session.sourceLabel === activeSource)
+      && (!activeWorkspace || session.workspace === activeWorkspace)
+    ));
 
     // The server orders by relevance already, so 'relevance' keeps its order
     // rather than re-sorting on a score the backend may not have supplied.
     if (sort === 'relevance') return filtered;
     return [...filtered].sort((left, right) => new Date(right.updatedAt).valueOf() - new Date(left.updatedAt).valueOf());
-  }, [activeSource, response, sort]);
+  }, [activeSource, activeWorkspace, response, sort]);
 
 
   const previewPack = async () => {
@@ -166,6 +170,8 @@ export function SearchView({ onOpen, workspaces = [] }: {
           response={response}
           activeSource={activeSource}
           setActiveSource={setActiveSource}
+          activeWorkspace={activeWorkspace}
+          setActiveWorkspace={setActiveWorkspace}
         />
 
         <section className="search-results" aria-busy={loading}>
@@ -193,9 +199,17 @@ export function SearchView({ onOpen, workspaces = [] }: {
             </div>
           </div>
 
-          <div className="active-filter-row">
+          {/*
+            Named, because these chips are the only way to take a filter off
+            again and a screen reader otherwise announces them as loose buttons
+            repeating a word already on the page.
+          */}
+          <div className="active-filter-row" role="group" aria-label="Active filters">
             {activeSource ? (
               <button type="button" onClick={() => setActiveSource(null)}>{activeSource} <X size={12} /></button>
+            ) : null}
+            {activeWorkspace ? (
+              <button type="button" onClick={() => setActiveWorkspace(null)}>{activeWorkspace} <X size={12} /></button>
             ) : null}
           </div>
 
@@ -231,10 +245,10 @@ export function SearchView({ onOpen, workspaces = [] }: {
             {!loading && !searchError && response && items.length === 0 ? (
               <EmptyState
                 title="No matching sessions"
-                body={activeSource
-                  ? 'Try a broader phrase, or clear the source filter. Lexical search remains available if semantic retrieval is offline.'
+                body={activeSource || activeWorkspace
+                  ? 'Try a broader phrase, or clear the filters. Lexical search remains available if semantic retrieval is offline.'
                   : 'Try a broader phrase. Lexical search remains available if semantic retrieval is offline.'}
-                action={<Button onClick={() => { clearQuery(); setActiveSource(null); }}>Clear search</Button>}
+                action={<Button onClick={() => { clearQuery(); setActiveSource(null); setActiveWorkspace(null); }}>Clear search</Button>}
               />
             ) : null}
             {/* Before a query, the page says what it is for rather than

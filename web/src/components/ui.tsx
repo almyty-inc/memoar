@@ -2,6 +2,7 @@ import { Check, Copy, Search, X } from 'lucide-react';
 import {
   useEffect,
   useId,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
@@ -134,6 +135,8 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
   );
 }
 
+const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
 export function Modal({ open, title, description, children, onClose }: {
   open: boolean;
   title: string;
@@ -143,14 +146,47 @@ export function Modal({ open, title, description, children, onClose }: {
 }) {
   const titleId = useId();
   const descriptionId = useId();
+  const cardRef = useRef<HTMLElement>(null);
+  // Held in a ref so the effect below depends on `open` alone: every caller
+  // passes a fresh arrow function, and re-running the focus work on each render
+  // would keep snatching the caret back.
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
+  /*
+    Focus goes into the dialog and comes back out where it started.
+
+    It used to do neither. Opening one left the caret on the button behind it,
+    so a keyboard or screen-reader user was told a dialog had appeared and then
+    tabbed through the page underneath it; closing one dropped focus on the
+    body, which is nowhere. Tab is kept inside for the same reason `aria-modal`
+    is set: the rest of the page is not available while this is up.
+  */
   useEffect(() => {
     if (!open) return undefined;
+    const returnTo = document.activeElement as HTMLElement | null;
+    const card = cardRef.current;
+    // An `autoFocus` field inside has already claimed focus; do not take it.
+    if (card && !card.contains(document.activeElement)) card.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') { closeRef.current(); return; }
+      if (event.key !== 'Tab' || !card) return;
+      const stops = [...card.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((node) => !node.hasAttribute('disabled'));
+      const first = stops[0];
+      const last = stops.at(-1);
+      if (!first || !last) { event.preventDefault(); card.focus(); return; }
+      const active = document.activeElement;
+      const leavingForward = !event.shiftKey && (active === last || !card.contains(active));
+      const leavingBackward = event.shiftKey && (active === first || active === card || !card.contains(active));
+      if (leavingForward) { event.preventDefault(); first.focus(); }
+      if (leavingBackward) { event.preventDefault(); last.focus(); }
     };
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open]);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      returnTo?.focus();
+    };
+  }, [open]);
 
   if (!open) return null;
   return (
@@ -159,6 +195,8 @@ export function Modal({ open, title, description, children, onClose }: {
     }}>
       <section
         className="modal-card"
+        ref={cardRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

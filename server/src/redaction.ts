@@ -145,6 +145,25 @@ export function applyRedactionProjection(session: ArchivedSession, options: Proj
     byBlock.set(mask.blockId, [...(byBlock.get(mask.blockId) ?? []), mask]);
   }
   const clone = structuredClone(session);
+  // Not only the blocks.
+  //
+  // A session's title is the conversation's own title or the task the person
+  // typed, its summary is distilled from the transcript, and its workspace path
+  // is where they were working — `/Users/frane/clients/acme`, which is what
+  // `pathScan` exists to remove. All three left the tenant verbatim on every
+  // share, import and transfer while the block text beside them was masked, so
+  // a tenant that turned `emailScan` or `pathScan` on got the control they
+  // asked for everywhere except the first line of the page.
+  //
+  // Reviewed masks are block-anchored and cannot reach here; patterns can, and
+  // these are the fields a pattern is worth running over.
+  clone.title = maskLiterals(clone.title, patterns);
+  if (typeof clone.summary === "string") clone.summary = maskLiterals(clone.summary, patterns);
+  clone.workspace = {
+    ...clone.workspace,
+    path: maskLiterals(clone.workspace.path, patterns),
+    ...(typeof clone.workspace.gitRemote === "string" ? { gitRemote: maskLiterals(clone.workspace.gitRemote, patterns) } : {}),
+  };
   for (const turn of clone.turns) {
     turn.blocks = turn.blocks.map((block) => ({
       ...block,

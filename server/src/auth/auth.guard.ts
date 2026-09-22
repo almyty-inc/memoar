@@ -18,6 +18,19 @@ function inferredScopes(request: RequestLike): string[] {
   if (path.includes("/ingest")) return ["ingest:write"];
   if (path.includes("/auth/api-keys")) return ["keys:write"];
   if (path.includes("/auth/machine-token") || path.includes("/machines")) return ["machines:write"];
+  // Writing under /teams is deciding who may read whose archive: joining a
+  // team, leaving one, or putting somebody out of one. It is the same act the
+  // invite route already asks sharing:write for, and it matched no branch here,
+  // so every other verb on /teams was inferred as archive:write — the scope for
+  // writing one's own archive. A key issued to a capture script could not add a
+  // member (403, from the decorator) but could remove every one of them.
+  // Writing under /teams is deciding who may read whose archive: joining a
+  // team, leaving one, or putting somebody out of one. It is the same act the
+  // invite route already asks sharing:write for, and it matched no branch here,
+  // so every other verb on /teams was inferred as archive:write — the scope for
+  // writing one's own archive. A key issued to a capture script could not add a
+  // member (403, from the decorator) but could remove every one of them.
+  if (path.includes("/teams")) return method === "GET" ? ["archive:read"] : ["sharing:write"];
   if (path.includes("/sharing")) return method === "GET" ? ["archive:read"] : ["sharing:write"];
   return method === "GET" ? ["archive:read"] : ["archive:write"];
 }

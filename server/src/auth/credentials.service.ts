@@ -14,6 +14,29 @@ import type { TokenClaims } from "./types.js";
 export const MACHINE_SCOPES = ["ingest:write", "machine:heartbeat", "materialize:read"];
 
 /**
+ * How long a machine token lives.
+ *
+ * This is not a free choice. The bearer is validated once the request body has
+ * arrived, so a token has to survive the whole upload, not just its start. The
+ * agent allows an upload 30 minutes — the artifact ceiling is 256 MiB and that
+ * is how long 256 MiB honestly takes on a domestic uplink — and it refuses to
+ * begin a request on a token with less life than that left.
+ *
+ * At 900 seconds no token could ever satisfy that, so every large upload sent
+ * all its bytes and was refused at the very end with `401`, and the agent would
+ * have re-minted on every single request trying to find a token that qualified.
+ * The lifetime has to exceed the upload window with room to be reused, which is
+ * what an hour gives it. `machine token lifetime covers the upload window`
+ * holds this to the agent's own constant, because these two numbers have twice
+ * now drifted into disagreeing about how long an upload may take.
+ *
+ * Machine tokens are stored hashed and revocable, so the cost of the longer
+ * life is bounded; the cost of the shorter one was that large uploads did not
+ * work at all.
+ */
+export const MACHINE_TOKEN_TTL_SECONDS = 3600;
+
+/**
  * The credentials a program holds: API keys, and the short-lived machine tokens
  * the capture agent runs on. Split from AuthService, which is about people
  * signing in, so neither file has to be read to understand the other.
@@ -133,7 +156,7 @@ export class CredentialsService {
     await this.store.saveMachine(context, machine);
     const issued = this.tokens.issue({
       sub: context.userId, tenantId: context.tenantId, scopes: MACHINE_SCOPES, type: "machine", machineId,
-    }, 900);
+    }, MACHINE_TOKEN_TTL_SECONDS);
     const tokenHash = createHash("sha256").update(issued.token).digest("hex");
     if (this.dataSource) await this.inTenant(context, async (manager) => {
       await manager.getRepository(MachineTokenEntity).save({

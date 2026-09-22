@@ -10,7 +10,7 @@ function response(meta: Partial<SearchResponse['meta']>): SearchResponse {
   return {
     items: [],
     nextCursor: null,
-    aggregations: { agents: [], workspaces: [], dates: [] },
+    aggregations: { agents: [], workspaces: [] },
     meta: { requestedMode: 'hybrid', realizedMode: 'hybrid', tookMs: 4, semanticFailure: null, ...meta },
   };
 }

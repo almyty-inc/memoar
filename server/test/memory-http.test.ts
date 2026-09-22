@@ -1,11 +1,19 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ArchiveStore } from "../src/archive-store.js";
+import { ARCHIVE_STORE } from "../src/tokens.js";
+import { seedMachine } from "./fixtures/archive.js";
 import { arr, obj, startTestApi, str, type TestApi } from "./helpers/http-app.js";
 
 let api: TestApi;
 const MACHINE = "0191cafe-0000-7000-8000-0000000000d1";
 
-beforeAll(async () => { api = await startTestApi(); }, 30_000);
+beforeAll(async () => {
+  api = await startTestApi();
+  // A capture resolves the machine it is filed under, so the suite registers
+  // the one it files under rather than inventing a uuid.
+  await seedMachine(api.app.get<ArchiveStore>(ARCHIVE_STORE), api.context, MACHINE, "memory-http-suite");
+}, 30_000);
 afterAll(async () => { if (api) await api.close(); });
 
 function capture(text: string, overrides: Record<string, unknown> = {}) {

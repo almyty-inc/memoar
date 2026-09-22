@@ -54,6 +54,89 @@ describe("public share consume/import", () => {
     await expect(viewerLink.sharing.importShare(consumer, viewerLink.token)).rejects.toThrow("does not allow import");
   });
 
+  /*
+    The review is what a share is granted on the strength of, and the contract
+    says so: "authorizes share links and transfers until the session content
+    changes". A token names a session, not the snapshot that was reviewed, and
+    the agent keeps appending to transcripts it has already uploaded — so a link
+    minted over an approved conversation went on serving every turn added to it
+    afterwards, none of them reviewed by anybody.
+  */
+  it("stops serving a link once the session has grown past the review that authorized it", async () => {
+    const store = new DevArchiveStore();
+    const { sharing, token } = await sharedLink(store, "viewer");
+    expect((await sharing.consumeShare(token)).permission).toBe("viewer");
+
+    const session = (await store.getSession(TEST_CONTEXT, TEST_SESSION.id))!;
+    session.turns.push({
+      id: "0191cafe-0000-7000-8000-00000000e001",
+      ordinal: 2,
+      parentId: session.turns.at(-1)!.id,
+      role: "user",
+      createdAt: "2026-08-18T09:00:00.000Z",
+      blocks: [{ id: "0191cafe-0000-7000-8000-00000000e002", kind: "text", text: `and here is the customer's key ${SECRET}` }],
+    });
+    session.updatedAt = "2026-08-18T09:00:00.000Z";
+    await store.saveSession(TEST_CONTEXT, session);
+
+    await expect(sharing.consumeShare(token), "unreviewed turns must not leave the tenant")
+      .rejects.toThrow("Share link not found");
+    // Indistinguishable from an unknown token: the refusal must not tell an
+    // anonymous caller that this token is real and merely stale.
+    await expect(sharing.importShare(consumer, token)).rejects.toThrow("Share link not found");
+
+    // Reviewing it again re-authorizes the same link, because the grant's scope
+    // is derived at redemption rather than frozen at minting.
+    await sharing.completeReview(TEST_CONTEXT, session.id);
+    expect((await sharing.consumeShare(token)).permission).toBe("viewer");
+  });
+
+  /*
+    `expiresAt` is whatever the client sent and `IsDateString` allows an offset.
+    Compared as text against `new Date().toISOString()`, an expiry an hour past
+    written as `+02:00` sorts an hour into the future.
+  */
+  it("expires a link by the instant it names, not by how the timestamp is spelled", async () => {
+    const store = new DevArchiveStore();
+    const { sharing, token } = await sharedLink(store, "viewer");
+    const anHourAgo = new Date(Date.now() - 3_600_000);
+    const sameInstantInBerlin = new Date(anHourAgo.getTime() + 2 * 3_600_000).toISOString().replace("Z", "+02:00");
+    expect(sameInstantInBerlin > new Date().toISOString(), "and it sorts as if it were still in the future").toBe(true);
+
+    const grants = await store.listShareGrants(TEST_CONTEXT);
+    await store.saveShareGrant(TEST_CONTEXT, { ...grants[0]!, expiresAt: sameInstantInBerlin });
+    await expect(sharing.consumeShare(token)).rejects.toThrow("Share link not found");
+  });
+
+  /*
+    The block text was projected and everything around it was not. A session's
+    title is the conversation's own title or the task somebody typed, and its
+    workspace path is where they were working — which is the exact thing
+    `pathScan` is offered to remove. Both went out verbatim.
+  */
+  it("applies the tenant's patterns to the title, summary and workspace it serves, not only to block text", async () => {
+    const store = new DevArchiveStore();
+    const session = structuredClone(TEST_SESSION);
+    session.title = "Debug the export for dana@acme.example";
+    session.summary = "Notes from /Users/frane/clients/acme on the failing export.";
+    session.workspace = { ...session.workspace, path: "/Users/frane/clients/acme" };
+    await store.saveSession(TEST_CONTEXT, session);
+    const settings = await store.getTenantSettings(TEST_CONTEXT);
+    await store.saveTenantSettings(TEST_CONTEXT, {
+      ...settings,
+      redaction: { ...settings.redaction, emailScan: true, pathScan: true },
+    });
+
+    const sharing = new SharingService(store);
+    const review = await sharing.completeReview(TEST_CONTEXT, session.id);
+    const link = await sharing.createLink(TEST_CONTEXT, { sessionId: session.id, permission: "viewer", redactionReviewId: review.id });
+    const served = (await sharing.consumeShare(link.token as string)).session as { title: string; summary: string; workspace: { path: string } };
+
+    expect(served.title).toBe("Debug the export for [REDACTED email]");
+    expect(served.summary).not.toContain("/Users/frane");
+    expect(served.workspace.path).not.toContain("/Users/frane");
+  });
+
   it("404s unknown, revoked, and expired tokens", async () => {
     const store = new DevArchiveStore();
     const { sharing, token } = await sharedLink(store, "viewer");
