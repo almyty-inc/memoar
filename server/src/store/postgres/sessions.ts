@@ -1,11 +1,15 @@
-import { In, type EntityManager } from "typeorm";
+import { In, Not, type EntityManager } from "typeorm";
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
 import { withoutNulBytes } from "../nul-bytes.js";
+import { scopeCollidingTurns } from "../turn-identity.js";
 import { assembleSession } from "./assemble.js";
+
+/** Turn ids per lookup; one bind parameter each, well under Postgres's 65535. */
+const TURN_LOOKUP_BATCH = 1000;
 import { decodeCursor, encodeCursor, TenantRunner, TenantScope } from "./runner.js";
 
 /**
@@ -69,12 +73,29 @@ export class PostgresSessionStore implements SessionStore {
   async saveSession(context: TenantContext, captured: ArchivedSession): Promise<void> {
     // Once, before anything reads it, so every column below — and the search
     // document derived from the blocks — gets the cleaned text.
-    const session = withoutNulBytes(captured);
+    const cleaned = withoutNulBytes(captured);
     await this.runner.inTenant(context, async (manager) => {
-      await manager.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", [context.tenantId, session.id]);
+      await manager.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", [context.tenantId, cleaned.id]);
       const sessionRepository = manager.getRepository(SessionEntity);
       const turnRepository = manager.getRepository(TurnEntity);
       const blockRepository = manager.getRepository(ContentBlockEntity);
+      // Which of these turn ids another session already holds. Asked inside the
+      // lock, so the answer is the one the inserts below will meet. See
+      // `scopeCollidingTurns` for why a shared id is rescoped rather than refused.
+      //
+      // In batches: one bind parameter per turn, and a single transcript runs to
+      // tens of thousands of turns — the same 65535-parameter ceiling the
+      // annotation insert hit.
+      const ids = cleaned.turns.map((turn) => turn.id);
+      const taken = new Set<string>();
+      for (let index = 0; index < ids.length; index += TURN_LOOKUP_BATCH) {
+        const rows = await turnRepository.find({
+          select: { id: true },
+          where: { tenantId: context.tenantId, id: In(ids.slice(index, index + TURN_LOOKUP_BATCH)), sessionId: Not(cleaned.id) },
+        });
+        for (const row of rows) taken.add(row.id);
+      }
+      const session = scopeCollidingTurns(cleaned, taken);
       await blockRepository.delete({ tenantId: context.tenantId, sessionId: session.id });
       await turnRepository.delete({ tenantId: context.tenantId, sessionId: session.id });
       const searchDocument = boundedSearchDocument(session);

@@ -434,6 +434,57 @@ for (const implementation of implementations) {
       two different columns and a fix that cleaned one would pass a test that
       only tried it.
     */
+    /*
+      Two sessions that share a native turn id.
+
+      `turnId` passes a native uuid through unchanged, so when Claude Desktop's
+      audit.jsonl and its -outputs/*.jsonl reuse a record uuid, two different
+      sessions carry the same turn id. Blocks were unique on (tenant, turn,
+      ordinal) with no session in the key, so the second session's blocks
+      collided with the first's and the whole save failed — 16 artifacts,
+      197 MB, on the dev archive.
+
+      Both sessions must survive, each with its own blocks.
+    */
+    it("keeps two sessions that share a turn id, each with its own blocks", async () => {
+      const store = implementation.create();
+      const shared = "0191cafe-0000-7000-8000-0000000c0b01";
+      const sessionWith = (sessionId: string, blockId: string, text: string) => {
+        const session = structuredClone(TEST_SESSION);
+        session.id = sessionId;
+        session.turns = [{
+          ...session.turns[0]!,
+          id: shared,
+          ordinal: 0,
+          parentId: null,
+          blocks: [{ id: blockId, kind: "text", text }],
+        }];
+        return session;
+      };
+
+      await store.saveSession(alice, sessionWith("0191cafe-0000-7000-8000-0000000c0a01", "0191cafe-0000-7000-8000-0000000c0c01", "the audit transcript"));
+      await store.saveSession(alice, sessionWith("0191cafe-0000-7000-8000-0000000c0a02", "0191cafe-0000-7000-8000-0000000c0c02", "an output file reusing its ids"));
+
+      const first = await store.getSession(alice, "0191cafe-0000-7000-8000-0000000c0a01");
+      const second = await store.getSession(alice, "0191cafe-0000-7000-8000-0000000c0a02");
+      expect(first?.turns[0]?.blocks[0]?.text).toBe("the audit transcript");
+      expect(second?.turns[0]?.blocks[0]?.text, "the second session must not be lost to the first").toBe("an output file reusing its ids");
+
+      // The first session keeps the native id; only the one that arrived into
+      // an id already taken is rescoped. Nothing already stored moves.
+      expect(first?.turns[0]?.id, "the session that held the id first keeps it").toBe(shared);
+      expect(second?.turns[0]?.id, "the second is given its own").not.toBe(shared);
+
+      // And captured again as it grows, the second keeps the id it was given,
+      // so an annotation anchored to that turn is still anchored to it.
+      const rescopedId = second!.turns[0]!.id;
+      await store.saveSession(alice, sessionWith("0191cafe-0000-7000-8000-0000000c0a02", "0191cafe-0000-7000-8000-0000000c0c02", "an output file reusing its ids, grown"));
+      const again = await store.getSession(alice, "0191cafe-0000-7000-8000-0000000c0a02");
+      expect(again?.turns[0]?.id, "a re-capture must not renumber the turn").toBe(rescopedId);
+      expect((await store.getSession(alice, "0191cafe-0000-7000-8000-0000000c0a01"))?.turns[0]?.blocks[0]?.text,
+        "and the first session is still whole after the second is saved again").toBe("the audit transcript");
+    });
+
     it("saves a session whose content carries a NUL", async () => {
       const store = implementation.create();
       const nul = String.fromCharCode(0);
