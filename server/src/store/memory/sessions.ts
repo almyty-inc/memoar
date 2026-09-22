@@ -3,6 +3,7 @@ import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
 import { withoutNulBytes } from "../nul-bytes.js";
+import { scopeCollidingTurns } from "../turn-identity.js";
 import { copy, key, type MemoryTables } from "./tables.js";
 
 export class MemorySessionStore implements SessionStore {
@@ -10,8 +11,17 @@ export class MemorySessionStore implements SessionStore {
 
   // Cleaned the way Postgres is forced to be, so a test against this store sees
   // what production would return rather than a byte production cannot hold.
-  async saveSession(context: TenantContext, session: ArchivedSession): Promise<void> {
-    this.tables.sessions.set(key(context.tenantId, session.id), copy(withoutNulBytes(session)));
+  // Turn ids another session already holds are rescoped the same way too — see
+  // `scopeCollidingTurns`. This store never collided, because it keys turns by
+  // session, which is exactly why it could not have caught the Postgres bug.
+  async saveSession(context: TenantContext, captured: ArchivedSession): Promise<void> {
+    const cleaned = withoutNulBytes(captured);
+    const taken = new Set<string>();
+    for (const [entryKey, other] of this.tables.sessions) {
+      if (!entryKey.startsWith(`${context.tenantId}:`) || other.id === cleaned.id) continue;
+      for (const turn of other.turns) taken.add(turn.id);
+    }
+    this.tables.sessions.set(key(context.tenantId, cleaned.id), copy(scopeCollidingTurns(cleaned, taken)));
   }
 
   async resolveSessionIdentity(
