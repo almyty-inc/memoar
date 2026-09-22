@@ -153,3 +153,50 @@ describe("the release workflow", () => {
     expect(comparison, "nothing compares what was built against what the launcher offers").toBeDefined();
   });
 });
+
+/**
+ * A green publish must say whether anything was deployed.
+ *
+ * `build-publish` builds images and then asks the infra repository to roll them
+ * out — but only when `INFRA_DISPATCH_TOKEN` is set. Without it the job
+ * publishes and stops, deliberately, because a deploy can be run by hand and a
+ * job that goes red on every push is a job people stop reading.
+ *
+ * The cost of that was measured rather than guessed: 62 commits merged to main,
+ * this job went green, and dev went on running the previous merge for three
+ * days while every check said success. The warning annotation was there the
+ * whole time, in the annotations, which is not where anyone looks to answer
+ * "is it out yet". A green tick meaning "images built" reads as "shipped".
+ *
+ * So both branches write to the run page. Not a red build — a run you have to
+ * read is better than a run you learn to ignore.
+ */
+describe("what a publish says it did", () => {
+  const publish = workflow("build-publish.yml");
+  const steps = Object.values(publish.jobs ?? {}).flatMap((job) => job.steps ?? []);
+  const summaries = steps.filter((step) => (step.run ?? "").includes("GITHUB_STEP_SUMMARY"));
+
+  it("says on the run page whether it deployed, in both cases", () => {
+    // Two: the dispatch branch and the no-token branch. One of them alone means
+    // a reader can only tell the difference by noticing an absence.
+    expect(
+      summaries.length,
+      "a publish that does not write a summary is a green tick that means one of two very different things",
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("names the image tag in what it writes, so it can be compared with what is running", () => {
+    for (const step of summaries) {
+      expect(step.run, `${step.name ?? "a summary step"} does not name the tag it is talking about`)
+        .toContain("github.sha");
+    }
+  });
+
+  it("still tells somebody how to deploy by hand when it did not", () => {
+    const note = steps.find((step) => (step.run ?? "").includes("INFRA_DISPATCH_TOKEN is not set"));
+    expect(note, "nothing explains why a publish published and stopped").toBeDefined();
+    // The repository has to be the real one; a command naming a repository that
+    // does not exist is the kind of hint that cannot help.
+    expect(note?.run).toContain("almyty-inc/infra");
+  });
+});
