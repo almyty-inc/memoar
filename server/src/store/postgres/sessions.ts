@@ -4,6 +4,7 @@ import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } 
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
+import { withoutNulBytes } from "../nul-bytes.js";
 import { assembleSession } from "./assemble.js";
 import { decodeCursor, encodeCursor, TenantRunner, TenantScope } from "./runner.js";
 
@@ -65,7 +66,10 @@ export class PostgresSessionStore implements SessionStore {
    * the rollback and never outlives either. It also removes the wasted half of
    * the race: the loser no longer rewrites rows the winner just wrote.
    */
-  async saveSession(context: TenantContext, session: ArchivedSession): Promise<void> {
+  async saveSession(context: TenantContext, captured: ArchivedSession): Promise<void> {
+    // Once, before anything reads it, so every column below — and the search
+    // document derived from the blocks — gets the cleaned text.
+    const session = withoutNulBytes(captured);
     await this.runner.inTenant(context, async (manager) => {
       await manager.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", [context.tenantId, session.id]);
       const sessionRepository = manager.getRepository(SessionEntity);
