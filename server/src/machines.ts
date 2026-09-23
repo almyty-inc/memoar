@@ -1,7 +1,9 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Sse, type MessageEvent } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Req, Sse, type MessageEvent } from "@nestjs/common";
 import { Observable } from "rxjs";
 import type { MachineRecord, MachineStore, SessionStore, TenantContext } from "./archive-store.js";
 import { RequireScopes, Tenant } from "./auth.js";
+import type { RequestLike } from "./auth/types.js";
+import { MachineRevocationService } from "./machine-revocation.js";
 import { AckCommandDto, RegisterMachineDto, UpdateMachineDto } from "./machines.dto.js";
 import { uuidV7 } from "./ids.js";
 import { ARCHIVE_STORE } from "./tokens.js";
@@ -130,12 +132,24 @@ export class MachinesService {
    * only leaves the replay set through an explicit ack, so commands survive
    * dropped connections and server restarts.
    */
-  streamCommands(context: TenantContext, machineId: string, pollMs = Number(process.env.MACHINE_COMMAND_POLL_MS ?? 3000)): Observable<MessageEvent> {
+  streamCommands(
+    context: TenantContext,
+    machineId: string,
+    pollMs = Number(process.env.MACHINE_COMMAND_POLL_MS ?? 3000),
+    live?: () => Promise<boolean>,
+  ): Observable<MessageEvent> {
     this.assertMachineBinding(context, machineId);
     return new Observable<MessageEvent>((subscriber) => {
       let initial = true;
       let stopped = false;
       const poll = async (): Promise<void> => {
+        // The credential was checked once, when the stream opened. A revoked
+        // token must not keep receiving commands on a connection it already had.
+        if (live && !await live()) {
+          stopped = true;
+          subscriber.complete();
+          return;
+        }
         const commands = await this.store.listUnackedMachineCommands(context, machineId);
         const batch = initial ? commands : commands.filter((command) => command.status === "pending");
         initial = false;
@@ -172,7 +186,7 @@ export class MachinesService {
 
 @Controller("machines")
 export class MachinesController {
-  constructor(private readonly machines: MachinesService) {}
+  constructor(private readonly machines: MachinesService, private readonly revocation: MachineRevocationService) {}
 
   @Get()
   list(@Tenant() context: TenantContext): Promise<{ items: Record<string, unknown>[] }> {
@@ -195,8 +209,12 @@ export class MachinesController {
 
   @Sse(":machineId/commands/stream")
   @RequireScopes("materialize:read")
-  stream(@Tenant() context: TenantContext, @Param("machineId", ParseUUIDPipe) machineId: string): Observable<MessageEvent> {
-    return this.machines.streamCommands(context, machineId);
+  stream(
+    @Tenant() context: TenantContext,
+    @Param("machineId", ParseUUIDPipe) machineId: string,
+    @Req() request: RequestLike,
+  ): Observable<MessageEvent> {
+    return this.machines.streamCommands(context, machineId, undefined, this.revocation.streamLiveness(context, request));
   }
 
   @Post(":machineId/commands/:commandId/ack")

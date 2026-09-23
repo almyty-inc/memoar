@@ -43,6 +43,7 @@ export const RATE_LIMIT_STORE = Symbol("RATE_LIMIT_STORE");
       inject: [Reflector, RATE_LIMIT_STORE],
     },
   ],
-  exports: [TokenService, AuthService, AuthGuard],
+  // CredentialsService for MachinesModule: deregistering a machine revokes its tokens.
+  exports: [TokenService, AuthService, AuthGuard, CredentialsService],
 })
 export class AuthModule {}

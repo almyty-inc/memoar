@@ -44,7 +44,8 @@ export const MACHINE_TOKEN_TTL_SECONDS = 3600;
 @Injectable()
 export class CredentialsService {
   private readonly devApiKeys = new Map<string, DevApiKey>();
-  private readonly devMachineTokens = new Set<string>();
+  /** Live machine token hashes without a database, and whose machine each is. */
+  private readonly devMachineTokens = new Map<string, { tenantId: string; machineId: string }>();
 
   constructor(
     @Inject(TokenService) private readonly tokens: TokenService,
@@ -169,8 +170,36 @@ export class CredentialsService {
         expiresAt: new Date(issued.expiresAt), revokedAt: null, lastUsedAt: null,
       });
     });
-    else this.devMachineTokens.add(tokenHash);
+    else this.devMachineTokens.set(tokenHash, { tenantId: context.tenantId, machineId });
     return issued;
+  }
+
+  /**
+   * Revokes every live token minted for one machine, and says how many.
+   *
+   * Both records are written. `auth_identities` is what `machineTokenLive`
+   * re-reads on every request, so that write is what refuses the token on its
+   * next use. `machine_tokens` is the per-machine ledger and is kept in step so
+   * the two never disagree about what is live. The caller has already resolved
+   * the machine inside its tenant, and every write here is tenant-scoped too.
+   */
+  async revokeMachineTokens(context: TenantContext, machineId: string): Promise<number> {
+    if (!this.dataSource) {
+      let revoked = 0;
+      for (const [hash, owner] of this.devMachineTokens) {
+        if (owner.tenantId !== context.tenantId || owner.machineId !== machineId) continue;
+        this.devMachineTokens.delete(hash);
+        revoked += 1;
+      }
+      return revoked;
+    }
+    return this.inTenant(context, async (manager) => {
+      const revokedAt = new Date();
+      const live = { tenantId: context.tenantId, machineId, revokedAt: IsNull() };
+      await manager.getRepository(MachineTokenEntity).update(live, { revokedAt });
+      const result = await manager.getRepository(AuthIdentityEntity).update({ ...live, kind: "machine_token" }, { revokedAt });
+      return result.affected ?? 0;
+    });
   }
 
   async authenticateApiKey(secret: string): Promise<TenantContext | null> {
@@ -194,10 +223,27 @@ export class CredentialsService {
       : null;
   }
 
+  /**
+   * Whether a machine token has been revoked, ignoring its expiry.
+   *
+   * For a request that outlives its own authentication: the command stream is
+   * one request held open for as long as the machine listens, past the hour its
+   * token was minted for. Expiry is checked when it connects. Revocation has to
+   * be checked while it runs, or a leaked token keeps a stream open for good.
+   */
+  async machineTokenRevoked(token: string): Promise<boolean> {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    if (!this.dataSource) return !this.devMachineTokens.has(tokenHash);
+    return !await this.dataSource.getRepository(AuthIdentityEntity).existsBy({ kind: "machine_token", lookupKey: tokenHash, revokedAt: IsNull() });
+  }
+
   /** Re-checks a machine token against the identity it was issued against, on every request. */
   async machineTokenLive(token: string, claims: TokenClaims): Promise<boolean> {
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    if (!this.dataSource) return this.devMachineTokens.has(tokenHash);
+    if (!this.dataSource) {
+      const owner = this.devMachineTokens.get(tokenHash);
+      return owner?.tenantId === claims.tenantId && owner.machineId === claims.machineId;
+    }
     const identity = await this.dataSource.getRepository(AuthIdentityEntity).findOneBy({ kind: "machine_token", lookupKey: tokenHash, revokedAt: IsNull() });
     if (!identity || identity.tenantId !== claims.tenantId || identity.userId !== claims.sub || identity.machineId !== claims.machineId
       || !identity.expiresAt || identity.expiresAt <= new Date()) return false;

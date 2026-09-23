@@ -1,3 +1,5 @@
+import { IsNull } from "typeorm";
+
 import { MachineCommandEntity, MachineEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { TenantContext } from "../context.js";
@@ -20,30 +22,49 @@ function toCommandRecord(row: MachineCommandEntity): MachineCommandRecord {
   };
 }
 
+/**
+ * A row as a record. `retiredAt` is left behind on purpose: `saveMachine` saves
+ * whatever the record carries, so a record read before a retirement and saved
+ * after it (a heartbeat racing a deregistration) would otherwise un-retire it.
+ */
+function toMachineRecord(row: MachineEntity): MachineRecord {
+  return {
+    id: row.id, tenantId: row.tenantId, name: row.name, platform: row.platform, agentVersion: row.agentVersion,
+    sourceSettings: row.sourceSettings, lastSeenAt: row.lastSeenAt?.toISOString() ?? null, installationId: row.installationId,
+  };
+}
+
 export class PostgresMachineStore implements MachineStore {
   constructor(private readonly runner: TenantRunner) {}
 
   async listMachines(context: TenantContext): Promise<MachineRecord[]> {
     return this.runner.inTenant(context, async (manager) => (await manager.getRepository(MachineEntity).find({
-      where: { tenantId: context.tenantId },
+      where: { tenantId: context.tenantId, retiredAt: IsNull() },
       order: { name: "ASC", id: "ASC" },
-    })).map((row) => ({
-      ...row,
-      lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
-    })));
+    })).map(toMachineRecord));
   }
 
   async getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null> {
     return this.runner.inTenant(context, async (manager) => {
-      const row = await manager.getRepository(MachineEntity).findOneBy({ id: machineId, tenantId: context.tenantId });
-      return row ? { ...row, lastSeenAt: row.lastSeenAt?.toISOString() ?? null } : null;
+      const row = await manager.getRepository(MachineEntity).findOneBy({ id: machineId, tenantId: context.tenantId, retiredAt: IsNull() });
+      return row ? toMachineRecord(row) : null;
     });
   }
 
   async findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> {
     return this.runner.inTenant(context, async (manager) => {
-      const row = await manager.getRepository(MachineEntity).findOneBy({ installationId, tenantId: context.tenantId });
-      return row ? { ...row, lastSeenAt: row.lastSeenAt?.toISOString() ?? null } : null;
+      const row = await manager.getRepository(MachineEntity).findOneBy({ installationId, tenantId: context.tenantId, retiredAt: IsNull() });
+      return row ? toMachineRecord(row) : null;
+    });
+  }
+
+  async retireMachine(context: TenantContext, machineId: string): Promise<boolean> {
+    return this.runner.inTenant(context, async (manager) => {
+      const result = await manager.getRepository(MachineEntity).update(
+        { id: machineId, tenantId: context.tenantId, retiredAt: IsNull() },
+        { retiredAt: new Date() },
+      );
+      return (result.affected ?? 0) > 0;
     });
   }
 
