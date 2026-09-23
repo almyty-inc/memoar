@@ -4,6 +4,7 @@ import { accountInitials } from '../lib/account';
 import { memoarApi, type DistillationSettings, type TenantSettings, McpStatus } from '../lib/api';
 import type { CurrentUser, ApiKey } from '../lib/types';
 import { cn } from '../components/ui';
+import { ChangePasswordForm } from './settings/ChangePasswordForm';
 import { CreateKeyModal } from './settings/CreateKeyModal';
 import { DistillationTab } from './settings/DistillationTab';
 import { KeysAndMcpTab } from './settings/KeysAndMcpTab';
@@ -210,6 +211,9 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
               </div>
             </section>
           ) : null}
+          {/* The server says whether there is a password. A provider-only
+              account has none, and a form for it could only fail. */}
+          {tab === 'general' && user?.hasPassword === true ? <ChangePasswordForm /> : null}
         </div>
       </div>
 

@@ -1,11 +1,12 @@
 import { DataSource, IsNull } from "typeorm";
 
 import { developmentAuthEnabled } from "../dev-mode.js";
-import { AuthIdentityEntity } from "../entities.js";
+import { AuthIdentityEntity, UserEntity } from "../entities.js";
 
 import type { BrowserSessionService } from "./browser-sessions.js";
 import type { CredentialsService } from "./credentials.service.js";
 import type { DevAccount } from "./oauth-accounts.js";
+import { cutoffOf, devCutoffOf, survivesCutoff } from "./session-cutoff.js";
 import type { TokenClaims } from "./types.js";
 
 /**
@@ -73,15 +74,26 @@ function mintedByLegacyHandshake(claims: TokenClaims): boolean {
     && LEGACY_MCP_SESSION_SCOPES.every((scope) => claims.scopes.includes(scope));
 }
 
-function signInIdentityLive(claims: TokenClaims, lookups: TokenLivenessLookups): Promise<boolean> | boolean {
+/**
+ * A sign-in lives as long as its identity does, and only while it was minted
+ * after the account last cut its sessions (a password change or an operator
+ * reset: see session-cutoff.ts).
+ */
+async function signInIdentityLive(claims: TokenClaims, lookups: TokenLivenessLookups): Promise<boolean> {
   if (!lookups.dataSource) {
-    return [...lookups.devUsers].some((user) => user.id === claims.sub && user.tenantId === claims.tenantId);
+    const user = [...lookups.devUsers].find((candidate) => candidate.id === claims.sub && candidate.tenantId === claims.tenantId);
+    return user !== undefined && survivesCutoff(claims, devCutoffOf(user));
   }
-  return lookups.dataSource.getRepository(AuthIdentityEntity).existsBy(
+  const identityLive = await lookups.dataSource.getRepository(AuthIdentityEntity).existsBy(
     // The tenant is re-read from the identity, not taken from the token: a
     // signed token naming another tenant must still resolve to nothing.
     (["password", "oauth"] as const).map((kind) => ({
       kind, tenantId: claims.tenantId, userId: claims.sub, revokedAt: IsNull(),
     })),
   );
+  if (!identityLive) return false;
+  const user = await lookups.dataSource.getRepository(UserEntity).findOne({
+    where: { id: claims.sub }, select: { id: true, sessionsNotBefore: true, sessionsKeptJti: true },
+  });
+  return user === null || survivesCutoff(claims, cutoffOf(user));
 }

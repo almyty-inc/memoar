@@ -1,5 +1,8 @@
 # Backing up the archive
 
+Locked out of an account rather than out of the data? See
+[password-reset.md](password-reset.md).
+
 Everything in this repository can be rebuilt from source. The sessions cannot.
 This page is about the one thing that is irreplaceable.
 

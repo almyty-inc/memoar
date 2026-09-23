@@ -1,5 +1,7 @@
 import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsEmail, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
+import { NewPasswordRule, PASSWORD_MAX_LENGTH } from "./password-rule.js";
+
 /**
  * These mirror the auth request schemas in contracts/openapi.yaml. Every body
  * here was previously declared as an inline interface, which the global
@@ -25,17 +27,26 @@ export class EmailRegisterDto {
   @MaxLength(320)
   email!: string;
 
-  // Ten is the floor the sign-in form and the contract both state. Length only:
-  // composition rules push people toward one predictable pattern.
-  @IsString()
-  @MinLength(10)
-  @MaxLength(1024)
+  // The same rule a password change applies: see password-rule.ts.
+  @NewPasswordRule()
   password!: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
   displayName?: string;
+}
+
+export class ChangePasswordDto {
+  // Only bounded, not held to the rule: it is checked against the stored hash,
+  // and a password set before the rule existed must still be able to leave.
+  @IsString()
+  @MinLength(1)
+  @MaxLength(PASSWORD_MAX_LENGTH)
+  currentPassword!: string;
+
+  @NewPasswordRule()
+  newPassword!: string;
 }
 
 export class CreateApiKeyDto {

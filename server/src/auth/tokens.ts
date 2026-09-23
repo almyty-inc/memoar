@@ -19,8 +19,11 @@ export class TokenService {
     this.signingKey = configured ?? "memoar-dev-token-secret-do-not-use-in-production";
   }
 
-  issue(claims: Omit<TokenClaims, "exp" | "jti">, ttlSeconds: number): { token: string; expiresAt: string } {
-    const payload: TokenClaims = { ...claims, jti: randomBytes(12).toString("base64url"), exp: Math.floor(Date.now() / 1000) + ttlSeconds };
+  issue(claims: Omit<TokenClaims, "exp" | "jti" | "iat">, ttlSeconds: number): { token: string; expiresAt: string } {
+    const now = Date.now();
+    const payload: TokenClaims = {
+      ...claims, jti: randomBytes(12).toString("base64url"), iat: now / 1000, exp: Math.floor(now / 1000) + ttlSeconds,
+    };
     const encoded = `${base64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${base64(JSON.stringify(payload))}`;
     const signature = createHmac("sha256", this.signingKey).update(encoded).digest("base64url");
     return { token: `${encoded}.${signature}`, expiresAt: new Date(payload.exp * 1000).toISOString() };

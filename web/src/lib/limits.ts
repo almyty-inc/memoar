@@ -7,6 +7,13 @@
  * left the sentence describing a budget the product no longer used.
  */
 
+/**
+ * The shortest password the archive accepts, for a new account and for a
+ * changed password alike. Stated, not discovered. The server's rule is in
+ * server/src/auth/password-rule.ts and the contract says the same.
+ */
+export const MINIMUM_PASSWORD = 10;
+
 /** The context budget a pack is built to unless the reader chooses another. */
 export const DEFAULT_PACK_TOKEN_BUDGET = 4000;
 

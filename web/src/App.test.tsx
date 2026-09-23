@@ -30,7 +30,7 @@ describe('Memoar archive app', () => {
   });
 
   it('shows the archive it was given', async () => {
-    vi.spyOn(memoarApi, 'currentUser').mockResolvedValue({ id: 'u-1', email: 'ada@example.test', displayName: 'Ada Lovelace' });
+    vi.spyOn(memoarApi, 'currentUser').mockResolvedValue({ id: 'u-1', email: 'ada@example.test', displayName: 'Ada Lovelace', hasPassword: true });
     vi.spyOn(memoarApi, 'loadDashboard').mockResolvedValue({
       timeline: [{
         date: '2026-08-20',

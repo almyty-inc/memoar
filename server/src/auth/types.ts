@@ -18,6 +18,13 @@ export interface TokenClaims {
    */
   type: "browser" | "machine" | "mcp";
   exp: number;
+  /**
+   * When it was minted, in seconds with a fractional part (RFC 7519 allows
+   * one). Whole seconds would not do: a password change ends every session
+   * minted before it, and a sign-in in the same second after the change must
+   * survive. Absent on tokens minted before this claim existed.
+   */
+  iat?: number;
   machineId?: string;
   /**
    * The credential this token was derived from, for a token that was derived

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Shell } from './Shell';
 import type { CurrentUser, Machine } from '../lib/types';
 
-const USER: CurrentUser = { id: 'u-1', email: 'ada@example.test', displayName: 'Ada Lovelace' };
+const USER: CurrentUser = { id: 'u-1', email: 'ada@example.test', displayName: 'Ada Lovelace', hasPassword: true };
 
 let machineCount = 0;
 

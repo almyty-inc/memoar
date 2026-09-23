@@ -115,7 +115,35 @@ function credentialSubject(request: Request): string {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : null;
   if (email) return `email:${email}`;
   const machineId = typeof body?.machineId === "string" ? body.machineId : null;
-  return machineId ? `machine:${machineId}` : "anonymous";
+  if (machineId) return `machine:${machineId}`;
+  const account = bearerSubject(request);
+  return account ? `account:${account}` : "anonymous";
+}
+
+/**
+ * The account a signed-in credential request is made as, for a route whose
+ * body names no account (changing a password).
+ *
+ * Without this every such request counted against one shared "anonymous"
+ * budget, so one person guessing locked everybody out. The subject is read
+ * from the bearer token unverified, because this guard runs before the auth
+ * guard. That is safe in both directions. Failures are recorded only by the
+ * interceptor, which runs after the auth guard has verified that same token,
+ * so a forged subject can never add to anybody's count. And a forged token is
+ * refused by the auth guard whatever its subject, so it cannot buy a fresh
+ * budget either.
+ */
+function bearerSubject(request: Request): string | null {
+  const header = request.headers.authorization;
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return null;
+  const payload = header.slice("Bearer ".length).split(".")[1];
+  if (!payload) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { sub?: unknown };
+    return typeof claims.sub === "string" ? claims.sub : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

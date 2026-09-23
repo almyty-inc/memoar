@@ -14,6 +14,12 @@ export interface DevAccount {
   email: string;
   passwordHash: string;
   displayName: string;
+  /** Signed up through a provider: the hash above is unusable and there is no password to change. */
+  passwordless?: boolean;
+  /** Epoch milliseconds. The in-memory twin of `users.sessionsNotBefore`. */
+  sessionsNotBefore?: number;
+  /** The in-memory twin of `users.sessionsKeptJti`. */
+  sessionsKeptJti?: string;
 }
 
 /** A hash no secret can ever match, for an account that signs in another way. */
@@ -53,7 +59,7 @@ export async function resolveOAuthAccount(
     if (!signupOpen()) throw registrationClosed();
     const id = uuidV7();
     const tenantId = uuidV7();
-    devAccounts.set(email, { id, tenantId, email, displayName, passwordHash: unusablePasswordHash() });
+    devAccounts.set(email, { id, tenantId, email, displayName, passwordHash: unusablePasswordHash(), passwordless: true });
     return { id, tenantId };
   }
 

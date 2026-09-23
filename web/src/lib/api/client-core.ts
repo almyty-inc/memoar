@@ -160,6 +160,17 @@ export class ApiClientCore {
     return this.request<CurrentUser>('/auth/me');
   }
 
+  /**
+   * Replaces the password. The server ends every other session of the account
+   * and keeps this one, so the stored token stays valid.
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.request<undefined>('/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
   beginOAuth(provider: 'github' | 'google'): void {
     window.location.assign(`${this.baseUrl}/auth/oauth/${provider}`);
   }

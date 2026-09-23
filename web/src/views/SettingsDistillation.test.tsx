@@ -30,7 +30,7 @@ function view() {
     <SettingsView
       apiKeys={[]}
       mcpEndpoint="http://localhost:4000/mcp"
-      user={{ id: 'u1', email: 'owner@memoar.local', displayName: 'Owner' }}
+      user={{ id: 'u1', email: 'owner@memoar.local', displayName: 'Owner', hasPassword: true }}
       onCreateKey={() => Promise.resolve('secret')}
       onKeyRevoked={() => undefined}
     />,

@@ -14,6 +14,14 @@ export class UserEntity extends IdentifiedEntity {
   @Column("text", { nullable: true })
   passwordHash!: string | null;
 
+  /** Browser sessions minted before this no longer count. See the SessionCutoff migration. */
+  @Column("timestamptz", { nullable: true })
+  sessionsNotBefore!: Date | null;
+
+  /** The one session a password change was made from, which it keeps. */
+  @Column("text", { nullable: true })
+  sessionsKeptJti!: string | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 }
