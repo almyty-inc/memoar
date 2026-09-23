@@ -207,6 +207,39 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/ProblemResponse' }
+  /auth/password:
+    post:
+      tags: [Auth]
+      operationId: changePassword
+      description: >-
+        Replaces the signed-in account's password after checking the current
+        one, and ends every other browser session of the account. The session
+        that made the change stays signed in. API keys and machine tokens are
+        not affected. Made from a signed-in browser session only. Draws on the
+        credential rate limit, because it answers whether a password is right.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Password replaced and other sessions ended }
+        '400': { $ref: '#/components/responses/ProblemResponse' }
+        '401': { $ref: '#/components/responses/ProblemResponse' }
+        '403':
+          description: >-
+            The current password is wrong (code wrong_password), or the caller
+            is not a browser session (code browser_session_required). Nothing
+            was changed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: The account signs in with a provider and has no password (code no_password)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/ProblemResponse' }
   /auth/oauth/{provider}:
     get:
       tags: [Auth]
@@ -1634,6 +1667,17 @@ components:
         email: { type: string, format: email }
         password: { type: string, minLength: 10 }
         displayName: { type: string, maxLength: 120 }
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 1024 }
+        newPassword:
+          type: string
+          minLength: 10
+          maxLength: 1024
+          description: The same rule registration applies.
     AuthMethods:
       type: object
       required: [password, signup, oauth]
@@ -1656,11 +1700,16 @@ components:
         user: { $ref: '#/components/schemas/User' }
     User:
       type: object
-      required: [id, email, displayName]
+      required: [id, email, displayName, hasPassword]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         email: { type: string, format: email }
         displayName: { type: string }
+        hasPassword:
+          type: boolean
+          description: >-
+            Whether the account has a password identity, and so a password to
+            change. False for an account that only signs in with a provider.
     RawArtifactStatus:
       type: object
       additionalProperties: false

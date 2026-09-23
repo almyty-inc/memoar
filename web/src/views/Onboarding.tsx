@@ -3,11 +3,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../components/ui';
 import { GithubMark, MemoarMark } from '../components/MemoarMark';
 import { MemoarApiError, memoarApi, type AuthMethods } from '../lib/api';
+import { MINIMUM_PASSWORD } from '../lib/limits';
 
 type Mode = 'signIn' | 'createAccount';
-
-/** The shortest password the archive will accept. Stated, not discovered. */
-const MINIMUM_PASSWORD = 10;
 
 /**
  * What to tell somebody whose sign-in did not work.

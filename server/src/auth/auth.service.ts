@@ -24,7 +24,13 @@ import { callbackUrl, exchangeCodeForProfile, isOAuthProvider, providerCredentia
 
 import { sessionTokenLive } from "./token-liveness.js";
 
+import { changeAccountPassword, hasPasswordIdentity } from "./password-change.js";
+
 import type { TokenClaims } from "./types.js";
+
+/** The contract's User: who is signed in, and whether they have a password to change. */
+export type SignedInUser = { id: string; email: string; displayName: string; hasPassword: boolean };
+export type AuthSession = { accessToken: string; expiresAt: string; user: SignedInUser };
 
 @Injectable()
 export class AuthService {
@@ -53,13 +59,13 @@ export class AuthService {
     }
   }
 
-  async login(email: string, password: string): Promise<{ accessToken: string; expiresAt: string; user: { id: string; email: string; displayName: string } }> {
+  async login(email: string, password: string): Promise<AuthSession> {
     const normalizedEmail = email.trim().toLowerCase();
     let user: DevAccount | null = null;
     if (this.dataSource) {
       const identity = await this.dataSource.getRepository(AuthIdentityEntity).findOneBy({ kind: "password", lookupKey: normalizedEmail, revokedAt: IsNull() });
       const row = identity ? await this.dataSource.getRepository(UserEntity).findOneBy({ id: identity.userId }) : null;
-      if (identity && row) user = { ...row, tenantId: identity.tenantId, passwordHash: identity.secretHash };
+      if (identity && row) user = { id: row.id, email: row.email, displayName: row.displayName, tenantId: identity.tenantId, passwordHash: identity.secretHash };
     } else user = this.devUsers.get(normalizedEmail) ?? null;
     if (!user || !verifySecret(password, user.passwordHash)) throw new UnauthorizedException("Invalid credentials");
     const issued = this.tokens.issue({
@@ -68,7 +74,7 @@ export class AuthService {
       scopes: PASSWORD_SCOPES,
       type: "browser",
     }, 3600);
-    return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: user.id, email: user.email, displayName: user.displayName } };
+    return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: user.id, email: user.email, displayName: user.displayName, hasPassword: true } };
   }
 
   /**
@@ -96,7 +102,7 @@ export class AuthService {
    * that resolves to nothing — either half alone is an account that looks
    * created and is not.
    */
-  async register(email: string, password: string, displayName?: string): Promise<{ accessToken: string; expiresAt: string; user: { id: string; email: string; displayName: string } }> {
+  async register(email: string, password: string, displayName?: string): Promise<AuthSession> {
     if (!signupOpen()) throw registrationClosed();
     const normalizedEmail = email.trim().toLowerCase();
     const name = displayName?.trim() || normalizedEmail.split("@")[0] || normalizedEmail;
@@ -119,7 +125,7 @@ export class AuthService {
         id: userId, tenantId, email: normalizedEmail, passwordHash: hashSecret(password), displayName: name,
       });
       const local = this.tokens.issue({ sub: userId, tenantId, scopes: PASSWORD_SCOPES, type: "browser" }, 3600);
-      return { accessToken: local.token, expiresAt: local.expiresAt, user: { id: userId, email: normalizedEmail, displayName: name } };
+      return { accessToken: local.token, expiresAt: local.expiresAt, user: { id: userId, email: normalizedEmail, displayName: name, hasPassword: true } };
     }
 
     try {
@@ -154,7 +160,7 @@ export class AuthService {
     }
 
     const issued = this.tokens.issue({ sub: userId, tenantId, scopes: PASSWORD_SCOPES, type: "browser" }, 3600);
-    return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: userId, email: normalizedEmail, displayName: name } };
+    return { accessToken: issued.token, expiresAt: issued.expiresAt, user: { id: userId, email: normalizedEmail, displayName: name, hasPassword: true } };
   }
 
   /**
@@ -162,15 +168,21 @@ export class AuthService {
    * only trusted input here: the id is never taken from the request, so one
    * tenant cannot read another's profile by asking for it.
    */
-  async currentUser(context: TenantContext): Promise<{ id: string; email: string; displayName: string }> {
-    if (this.dataSource) {
-      const row = await this.dataSource.getRepository(UserEntity).findOneBy({ id: context.userId });
-      if (!row) throw new UnauthorizedException("Signed-in user no longer exists");
-      return { id: row.id, email: row.email, displayName: row.displayName };
-    }
-    const user = [...this.devUsers.values()].find((candidate) => candidate.id === context.userId);
-    if (!user) throw new UnauthorizedException("Signed-in user no longer exists");
-    return { id: user.id, email: user.email, displayName: user.displayName };
+  async currentUser(context: TenantContext): Promise<SignedInUser> {
+    const row = this.dataSource
+      ? await this.dataSource.getRepository(UserEntity).findOneBy({ id: context.userId })
+      : [...this.devUsers.values()].find((candidate) => candidate.id === context.userId);
+    if (!row) throw new UnauthorizedException("Signed-in user no longer exists");
+    // Asked of the server, so the web never guesses whether there is a
+    // password to change from how somebody happened to sign in.
+    const hasPassword = await hasPasswordIdentity({ dataSource: this.dataSource, devUsers: this.devUsers }, context);
+    return { id: row.id, email: row.email, displayName: row.displayName, hasPassword };
+  }
+
+  /** See password-change.ts. The token is passed because the session it keeps is named by its jti. */
+  changePassword(context: TenantContext, token: string | null, currentPassword: string, newPassword: string): Promise<void> {
+    const claims = token ? this.tokens.verify(token) : null;
+    return changeAccountPassword({ dataSource: this.dataSource, devUsers: this.devUsers }, context, claims, currentPassword, newPassword);
   }
 
   /**

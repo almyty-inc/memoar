@@ -6,7 +6,7 @@ import type { TenantContext } from "../archive-store.js";
 import { Public, Tenant } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
-import { CreateApiKeyDto, EmailLoginDto, EmailRegisterDto, IssueMachineTokenDto } from "./auth.dto.js";
+import { ChangePasswordDto, CreateApiKeyDto, EmailLoginDto, EmailRegisterDto, IssueMachineTokenDto } from "./auth.dto.js";
 import { clearedOAuthStateCookie, oauthStateCookie, oauthStateNonce } from "./oauth-state-cookie.js";
 import type { RequestLike } from "./types.js";
 import { CREDENTIAL_LIMIT, Throttle } from "../rate-limit.js";
@@ -71,6 +71,24 @@ export class AuthController {
   @Get("me")
   me(@Tenant() context: TenantContext): Promise<Record<string, unknown>> {
     return this.auth.currentUser(context);
+  }
+
+  /**
+   * Replaces the signed-in account's password and ends its other sessions.
+   *
+   * On the credential budget because it answers "is this the password?" to
+   * anybody holding a session, including a stolen one.
+   */
+  @Post("password")
+  @HttpCode(204)
+  @Throttle(CREDENTIAL_LIMIT)
+  changePassword(
+    @Tenant() context: TenantContext,
+    @Body() body: ChangePasswordDto,
+    @Headers("authorization") authorization?: string,
+  ): Promise<void> {
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null;
+    return this.auth.changePassword(context, token, body.currentPassword, body.newPassword);
   }
 
   @Public()

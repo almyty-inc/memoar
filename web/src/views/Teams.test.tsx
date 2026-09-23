@@ -5,7 +5,7 @@ import { TeamsView } from './Teams';
 import { memoarApi } from '../lib/api';
 import type { CurrentUser, Team, TeamInvitation, TeamMember } from '../lib/types';
 
-const ADA: CurrentUser = { id: 'user-1', email: 'ada@example.test', displayName: 'Ada Lovelace' };
+const ADA: CurrentUser = { id: 'user-1', email: 'ada@example.test', displayName: 'Ada Lovelace', hasPassword: true };
 
 function team(overrides: Partial<Team> = {}): Team {
   return { id: 'team-1', orgId: 'org-1', name: 'Archive crew', memberCount: 4, ...overrides };

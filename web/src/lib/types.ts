@@ -34,6 +34,8 @@ export interface CurrentUser {
   id: string;
   email: string;
   displayName: string;
+  /** Whether there is a password to change. False for a provider-only account. The server decides. */
+  hasPassword: boolean;
 }
 
 export type RedactionStatus = 'clear' | 'findings' | 'reviewed';
