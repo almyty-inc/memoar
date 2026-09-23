@@ -1,5 +1,6 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
-import { derivedBlockId, incrementUuid } from "./common.js";
+import { derivedBlockId, incrementUuid, readJsonLines } from "./common.js";
+import { chatEnvelopes, chatEnvelopesFromLog, chatSessions } from "./copilot-chat.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
@@ -23,15 +24,23 @@ interface TurnRow {
  * no recorded exchanges, so unlike opencode this parser has not been run
  * against a real transcript. The shape is right; the mapping of a populated
  * session deserves checking against one when a real session exists.
+ *
+ * Copilot writes a second store that has nothing to do with this one: VS Code
+ * Copilot Chat keeps its panels as JSON under `workspaceStorage/*\/chatSessions`,
+ * and capture has always collected them. This parser used to refuse every one
+ * of them on sight, so the bytes went up and came back `unknown_format`; the
+ * envelope is read by `copilot-chat.ts` now, and only the SQLite store still
+ * takes the branch below.
  */
 export class CopilotV1Parser implements VersionedParser {
   readonly source = "copilot";
   readonly versions = ["v1"] as const;
 
   parse(request: ParseRequest): ParseResult {
-    if (!isSqliteBytes(request.raw)) {
-      return { kind: "unknown", diagnostic: "copilot v1 requires a native SQLite session store", raw: request.raw };
-    }
+    return isSqliteBytes(request.raw) ? this.parseSessionStore(request) : parseChatSessions(request);
+  }
+
+  private parseSessionStore(request: ParseRequest): ParseResult {
     try {
       const sessions = withSqlite(request.raw, (database) => {
         const sessionRows = database
@@ -88,4 +97,44 @@ export class CopilotV1Parser implements VersionedParser {
       };
     }
   }
+}
+
+/**
+ * The VS Code side: one panel per file, in either of the two layouts VS Code
+ * has written it in.
+ *
+ * Both are tried on the bytes rather than on the name, because the name is not
+ * the parser's to trust — an artifact arrives as bytes and a sourcePath, and a
+ * `.jsonl` whose single line happens to be valid JSON would otherwise be read
+ * by whichever branch the extension chose.
+ *
+ * A panel with no requests is refused rather than stored as a session with no
+ * turns. Most of the files capture matches are exactly that — every one of the
+ * 23 on this machine — and an empty session in the archive is worse than a kept
+ * artifact saying why: it looks like a conversation that was lost.
+ */
+function parseChatSessions(request: ParseRequest): ParseResult {
+  let whole: unknown;
+  try {
+    whole = JSON.parse(Buffer.from(request.raw).toString("utf8")) as unknown;
+  } catch {
+    whole = undefined;
+  }
+  const envelopes = chatEnvelopes(whole) ?? chatEnvelopesFromLog(readJsonLines(request.raw).records);
+  if (!envelopes) {
+    return {
+      kind: "unknown",
+      diagnostic: "copilot v1 requires a native SQLite session store or a VS Code chatSessions envelope",
+      raw: request.raw,
+    };
+  }
+  const sessions = chatSessions(envelopes, request.seed).filter((session) => session.turns.length > 0);
+  if (sessions.length === 0) {
+    return {
+      kind: "unknown",
+      diagnostic: `copilot v1 chat session holds no requests: ${envelopes.length} panel(s) opened and never used`,
+      raw: request.raw,
+    };
+  }
+  return { kind: "parsed", parser: "copilot:v1:0.2.0", sessions };
 }

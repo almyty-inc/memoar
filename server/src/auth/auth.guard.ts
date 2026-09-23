@@ -11,13 +11,35 @@ import { PUBLIC_ROUTE, REQUIRED_SCOPES } from "./decorators.js";
 import { AuthService } from "./auth.service.js";
 import type { RequestLike } from "./types.js";
 
-function inferredScopes(request: RequestLike): string[] {
+/**
+ * What a route costs when it does not say so itself.
+ *
+ * Exported because the MCP tool table is checked against it: every tool must
+ * cost what the route it wraps costs, and the only way to assert that without
+ * copying this logic into a test is to ask this function.
+ */
+export function inferredScopes(request: RequestLike): string[] {
   const path = (request.url ?? request.route?.path ?? "").split("?")[0] ?? "";
   const method = request.method?.toUpperCase() ?? "GET";
   if (path.includes("/mcp")) return ["mcp:use"];
   if (path.includes("/ingest")) return ["ingest:write"];
   if (path.includes("/auth/api-keys")) return ["keys:write"];
-  if (path.includes("/auth/machine-token") || path.includes("/machines")) return ["machines:write"];
+  if (path.includes("/auth/machine-token")) return ["machines:write"];
+  // Reading the machine list is reading the archive's own metadata — which
+  // machine captured what — and it was inferred as machines:write along with
+  // registering a machine and setting what its laptop captures. The same
+  // mistake the /teams branch below documents: a whole path prefix priced by
+  // its most dangerous verb. A key that may read sessions may see which
+  // machine they came from; minting and configuring machines still may not.
+  if (path.includes("/machines")) return method === "GET" ? ["archive:read"] : ["machines:write"];
+  // Two reads shaped like writes. `POST /pack` and `POST /distillation/
+  // projects/export` take a body and return evidence; neither stores anything,
+  // and both were inferred as archive:write purely from the verb. That is not
+  // a harmless over-charge: `pack` is the tool this archive exists for, so
+  // pricing it as a write is an instruction to hand agents write keys.
+  // `POST /memory/conversions` already carries @RequireScopes("archive:read")
+  // for exactly this reason; these two had no decorator to correct them.
+  if (path.endsWith("/pack") || path.includes("/distillation/projects/export")) return ["archive:read"];
   // Writing under /teams is deciding who may read whose archive: joining a
   // team, leaving one, or putting somebody out of one. It is the same act the
   // invite route already asks sharing:write for, and it matched no branch here,
@@ -81,6 +103,16 @@ export class AuthGuard implements CanActivate {
     if (!tenantContext.scopes.includes("*") && requiredScopes.some((scope) => !tenantContext.scopes.includes(scope))) {
       authFailures.inc({ reason: "missing_scope" });
       throw new ForbiddenException(`Missing required scope: ${requiredScopes.join(", ")}`);
+    }
+    // A handshake token now carries the archive scopes of the key it came
+    // from, so that each MCP tool can be gated the way its route is. Those
+    // scopes are for MCP and for nothing else: the token is handed to a
+    // third-party client through an environment variable, and `docs/mcp.md`
+    // has always promised it "opens MCP only". Without this line that promise
+    // would have quietly become untrue for every key holding archive:read.
+    if (tenantContext.authType === "mcp" && !((request.url ?? "").split("?")[0] ?? "").includes("/mcp")) {
+      authFailures.inc({ reason: "mcp_restricted" });
+      throw new ForbiddenException("MCP session tokens are restricted to the MCP endpoint");
     }
     if (tenantContext.authType === "machine") {
       const path = (request.url ?? "").split("?")[0] ?? "";

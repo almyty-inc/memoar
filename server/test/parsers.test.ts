@@ -54,7 +54,12 @@ const VERIFIED_AGAINST_THE_TOOL: Readonly<Record<string, string>> = {
   zed: "parsed a real threads.db from this machine",
   "antigravity-cli": "parsed a real transcript log from this machine",
   opencode: "parsed a real 47-turn session from this machine",
-  copilot: "schema read from an installed Copilot CLI; that install had no recorded turns",
+  // Two stores. The CLI schema was read off an install whose `turns` table was
+  // empty, so that half is verified as far as columns and no further. The VS
+  // Code half was run over six real populated Copilot Chat envelopes on this
+  // machine — which is what `copilot-chat-sessions.test.ts` pins the mapping of,
+  // and what contracts/fixtures/PROVENANCE.md says the limits of are.
+  copilot: "CLI schema read from an installed Copilot CLI with no recorded turns; VS Code chat envelope parsed from six real populated sessions",
   goose: "schema from block/goose session_manager.rs",
   crush: "schema from charmbracelet/crush initial migration",
   cursor: "two-table layout from the community reference implementations",
