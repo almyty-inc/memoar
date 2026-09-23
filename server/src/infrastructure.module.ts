@@ -48,6 +48,9 @@ import { ARCHIVE_STORE, DISTILLATION_PROVIDER, JOB_QUEUE, OBJECT_STORAGE, SEARCH
           region: process.env.S3_REGION ?? "us-east-1",
           accessKeyId: process.env.S3_ACCESS_KEY ?? "",
           secretAccessKey: process.env.S3_SECRET_KEY ?? "",
+          // Only "false" turns it off, so an unset or misspelled value keeps the
+          // behaviour every existing deployment already has.
+          forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
         });
         const storage = new S3ObjectStorage(client, process.env.S3_BUCKET ?? "memoar-raw");
         await storage.health();
