@@ -34,10 +34,29 @@ export class AwsS3ClientPort implements S3ClientPort {
   private readonly internal: S3Client;
   private readonly publicSigner: S3Client;
 
-  constructor(config: { endpoint: string; publicEndpoint?: string; region: string; accessKeyId: string; secretAccessKey: string }) {
+  /**
+   * Path-style addressing, unless the provider wants the other kind.
+   *
+   * MinIO needs `bucket/key` in the path. Amazon deprecated that shape, and
+   * DigitalOcean Spaces documents the opposite — its own SDK guidance is to set
+   * `forcePathStyle` to false and use the virtual-hosted form,
+   * `bucket.fra1.digitaloceanspaces.com`. Hard-coding `true` meant a provider
+   * could only be adopted by editing this file, and the failure it produces is
+   * a signature error rather than a connection error, which reads like bad
+   * credentials rather than the wrong address shape.
+   *
+   * The default stays `true`, so the local Compose stack and every existing
+   * deployment behave exactly as before. Path-style presigned URLs also cannot
+   * be served through a CDN, which is the other reason a provider might want
+   * this turned off.
+   */
+  constructor(config: {
+    endpoint: string; publicEndpoint?: string; region: string;
+    accessKeyId: string; secretAccessKey: string; forcePathStyle?: boolean;
+  }) {
     const shared = {
       region: config.region,
-      forcePathStyle: true,
+      forcePathStyle: config.forcePathStyle ?? true,
       credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
     };
     this.internal = new S3Client({ ...shared, endpoint: config.endpoint });

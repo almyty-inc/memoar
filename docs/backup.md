@@ -8,13 +8,86 @@ There are two stores to think about, and they need different treatment.
 | What | Where | How it is protected |
 | --- | --- | --- |
 | Sessions, turns, annotations, identities, machines | Postgres | `deploy/backup.sh`, below |
-| Raw captured bytes | The object store | Bucket versioning and lifecycle rules |
+| Raw captured bytes | The object store | Bucket versioning and lifecycle rules — **only once somebody has run [the commands below](#protecting-the-object-store)** |
 
 The raw artifacts are content-addressed and never modified after they are
 written, so nothing can overwrite one with different content. What they need is
 protection from deletion — versioning on the bucket, and a lifecycle rule that
 keeps noncurrent versions long enough to notice a mistake. A nightly copy of an
 append-only store mostly copies what it copied yesterday.
+
+That is the design. Whether it is also the truth depends on your bucket, because
+versioning and lifecycle are settings on the bucket rather than anything this
+repository deploys, and for a long time this page claimed the protection without
+anyone ever having switched it on. The next section is how to switch it on and,
+more importantly, how to find out whether it is on right now.
+
+## Protecting the object store
+
+These are one-time, per-bucket, and they need credentials for the bucket. The
+examples are DigitalOcean Spaces, which is what the hosted deployment uses; any
+S3-compatible store takes the same calls against its own endpoint.
+
+**First, find out what is actually true.** Do this before assuming anything:
+
+```sh
+aws s3api get-bucket-versioning --bucket "$S3_BUCKET" \
+  --endpoint-url "$S3_ENDPOINT" --region "$S3_REGION"
+```
+
+Empty output means versioning has never been enabled and nothing is protecting
+these bytes from a delete. `{"Status": "Enabled"}` means it is on.
+
+**Enable versioning.** On Spaces this is only possible through the API —
+DigitalOcean's documentation states that versioning cannot be enabled from the
+control panel — which is a large part of why it had never been done:
+
+```sh
+aws s3api put-bucket-versioning --bucket "$S3_BUCKET" \
+  --endpoint-url "$S3_ENDPOINT" --region "$S3_REGION" \
+  --versioning-configuration Status=Enabled
+```
+
+Enable it on an empty bucket if you can. Versioning only covers writes made
+after it is on; objects already there carry a `null` version and a delete takes
+them with it.
+
+**Set the lifecycle rules.** Write this to `lifecycle.json`:
+
+```json
+{
+  "Rules": [
+    {
+      "ID": "expire-noncurrent-raw-artifacts",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 90 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}
+```
+
+```sh
+aws s3api put-bucket-lifecycle-configuration --bucket "$S3_BUCKET" \
+  --endpoint-url "$S3_ENDPOINT" --region "$S3_REGION" \
+  --lifecycle-configuration file://lifecycle.json
+
+aws s3api get-bucket-lifecycle-configuration --bucket "$S3_BUCKET" \
+  --endpoint-url "$S3_ENDPOINT" --region "$S3_REGION"
+```
+
+There is no `Expiration` rule here and there must not be one. A plain expiration
+on a bucket whose purpose is to keep things forever deletes the archive on a
+schedule. What expires is superseded versions — which for immutable,
+content-addressed objects only exist when something was overwritten or deleted —
+and multipart uploads that never finished, which are otherwise billed forever
+and invisible.
+
+Run the `get-` command afterwards and read what comes back. If the rule is
+rejected or returns altered, your store does not support what this page claims,
+and the honest fix is to change this page rather than to leave the claim
+standing.
 
 ## Take a backup
 

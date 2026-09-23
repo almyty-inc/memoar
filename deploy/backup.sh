@@ -9,10 +9,19 @@
 #
 # Two things have to be kept, and only one of them is here:
 #   - Postgres, which holds the canonical sessions, annotations and identities.
+#     That is what this script dumps.
 #   - The object store, which holds the raw captured bytes. Those are
 #     content-addressed and immutable, so the right protection is versioning
-#     and lifecycle rules on the bucket rather than a nightly copy; see
-#     docs/backup.md.
+#     and lifecycle rules on the bucket rather than a nightly copy.
+#
+# Read that second line as a design decision, not as a description of a running
+# system. Versioning and lifecycle are bucket settings that somebody has to turn
+# on, by hand, once per bucket — on DigitalOcean Spaces versioning cannot even
+# be turned on from the control panel, only through the S3 API — and nothing in
+# this repository or in the deployment turns them on. A deployment where nobody
+# ran those commands has no protection on its raw bytes at all, however carefully
+# this script runs every night. docs/backup.md says which commands, and how to
+# check whether they were run on the bucket you actually have.
 set -eu
 
 usage() {
