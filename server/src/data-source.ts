@@ -20,6 +20,7 @@ import { TeamInvitations1700000014000 } from "./migrations/1700000014000-TeamInv
 import { TeamShareOptins1700000015000 } from "./migrations/1700000015000-TeamShareOptins.js";
 import { MemoryRedaction1700000016000 } from "./migrations/1700000016000-MemoryRedaction.js";
 import { MachineInstallation1700000017000 } from "./migrations/1700000017000-MachineInstallation.js";
+import { MachineRetirement1700000018000 } from "./migrations/1700000018000-MachineRetirement.js";
 
 export const MIGRATIONS = [
   Initial1700000000000, CredentialBilling1700000001000, SessionIdentity1700000002000,
@@ -28,7 +29,7 @@ export const MIGRATIONS = [
   MachineCommands1700000009000, AppRole1700000010000, MemoryDocuments1700000011000,
   TenantProviderCredentials1700000012000, OAuthIdentities1700000013000,
   TeamInvitations1700000014000, TeamShareOptins1700000015000,
-  MemoryRedaction1700000016000, MachineInstallation1700000017000,
+  MemoryRedaction1700000016000, MachineInstallation1700000017000, MachineRetirement1700000018000,
 ];
 
 function dataSourceFor(url: string): DataSource {

@@ -123,6 +123,7 @@ export class DevArchiveStore implements ArchiveStore {
   getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null> { return this.machineStore.getMachine(context, machineId); }
   findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> { return this.machineStore.findMachineByInstallation(context, installationId); }
   saveMachine(context: TenantContext, machine: MachineRecord): Promise<void> { return this.machineStore.saveMachine(context, machine); }
+  retireMachine(context: TenantContext, machineId: string): Promise<boolean> { return this.machineStore.retireMachine(context, machineId); }
   createMachineCommand(context: TenantContext, input: { machineId: string; kind: string; payload: Record<string, unknown> }): Promise<MachineCommandRecord> { return this.machineStore.createMachineCommand(context, input); }
   listUnackedMachineCommands(context: TenantContext, machineId: string): Promise<MachineCommandRecord[]> { return this.machineStore.listUnackedMachineCommands(context, machineId); }
   markMachineCommandsDelivered(context: TenantContext, commandIds: readonly string[]): Promise<void> { return this.machineStore.markMachineCommandsDelivered(context, commandIds); }

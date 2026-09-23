@@ -88,23 +88,34 @@ export class MemoryJobStore implements JobStore {
 export class MemoryMachineStore implements MachineStore {
   constructor(private readonly tables: MemoryTables) {}
 
+  private live(machine: MachineRecord): boolean {
+    return !this.tables.retiredMachines.has(key(machine.tenantId, machine.id));
+  }
+
   async listMachines(context: TenantContext): Promise<MachineRecord[]> {
     return [...this.tables.machines.values()]
-      .filter((machine) => machine.tenantId === context.tenantId)
+      .filter((machine) => machine.tenantId === context.tenantId && this.live(machine))
       .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
       .map(copy);
   }
 
   async getMachine(context: TenantContext, machineId: string): Promise<MachineRecord | null> {
     const machine = this.tables.machines.get(key(context.tenantId, machineId));
-    return machine ? copy(machine) : null;
+    return machine && this.live(machine) ? copy(machine) : null;
   }
 
   async findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null> {
     const machine = [...this.tables.machines.values()].find(
-      (candidate) => candidate.tenantId === context.tenantId && candidate.installationId === installationId,
+      (candidate) => candidate.tenantId === context.tenantId && candidate.installationId === installationId && this.live(candidate),
     );
     return machine ? copy(machine) : null;
+  }
+
+  async retireMachine(context: TenantContext, machineId: string): Promise<boolean> {
+    const machine = this.tables.machines.get(key(context.tenantId, machineId));
+    if (!machine || !this.live(machine)) return false;
+    this.tables.retiredMachines.add(key(context.tenantId, machineId));
+    return true;
   }
 
   async saveMachine(context: TenantContext, machine: MachineRecord): Promise<void> {

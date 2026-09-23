@@ -40,6 +40,8 @@ export function copy<T>(value: T): T {
  */
 export class MemoryTables {
   readonly machines = new Map<string, MachineRecord>();
+  /** Keys of retired machines, apart from the records so a save cannot undo one. */
+  readonly retiredMachines = new Set<string>();
   readonly machineCommands = new Map<string, MachineCommandRecord>();
   readonly sessions = new Map<string, ArchivedSession>();
   readonly sessionIdentities = new Map<string, string>();

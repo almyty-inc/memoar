@@ -1294,6 +1294,48 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Machine' }
+    delete:
+      tags: [Machines]
+      operationId: deregisterMachine
+      description: >-
+        Deregisters a machine. Every live machine token minted for it is revoked
+        and refused from its next request, including an open command stream.
+        The machine is retired, not deleted, because archived sessions and memory
+        documents keep naming it. A retired machine leaves the machine list and
+        cannot mint tokens. Registering the same installationId again enrols a
+        new machine. Requires machines:write. A machine that does not exist and
+        one that belongs to another account get the same 404.
+      parameters:
+        - { name: machineId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '204': { description: Machine deregistered and its tokens revoked }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
+  /machines/{machineId}/tokens/revoke:
+    post:
+      tags: [Machines]
+      operationId: revokeMachineTokens
+      description: >-
+        Revokes every live machine token minted for this machine and keeps the
+        machine, for a token that has leaked. Revoked tokens are refused from
+        their next request. The agent mints a fresh token with its account
+        credential at the start of its next sync cycle. Requires machines:write.
+        A machine that does not exist and one that belongs to another account
+        get the same 404.
+      parameters:
+        - { name: machineId, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+      responses:
+        '200':
+          description: Tokens revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, minimum: 0, description: How many live tokens this call revoked }
+        '403': { $ref: '#/components/responses/ProblemResponse' }
+        '404': { $ref: '#/components/responses/ProblemResponse' }
   /machines/{machineId}/commands/stream:
     get:
       tags: [Machines]

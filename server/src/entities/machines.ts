@@ -22,6 +22,14 @@ export class MachineEntity extends TenantEntity {
   /** Unique per tenant where present; see `MachineRecord.installationId`. */
   @Column("text", { nullable: true })
   installationId!: string | null;
+
+  /**
+   * When the machine was deregistered. Never part of a `MachineRecord`: only
+   * `retireMachine` writes it, so a stale record saved after a retirement
+   * cannot bring the machine back.
+   */
+  @Column("timestamptz", { nullable: true })
+  retiredAt!: Date | null;
 }
 
 @Entity("machine_tokens")

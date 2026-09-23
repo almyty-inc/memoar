@@ -276,6 +276,11 @@ export interface MachineStore {
    */
   findMachineByInstallation(context: TenantContext, installationId: string): Promise<MachineRecord | null>;
   saveMachine(context: TenantContext, machine: MachineRecord): Promise<void>;
+  /**
+   * Deregisters a machine, keeping the row the archive still names. Every other
+   * read here then treats it as absent. False when there was no live machine.
+   */
+  retireMachine(context: TenantContext, machineId: string): Promise<boolean>;
   createMachineCommand(context: TenantContext, input: { machineId: string; kind: string; payload: Record<string, unknown> }): Promise<MachineCommandRecord>;
   listUnackedMachineCommands(context: TenantContext, machineId: string): Promise<MachineCommandRecord[]>;
   markMachineCommandsDelivered(context: TenantContext, commandIds: readonly string[]): Promise<void>;
