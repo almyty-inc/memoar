@@ -9,6 +9,7 @@ import { McpMemoryTools } from "./memory-tools.js";
 import { McpProjectMemoryTools } from "./project-memory-tools.js";
 import { McpSharingTools } from "./sharing-tools.js";
 import type { McpToolGroup } from "./tool-group.js";
+import { assertToolScopes } from "./tool-scopes.js";
 
 /**
  * Every tool the MCP server serves, in the order a client should meet them.
@@ -48,10 +49,18 @@ export class McpToolRegistry {
    * caller — the MCP request handler, or a test — is awaiting a promise. A
    * synchronous throw from here escapes that `try` and became a 500 rather than
    * the tool error it is.
+   *
+   * The scope gate is here and nowhere else, because this is the one place
+   * every tool call passes through. Putting it in each group would make an
+   * ungated tool a thing somebody could forget to write rather than a thing
+   * `assertToolScopes` refuses.
    */
   async call(context: TenantContext, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const group = this.groups.find((candidate) => candidate.handles(name));
     if (!group) throw new Error(`unknown_tool:${name}`);
+    // After the lookup: a name nobody serves is an unknown tool, not a scope
+    // the caller could go and acquire.
+    assertToolScopes(context, name);
     return group.call(context, name, args);
   }
 }

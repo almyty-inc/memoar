@@ -4,6 +4,7 @@ import type { TenantContext } from "../archive-store.js";
 import { RequireScopes, Tenant, TokenService } from "../auth.js";
 import { McpHandshakeDto } from "../mcp.dto.js";
 import { McpToolRegistry } from "./registry.js";
+import { mcpTokenScopes } from "./tool-scopes.js";
 
 /** An hour: long enough for a session, short enough to be worth expiring. */
 const MCP_TOKEN_TTL_SECONDS = 3600;
@@ -24,7 +25,20 @@ export class McpHandshakeController {
    * a token rather than in documentation: the handshake was documented as
    * minting one and never did.
    *
-   * The token carries mcp:use alone, so a leaked one reads no archive directly.
+   * What it carries is the key's own grant, narrowed to what MCP can spend.
+   *
+   * It used to carry `mcp:use` and nothing else, which was the whole of the
+   * gate on every write tool — so a key refused `POST /v1/annotations` wrote
+   * annotations over MCP all the same. Gating those tools properly means the
+   * token has to be able to say the caller held `archive:write`; minting that
+   * unconditionally would make the handshake an escalation instead of an
+   * exchange. `mcpTokenScopes` therefore intersects: a key holding `mcp:use`
+   * alone still mints a token holding `mcp:use` alone, which reads the archive
+   * over MCP — that is what the scope is for — and is refused the five write
+   * tools exactly as the key is refused the write routes.
+   *
+   * A leaked token still reads no archive directly, whatever it carries — the
+   * guard confines a token of this type to the MCP endpoint.
    *
    * Two things it now records that it did not:
    *
@@ -52,11 +66,12 @@ export class McpHandshakeController {
         detail: "The MCP handshake exchanges an API key for a session token; sign in with an API key instead.",
       });
     }
+    const scopes = mcpTokenScopes(context.scopes);
     const issued = this.tokens.issue(
       {
         sub: context.userId,
         tenantId: context.tenantId,
-        scopes: ["mcp:use"],
+        scopes,
         type: "mcp",
         // Absent only for development auth, which exchanges no key; a token
         // naming no credential is accepted nowhere else.
@@ -71,6 +86,11 @@ export class McpHandshakeController {
       protocolVersion: body.protocolVersion,
       accessToken: issued.token,
       expiresAt: issued.expiresAt,
+      // What the token actually got. A key holding mcp:use alone hands back
+      // ["mcp:use"] — enough to read the archive, and the one place a client
+      // can find out it needs archive:write to curate before a write is
+      // refused rather than after.
+      scopes,
     };
   }
 }

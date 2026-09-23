@@ -1344,14 +1344,18 @@ paths:
       responses:
         '200':
           description: >
-            MCP endpoint, capabilities, and a short-lived bearer token scoped to
-            mcp:use. The endpoint itself takes an API key in x-memoar-key; this
-            exists for clients that can only send a bearer token.
+            MCP endpoint, capabilities, and a short-lived bearer token carrying
+            mcp:use plus whichever archive scopes the exchanged key already
+            held, and never more than those. Over MCP, mcp:use reads the
+            archive; the tools that write require archive:write, the same scope
+            their HTTP routes require. The endpoint itself takes an API key in
+            x-memoar-key; this exists for clients that can only send a bearer
+            token. The token is accepted at /mcp and nowhere else.
           content:
             application/json:
               schema:
                 type: object
-                required: [endpoint, tools, accessToken, expiresAt]
+                required: [endpoint, tools, accessToken, expiresAt, scopes]
                 properties:
                   endpoint: { type: string }
                   tools: { type: array, items: { type: string } }
@@ -1359,6 +1363,7 @@ paths:
                   protocolVersion: { type: string }
                   accessToken: { type: string }
                   expiresAt: { type: string, format: date-time }
+                  scopes: { type: array, items: { type: string } }
         '403': { $ref: '#/components/responses/ProblemResponse' }
   /memory:
     get:

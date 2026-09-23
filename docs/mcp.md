@@ -1,14 +1,106 @@
 # MCP setup
 
 Memoar serves Streamable HTTP at `/mcp` — outside the `/v1` API prefix, so the
-endpoint is `https://<memoar-host>/mcp`. Create an API key with `mcp:use`; add
-`archive:read` only if the client should also reach the REST API.
+endpoint is `https://<memoar-host>/mcp`. Create an API key with:
+
+- `mcp:use` — connect, and read. Search, excerpts, packs, sessions,
+  annotations, collections, machines, share links and the instruction files all
+  work on this scope alone. This is the only scope a read-only agent needs.
+- `archive:write` — additionally lets the client curate: `save_note`,
+  `add_annotation`, `create_collection`, `add_session_to_collection`,
+  `remove_session_from_collection`. Leave it off for a read-only agent.
+- `archive:read` — only if the client should also reach the REST API directly.
+  It is not needed for MCP.
+
+## Scopes
+
+Each tool costs `mcp:use` plus whatever the HTTP route it wraps costs, with one
+stated exception: **holding `mcp:use` satisfies `archive:read` on this surface,
+because reading this archive is what the scope is for.** Nothing implies
+`archive:write`, here or anywhere.
+
+`mcp:use` used to be the whole gate on *every* tool, writes included. The scope
+is inferred for any path containing `/mcp`, so one scope stood in for every
+scope the archive has. A key holding `mcp:use` alone was refused
+`POST /v1/annotations` with a 403 and wrote the same annotation through
+`add_annotation` without complaint — the same credential, the same write, two
+different answers depending on which door it used. That is what closed.
+
+| Tool | Scopes | The route it is priced against |
+| --- | --- | --- |
+| `search_sessions` | `mcp:use`, `archive:read` | `GET /v1/search` |
+| `list_sessions` | `mcp:use`, `archive:read` | `GET /v1/sessions` |
+| `get_excerpt` | `mcp:use`, `archive:read` | `GET /v1/sessions/{id}` |
+| `get_session` | `mcp:use`, `archive:read` | `GET /v1/sessions/{id}` |
+| `pack` | `mcp:use`, `archive:read` | `POST /v1/pack` |
+| `get_memory` | `mcp:use`, `archive:read` | `POST /v1/pack` |
+| `list_machines` | `mcp:use`, `archive:read` | `GET /v1/machines` |
+| `list_annotations` | `mcp:use`, `archive:read` | `GET /v1/annotations` |
+| `save_note` | `mcp:use`, `archive:write` | `POST /v1/annotations` |
+| `add_annotation` | `mcp:use`, `archive:write` | `POST /v1/annotations` |
+| `list_collections` | `mcp:use`, `archive:read` | `GET /v1/collections` |
+| `create_collection` | `mcp:use`, `archive:write` | `POST /v1/collections` |
+| `list_collection_sessions` | `mcp:use`, `archive:read` | `GET /v1/collections/{id}/sessions` |
+| `add_session_to_collection` | `mcp:use`, `archive:write` | `PUT /v1/collections/{id}/sessions/{id}` |
+| `remove_session_from_collection` | `mcp:use`, `archive:write` | `DELETE /v1/collections/{id}/sessions/{id}` |
+| `list_share_links` | `mcp:use`, `archive:read` | `GET /v1/sharing/links` |
+| `list_transfers` | `mcp:use`, `archive:read` | `GET /v1/sharing/transfers` |
+| `export_project_memory` | `mcp:use`, `archive:read` | `POST /v1/distillation/projects/export` |
+| `list_memory_documents` | `mcp:use`, `archive:read` | `GET /v1/memory` |
+| `get_memory_document` | `mcp:use`, `archive:read` | `GET /v1/memory/{id}` |
+
+The table lives in `server/src/mcp/tool-scopes.ts`, and
+`server/test/mcp-scope-parity.test.ts` checks every row against the guard's own
+route inference — a tool added later and gated on less than the endpoint it
+wraps fails there rather than shipping. The `archive:read` rows are the ones
+`mcp:use` already satisfies; the allowance is stated once, in
+`IMPLIED_BY_MCP_USE`, and a test refuses it tool by tool if it is ever widened
+to cover a write.
+
+A refusal arrives as a tool error, not as a status code, so it says what is
+missing and that retrying will not help:
+
+```
+missing_scope: The add_annotation tool requires mcp:use and archive:write; this
+credential is missing archive:write. Do not retry: the call will be refused
+again until the credential is replaced by one holding that scope.
+```
+
+`POST /v1/pack`, `POST /v1/distillation/projects/export` and `GET /v1/machines`
+were themselves priced as writes — the first two because of their verb, the
+third because everything under `/machines` was priced by registering one. All
+three read and store nothing, so they now ask `archive:read`. This widens what
+an `archive:read` key may do over HTTP by those three routes; it does not widen
+what any key may write anywhere.
+
+### What this changes for keys that already exist
+
+**Nothing breaks for reads.** A key holding `mcp:use` alone — the key this page
+has told people to create for as long as the endpoint has existed — keeps every
+read tool, unchanged. No migration, no window, nothing to re-issue.
+
+**The five write tools now require `archive:write`.** A key without it is
+refused them with `missing_scope`, naming the scope. That is the whole of the
+behaviour change, and it takes away nothing the credential held anywhere else:
+the same key was already refused `POST /v1/annotations` and `POST /v1/collections`
+over HTTP. A client that genuinely curates needs a replacement key carrying
+`archive:write`, created in **Settings → Keys** — scopes are fixed at creation
+and cannot be widened afterwards.
+
+**A key already holding `archive:write` is unaffected**, on either surface. So
+is the web app, whose sign-in holds every scope in this table.
+
+**Bearer tokens minted by the handshake follow the key they came from.** A token
+in flight when this ships carries `mcp:use` alone: it keeps reading, and is
+refused the five writes. The next handshake mints one carrying the key's real
+scopes, and the response's `scopes` field says which those are.
 
 ## Authentication
 
 The endpoint accepts an API key in the `X-Memoar-Key` header. A client that
 cannot send a custom header exchanges the key for a short-lived bearer token
-scoped to `mcp:use` alone:
+carrying `mcp:use` plus whichever archive scopes the key itself already holds —
+never more, so the exchange can only ever narrow:
 
 ```sh
 curl -s -X POST https://<memoar-host>/v1/mcp/auth/handshake \
@@ -17,9 +109,16 @@ curl -s -X POST https://<memoar-host>/v1/mcp/auth/handshake \
   -d '{"clientName":"codex","protocolVersion":"2025-06-18"}'
 ```
 
-The response carries `accessToken` and `expiresAt` along with the endpoint and
-tool list. The token expires in an hour and opens MCP only: it cannot read the
-archive over REST.
+The response carries `accessToken`, `expiresAt` and `scopes` along with the
+endpoint and tool list. `scopes` is what the token actually got: `["mcp:use"]`
+reads the archive, and is the signal that the key needs `archive:write` on it
+before the client can curate — available at handshake time rather than at the
+first refused write.
+
+The token expires in an hour and opens MCP only: whatever it carries, a token
+of this type is accepted at `/mcp` and refused everywhere else, so a token given
+to another program through an environment variable cannot read the archive over
+REST.
 
 The token records the key it came from, and is refused the moment that key is
 revoked — `DELETE /v1/auth/api-keys/{id}` ends every MCP session minted from
