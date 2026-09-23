@@ -42,14 +42,9 @@ const PARSER_SRC = resolve(root, 'server/libs/parsers/src');
 */
 const UNSETTLED = [
   {
-    source: 'copilot',
-    pattern: 'Code/User/workspaceStorage/*/chatSessions/*.json',
-    settledBy: 'These exist and hold VS Code Copilot Chat sessions: {version, requests[], sessionId, creationDate}. The copilot parser reads a CLI SQLite schema and refuses them. Settled by a parser branch for the chatSessions envelope, or by dropping the pattern; the pattern alone can never produce a session.',
-  },
-  {
     source: 'goose',
     pattern: 'sessions/*.jsonl',
-    settledBy: 'The source is declared "SQLite or legacy JSONL" and the parser implements only the SQLite half. Install block-goose-cli, hold one session, and list the session directory: if a .jsonl is still written it needs a parser branch, and if none is, the pattern goes. Declared once for both the common and the Windows path.',
+    settledBy: 'The source is declared "SQLite or legacy JSONL" and the parser implements only the SQLite half. Install block-goose-cli, hold one session, and list the session directory: if a .jsonl is still written it needs a parser branch, and if none is, the pattern goes. Declared once for both the common and the Windows path. Checked again 2026-09-23 and there is still nothing here to ask: goose is not on PATH, and neither ~/.local/share/goose nor ~/Library/Application Support/Block exists.',
   },
 ];
 

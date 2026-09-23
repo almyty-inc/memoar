@@ -53,11 +53,58 @@ look, not a verdict.
 | `opencode` | `~/.local/share/opencode/opencode.db` | 2026-09-08 |
 | `zed` | `~/Library/Application Support/Zed/threads/threads.db` | 2026-09-17 |
 
-`copilot` is deliberately not in that table. Its parser opens the real
-`~/.copilot/session-store.db` on this machine and reads the one session row
-there, but the `turns` table is empty, so nothing about the turn mapping has
-been checked. The script prints that as `empty` rather than `ok` for the same
-reason this file exists.
+`copilot` is deliberately not in that table, and it is the one source where the
+two halves of "verified" have to be said separately, because it has two stores.
+
+Its CLI half opens the real `~/.copilot/session-store.db` on this machine and
+reads the one session row there, but the `turns` table is empty — `select
+count(*) from turns` returns 0 — so nothing about *that* turn mapping has been
+checked. The script prints it as `empty` rather than `ok` for the same reason
+this file exists.
+
+Its VS Code half — the `chatSessions` envelope, `{version, requests[],
+sessionId, creationDate}` — has been run against real populated sessions, and
+not against a fixture. The awkward part, said plainly because the distinction is
+the whole point of this file: **the populated envelopes did not come out of a
+`chatSessions` file.** Every one of the 23 files under `chatSessions` on this
+machine is a panel opened and never used, `requests: []`, so those files can
+show the envelope and cannot show what a turn maps to.
+
+What could show it is the same envelope in its older home. VS Code kept these
+session objects in the `interactive.sessions` memento inside
+`workspaceStorage/*/state.vscdb` before it moved them into one file per panel,
+and five of those on this machine still hold conversations. Their key set is the
+same one the empty files carry — `version, requesterUsername,
+requesterAvatarIconUri, responderUsername, responderAvatarIconUri,
+initialLocation, requests, sessionId, creationDate, isImported, lastMessageDate`
+and `customTitle` where the panel was renamed — and four of the six sessions are
+`version: 3`, which is the version every file on disk declares. So the parser
+reads a bare array of envelopes as well as the two file layouts, and running it
+over those mementos parsed:
+
+| Envelope version | Sessions | Turns | Blocks | Characters kept |
+| --- | --- | --- | --- | --- |
+| `3` | 4 | 30 | text 52, tool_call 3, diff 14 | 326,730 |
+| pre-`version` | 2 | 6 | text 6 | 3,307 |
+
+with the user/assistant alternation, the parent chain and the ordinals correct
+in all six, no duplicate ids, and `customTitle` taken as the title where there
+was one. That exercised every block kind the branch mints: `textEditGroup` into
+`diff`, `toolInvocationSerialized` into `tool_call`, `MarkdownString` into
+`text`. Asked the `parser-coverage.mjs` question — what fraction of strings 60
+characters or longer in the raw `requests[]` is findable in the parsed session —
+it keeps **1,888 of 2,049, 92%**. What it drops is the panel's furniture rather
+than the conversation: the extension's own `agent.metadata.helpText*` boilerplate,
+`workingSet` and `contentReferences` file URIs, `variableData`, and the
+`followups` the UI offers as next prompts.
+
+So: the envelope, the request-to-turn mapping and the part kinds are verified
+against real Copilot Chat content. **What is not verified is the file**: no
+populated `chatSessions/*.json` or `*.jsonl` has been read, because this machine
+has none. Anyone who has one should run the parser over it and say whether the
+per-file layouts carry anything the memento did not — in particular whether a
+`.jsonl` ever writes `requests` through a `kind:1` record rather than in its
+`kind:0` snapshot, which is the one thing about that layout still guessed at.
 
 ## What capture points at
 
@@ -74,6 +121,7 @@ moves the mistake.
 | `claude-code` | `claude-code-sessions/*/*/local_*.json` and its local-agent-mode twin. 22 files matched on one machine and not one held a message, a `parentUuid` or a transcript. They are the desktop app's settings — model, permission mode, allowed egress, the rendered system prompt, `accountName` and `emailAddress` — so each sync uploaded an email address for an artifact that could only come back `unknown_format` | nothing: the conversation is the CLI transcript those files name in `cliSessionId`, which `.claude/projects/*/*.jsonl` already takes |
 | `antigravity-cli` | `brain/*/conversations/*.db` and `brain/*/*.md`. The first names a directory that does not exist — the conversation databases are one level above `brain/` — and the parser has no SQLite branch at all, only a diagnostic claiming one. The second is markdown, which is not JSONL | the transcript log, which is all the parser reads |
 | `claude-code` | `.claude/history.jsonl`, which is the prompt history the CLI's up-arrow reads, not a conversation: 10,619 lines on this machine, every one valid JSON, every one `{display, pastedContents, timestamp, project, sessionId}`, not one carrying `uuid` or `message`. Named `.jsonl`, so the agreement check — which compares extensions — never saw it, and 2.8 MB of every prompt ever typed went up on every sync and came back `unknown_format` | nothing: the conversation it indexes is the transcript named by its own `sessionId`, which `.claude/projects/*/*.jsonl` already takes |
+| `copilot` | VS Code `chatSessions/*.json` and nothing else, on all three platforms. VS Code has written that envelope under two extensions: `<id>.json` is one whole envelope, and `<id>.jsonl` is a `{kind:0, v:<envelope>}` snapshot followed by `{kind:1, k:[path], v:value}` writes against it, which is what it writes now. Of the 23 files under `chatSessions` on this machine, **18 are `.jsonl` and 5 are `.json`, and every `.jsonl` is newer than every `.json`** — the `.json` panels were created between 2025-05-02 and 2025-12-12, the `.jsonl` ones between 2026-02-20 and 2026-06-29, with no overlap. So the pattern named the layout the editor has stopped writing, and would have collected less of Copilot Chat every month | both, which is what it names now |
 | `copilot` | the four `.copilot/{session-state,history-session-state}/**.json` patterns. Checked against GitHub Copilot CLI 1.0.59 with a recorded session: `session-state/<id>/` holds `workspace.yaml`, `checkpoints/index.md` and two empty directories, with no `.json` at any depth, and `history-session-state/` does not exist. The only JSON under `~/.copilot` is `config.json` and `command-history-state.json`, which are settings and which those patterns never named | `session-store.db`, which is what the parser opens |
 
 `claude-code` had also stopped taking the subagent transcripts. They are
@@ -100,15 +148,22 @@ deliberate, so a parser written later can still read them; so each open one is
 declared in that script with what would settle it, and the check fails both when
 an undeclared mismatch appears and when a declaration outlives its defect.
 
-Two are open, both waiting on somebody who runs the tool. The four
-`.copilot/**.json` patterns that used to be a third came off the list when the
-CLI was installed and asked: they are in the table above now, with what was
-found in the directory they named.
+One is open, waiting on somebody who runs the tool.
+
+Two came off the list. The four `.copilot/**.json` patterns went when the CLI
+was installed and asked; they are in the table above, with what was found in the
+directory they named. The VS Code `chatSessions/*.json` patterns went the other
+way a declaration can be settled — the parser grew the branch rather than the
+pattern being dropped, which was the right half to move, because there is no
+SQLite equivalent for VS Code Copilot Chat and dropping the pattern would have
+destroyed the only bytes those conversations exist in. `copilot-chat.ts` reads
+the envelope now, `*.jsonl` was added beside `*.json` because VS Code had
+changed layout under the old pattern, and what is and is not verified about that
+branch is set out under "Verified against real data" above.
 
 | Source | Pattern | Parser accepts | Why it is still there |
 | --- | --- | --- | --- |
-| `copilot` | VS Code `chatSessions/*.json`, on all three platforms | native SQLite only | The chatSessions files are real and hold Copilot Chat sessions — `{version, requests[], sessionId}` — and the parser reads a CLI SQLite schema instead. Either the parser grows a branch for that envelope or the pattern goes; guessing which would replace a known-wrong answer with an unknown one. Dropping it is not the cheap half: there is no SQLite equivalent for VS Code Copilot Chat, so the pattern is the only place those conversations exist and the bytes would be gone rather than kept for a later parser. Five are collected on this machine today and every one of them has `requests: []` — panels opened and never used — so this machine cannot show what a populated one maps to either. |
-| `goose` | `sessions/*.jsonl`, common and Windows | native SQLite only | The source calls itself "SQLite or legacy JSONL" and the parser implements only the SQLite half. Whether anything still writes `.jsonl` — and if so what shape it is — is a question for a machine with goose on it; nothing here can answer it. |
+| `goose` | `sessions/*.jsonl`, common and Windows | native SQLite only | The source calls itself "SQLite or legacy JSONL" and the parser implements only the SQLite half. Whether anything still writes `.jsonl` — and if so what shape it is — is a question for a machine with goose on it; nothing here can answer it. Asked again on 2026-09-23: `goose` is not on `PATH`, and `~/.local/share/goose`, `~/.config/goose` and `~/Library/Application Support/Block` all do not exist, so there is no store to look in and nothing to read the shape off. Guessing the record shape from block/goose's source would produce a parser whose only evidence is a fixture written to agree with it, which is the defect this file opens with. |
 
 `kilo` and `roo` are not on that list, because `tasks/*/*.json` and a parser
 that reads JSON agree about shape. They disagree about *which* JSON: the parser
@@ -132,8 +187,8 @@ the failure this whole file exists to prevent.
 | Source | What it would take to verify |
 | --- | --- |
 | `cursor` | Install Cursor, hold one conversation with the agent, quit Cursor so it flushes `state.vscdb`, run the script. The parser reads `composerData:` rows for the order and `bubbleId:` rows for the content, both in `cursorDiskKV`; a green line with turns means both halves were found. |
-| `copilot` | Partly done, and the rest needs a populated CLI. `~/.copilot/session-store.db` on this machine has the exact `sessions` and `turns` schema the parser selects, and the parser opens it — but `turns` is empty, so the script prints `empty` and only the session row is verified. Install GitHub Copilot CLI, hold a conversation that records exchanges, re-run. Separately: the VS Code `chatSessions/*.json` the patterns collect are a different format the parser refuses outright (see the mismatch table above). |
-| `goose` | `brew install block-goose-cli`, one session, run the script. While there, list `~/.local/share/goose/sessions`: if anything still writes `.jsonl`, the parser needs a branch; if nothing does, the pattern goes. Still nothing here to ask: neither `~/.local/share/goose` nor `~/Library/Application Support/Block` exists on this machine and `goose` is not on the path. |
+| `copilot` | Two stores, two answers. **CLI:** `~/.copilot/session-store.db` on this machine has the exact `sessions` and `turns` schema the parser selects, and the parser opens it — but `turns` is empty, so the script prints `empty` and only the session row is verified. Install GitHub Copilot CLI, hold a conversation that records exchanges, re-run. **VS Code:** the `chatSessions` envelope is read and its mapping is verified against six real populated sessions, but none of those came out of a `chatSessions` file — every file here is an unused panel. Open Copilot Chat in VS Code, hold one conversation, close the window so the panel flushes, and run the parser over the file it wrote: it confirms the file layouts carry what the memento did, and it is the only thing that can show whether a `.jsonl` ever writes `requests` through a `kind:1` record instead of its `kind:0` snapshot. |
+| `goose` | `brew install block-goose-cli`, one session, run the script. While there, list `~/.local/share/goose/sessions`: if anything still writes `.jsonl`, the parser needs a branch; if nothing does, the pattern goes. Still nothing here to ask, re-checked 2026-09-23: `goose` is not on the path, and `~/.local/share/goose`, `~/.config/goose` and `~/Library/Application Support/Block` do not exist. Do not re-check by hand — this is the answer until somebody installs it. |
 | `kilo` | VS Code with Kilo Code, one task, run the script. Also list one `tasks/<id>` directory and say which files are in it: the parser reads `api_conversation_history.json`, the pattern takes every `*.json` beside it, and `ui_messages.json` is a different shape that may parse into nonsense rather than be refused. |
 | `roo` | VS Code with Roo Code, one task. Same directory listing as Kilo; they share the format and the question. |
 | `chatgpt-export` | A genuine ChatGPT data export — no software to install, just the export ChatGPT emails you. Not in the script: it arrives as an upload, not as a store on disk. |

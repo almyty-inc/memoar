@@ -119,14 +119,14 @@ const SOURCES = [
     pick: (dir) => (existsSync(join(dir, "session-store.db")) ? join(dir, "session-store.db") : null),
     // The schema was read off an installed CLI whose `turns` table was empty,
     // so the columns are right and the mapping of a populated session is not.
-    todo: "Install GitHub Copilot CLI, hold one conversation that records exchanges (~/.copilot/session-store.db must have rows in `turns`), and re-run this. Separately, the capture patterns also collect VS Code `chatSessions/*.json`, which this parser refuses outright — see UNSETTLED in scripts/check-capture-parser-agreement.mjs.",
+    todo: "Install GitHub Copilot CLI, hold one conversation that records exchanges (~/.copilot/session-store.db must have rows in `turns`), and re-run this. The VS Code side is separate and is read now: the chatSessions envelope has its own branch, checked against six populated sessions — see contracts/fixtures/PROVENANCE.md. What is still open there is a populated chatSessions *file*; every one on this machine is an unused panel.",
   },
   {
     source: "goose",
     version: "v1",
     stores: [".local/share/goose/sessions", "AppData/Roaming/Block/goose/data/sessions"],
     pick: (dir) => newestUnder(dir, (path) => path.endsWith(".db"), 1),
-    todo: "brew install block-goose-cli, hold one session, and re-run this. While there, list ~/.local/share/goose/sessions: the capture patterns still collect *.jsonl, which this parser refuses, and nobody here can say whether goose still writes one.",
+    todo: "brew install block-goose-cli, hold one session, and re-run this. While there, list ~/.local/share/goose/sessions: the capture patterns still collect *.jsonl, which this parser refuses, and nobody here can say whether goose still writes one. Re-checked 2026-09-23: goose is not on PATH and neither store directory exists, so this machine cannot answer it.",
   },
   {
     source: "roo",

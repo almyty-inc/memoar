@@ -135,3 +135,46 @@ fn copilot_takes_the_session_store_and_not_the_session_state() {
         );
     }
 }
+
+/// VS Code Copilot Chat writes the same envelope under two extensions.
+///
+/// `chatSessions/<id>.json` is one whole envelope and `<id>.jsonl` is a
+/// snapshot line plus writes against it, which is the layout VS Code writes
+/// now: 18 of the 23 files under `chatSessions` on the machine this was
+/// checked on are `.jsonl`, and all 18 are newer than every `.json` there.
+/// Naming only `.json` collected the layout the editor has stopped writing,
+/// which is the whole of what it still had to say about Copilot Chat.
+#[test]
+fn copilot_takes_both_layouts_vs_code_has_written_chat_panels_in() {
+    let temp = tempfile::tempdir().unwrap();
+    let panels = temp
+        .path()
+        .join(".config/Code/User/workspaceStorage/ws-1/chatSessions");
+    fs::create_dir_all(&panels).unwrap();
+    fs::write(panels.join("older.json"), "{\"requests\":[]}\n").unwrap();
+    fs::write(panels.join("newer.jsonl"), "{\"kind\":0,\"v\":{}}\n").unwrap();
+    // Beside them, and not a chat panel.
+    let editing = temp
+        .path()
+        .join(".config/Code/User/workspaceStorage/ws-1/chatEditingSessions/s-1");
+    fs::create_dir_all(&editing).unwrap();
+    fs::write(editing.join("state.json"), "{}\n").unwrap();
+
+    let files = files_for_source(
+        source("copilot").unwrap(),
+        temp.path(),
+        OperatingSystem::Linux,
+    )
+    .unwrap();
+
+    for wanted in ["older.json", "newer.jsonl"] {
+        assert!(
+            files.iter().any(|path| path.ends_with(wanted)),
+            "{wanted} is a Copilot Chat panel, got {files:?}"
+        );
+    }
+    assert!(
+        !files.iter().any(|path| path.ends_with("state.json")),
+        "chatEditingSessions is the edit ledger, not a conversation, got {files:?}"
+    );
+}

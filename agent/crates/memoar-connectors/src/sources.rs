@@ -167,14 +167,29 @@ pub static SOURCES: &[SourceSpec] = &[
         // ever have collected something that is not a session, and the parser
         // refuses everything that is not native SQLite.
         //
-        // The VS Code `chatSessions/*.json` below are a different case and stay:
-        // see UNSETTLED in scripts/check-capture-parser-agreement.mjs.
+        // The VS Code `chatSessions` below are a different store: Copilot Chat
+        // in the editor, which the parser reads through its own branch now.
+        //
+        // Both extensions are named because VS Code has written the same
+        // envelope two ways. `<id>.json` is one whole envelope, and `<id>.jsonl`
+        // is a `{kind:0, v:<envelope>}` snapshot followed by writes against it,
+        // which is what it writes today: of the 23 files under `chatSessions`
+        // on the machine this was checked on, 18 are `.jsonl` and every one of
+        // them was newer than every `.json`. Taking only `.json` collected the
+        // layout VS Code has stopped writing.
         common_paths: &[".copilot/session-store.db"],
-        linux_paths: &[".config/Code/User/workspaceStorage/*/chatSessions/*.json"],
+        linux_paths: &[
+            ".config/Code/User/workspaceStorage/*/chatSessions/*.json",
+            ".config/Code/User/workspaceStorage/*/chatSessions/*.jsonl",
+        ],
         macos_paths: &[
             "Library/Application Support/Code/User/workspaceStorage/*/chatSessions/*.json",
+            "Library/Application Support/Code/User/workspaceStorage/*/chatSessions/*.jsonl",
         ],
-        windows_paths: &["AppData/Roaming/Code/User/workspaceStorage/*/chatSessions/*.json"],
+        windows_paths: &[
+            "AppData/Roaming/Code/User/workspaceStorage/*/chatSessions/*.json",
+            "AppData/Roaming/Code/User/workspaceStorage/*/chatSessions/*.jsonl",
+        ],
         environment_override: None,
         environment_roots: NONE,
     },
