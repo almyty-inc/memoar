@@ -8,6 +8,7 @@
   "types": "dist/main.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "dev": "tsx watch main.ts",
     "start": "node dist/main.js",
     "worker": "tsx worker.ts",

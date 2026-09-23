@@ -26,9 +26,13 @@ const seed: SessionSeed = {
   updatedAt: "2026-01-01T00:00:00.000Z",
   title: "seeded title",
   models: [],
-  tokenTotals: { input: 0, output: 0, total: 0 },
+  // `TokenTotals` has no `total`, and `Visibility` is an object rather than a
+  // string. Both were wrong here and nothing caught them: vitest does not
+  // typecheck, and tsconfig.build.json excludes test/**, so no gate read this
+  // file's types at all.
+  tokenTotals: { input: 0, output: 0 },
   provenance: [],
-  visibility: "private",
+  visibility: { scope: "private", ownerId: "0191cafe-0000-7000-8000-00000000f013" },
 };
 
 /** A `MarkdownString`, which is how VS Code serialises prose in a response. */
@@ -91,7 +95,7 @@ describe("copilot VS Code chatSessions", () => {
     expect(result.kind, result.kind === "unknown" ? result.diagnostic : "").toBe("parsed");
     if (result.kind !== "parsed") return;
     expect(result.sessions).toHaveLength(1);
-    const session = result.sessions[0];
+    const session = result.sessions[0]!;
 
     // A request holds both halves of an exchange, and they have different
     // authors, so one request is two turns and the reply answers the question.
@@ -99,33 +103,33 @@ describe("copilot VS Code chatSessions", () => {
     expect(session.turns.map((turn) => turn.ordinal)).toEqual([0, 1, 2, 3]);
     expect(session.turns.map((turn) => turn.parentId)).toEqual([
       null,
-      session.turns[0].id,
-      session.turns[1].id,
-      session.turns[2].id,
+      session.turns[0]!.id,
+      session.turns[1]!.id,
+      session.turns[2]!.id,
     ]);
-    expect(session.turns[0].blocks[0].text).toBe("rename the helper");
+    expect(session.turns[0]!.blocks[0]!.text).toBe("rename the helper");
     expect(session.source.nativeSessionId).toBe("4cf06af0-25a8-4314-8516-de66bee78a6b");
     expect(session.title).toBe("Renaming a helper");
 
     // A request carries its own stamp when VS Code recorded one, and the
     // panel's creation when it did not — never the seed, which is the capture.
-    expect(session.turns[0].createdAt).toBe(new Date(1_743_594_799_183).toISOString());
-    expect(session.turns[2].createdAt).toBe(new Date(1_743_594_617_151).toISOString());
+    expect(session.turns[0]!.createdAt).toBe(new Date(1_743_594_799_183).toISOString());
+    expect(session.turns[2]!.createdAt).toBe(new Date(1_743_594_617_151).toISOString());
   });
 
   it("keeps every response part that is content and drops the ones that are not", () => {
     const result = parse(bytes(populated));
     if (result.kind !== "parsed") throw new Error("expected a parse");
-    const reply = result.sessions[0].turns[1];
+    const reply = result.sessions[0]!.turns[1]!;
 
     // progressMessage is the status line the panel draws while it works, and
     // codeblockUri only names the file for the code block already in the
     // markdown. Keeping either would put UI chrome in the archive as prose.
     expect(reply.blocks.map((block) => block.kind)).toEqual(["text", "tool_call", "diff"]);
-    expect(reply.blocks[0].text).toBe("Renaming it now.");
-    expect(reply.blocks[1].text).toBe("Read project structure");
-    expect(reply.blocks[2].text).toBe("export function renamed(): void {}\n");
-    expect(reply.blocks[2].name).toBe("/workspace/demo/helper.ts");
+    expect(reply.blocks[0]!.text).toBe("Renaming it now.");
+    expect(reply.blocks[1]!.text).toBe("Read project structure");
+    expect(reply.blocks[2]!.text).toBe("export function renamed(): void {}\n");
+    expect(reply.blocks[2]!.name).toBe("/workspace/demo/helper.ts");
     const text = reply.blocks.map((block) => block.text).join("\n");
     expect(text).not.toContain("Searching for relevant definitions");
   });
@@ -140,9 +144,9 @@ describe("copilot VS Code chatSessions", () => {
     const result = parse(Buffer.from(`${log}\n`, "utf8"));
     expect(result.kind, result.kind === "unknown" ? result.diagnostic : "").toBe("parsed");
     if (result.kind !== "parsed") return;
-    expect(result.sessions[0].turns.map((turn) => turn.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    expect(result.sessions[0]!.turns.map((turn) => turn.role)).toEqual(["user", "assistant", "user", "assistant"]);
     // A write lands on the snapshot rather than being ignored.
-    expect(result.sessions[0].title).toBe("Renamed after the fact");
+    expect(result.sessions[0]!.title).toBe("Renamed after the fact");
   });
 
   it("refuses an unused panel rather than archiving a session with no turns", () => {
@@ -168,7 +172,7 @@ describe("copilot VS Code chatSessions", () => {
   it("gives every turn and block of a chat panel a distinct id", () => {
     const result = parse(bytes(populated));
     if (result.kind !== "parsed") throw new Error("expected a parse");
-    const ids = result.sessions[0].turns.flatMap((turn) => [turn.id, ...turn.blocks.map((block) => block.id)]);
+    const ids = result.sessions[0]!.turns.flatMap((turn) => [turn.id, ...turn.blocks.map((block) => block.id)]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });

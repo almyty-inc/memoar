@@ -200,3 +200,42 @@ describe("what a publish says it did", () => {
     expect(note?.run).toContain("almyty-inc/infra");
   });
 });
+
+/**
+ * Something has to typecheck the tests.
+ *
+ * `server/tsconfig.build.json` excludes `test/**`, so `npm run build` reads
+ * only `src` and `libs`. Vitest does not typecheck at all. Between them, no
+ * gate read a test file's types — and 34 errors sat in a committed test file
+ * while all seven CI checks went green: a fixture declaring a `TokenTotals.total`
+ * that does not exist and a `visibility` string where the model has an object.
+ *
+ * The build exclusion is correct on its own terms; tests are not shipped. What
+ * was missing was anything else covering them. This pins the replacement so the
+ * hole cannot reopen by someone dropping a line from a script.
+ */
+describe("the gate that reads types", () => {
+  const packageJson = (path: string) => JSON.parse(
+    readFileSync(resolve(process.cwd(), "..", path), "utf8"),
+  ) as { scripts?: Record<string, string> };
+
+  it("typechecks both workspaces, tests included", () => {
+    const server = packageJson("server/package.json").scripts ?? {};
+    expect(server.typecheck, "the server has no typecheck script").toBeDefined();
+    // `tsconfig.build.json` is the one that excludes tests, so the typecheck
+    // must not be pointed at it.
+    expect(server.typecheck, "the server typecheck reads the build config, which excludes test/**")
+      .not.toContain("tsconfig.build.json");
+
+    expect(packageJson("web/package.json").scripts?.typecheck, "the web has no typecheck script").toBeDefined();
+  });
+
+  it("runs it from the command CI actually runs", () => {
+    // CI runs `npm test` and `npm run build`. A typecheck script nothing calls
+    // is the same as no typecheck script.
+    const root = packageJson("package.json").scripts ?? {};
+    expect(root.typecheck, "there is no root typecheck").toBeDefined();
+    expect(root.test, "npm test does not typecheck, so CI still would not read a test file's types")
+      .toContain("typecheck");
+  });
+});
