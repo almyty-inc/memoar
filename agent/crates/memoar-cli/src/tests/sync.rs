@@ -203,7 +203,9 @@ fn a_secret_in_an_instruction_file_is_masked_before_it_leaves() {
         sent[0]
     );
     assert!(
-        sent[0].contains("[REDACTED]"),
+        // Any marker: the `sk-` rule claims this key before the key/value
+        // rule can, so it reads `[REDACTED_TOKEN]`.
+        sent[0].contains("[REDACTED") && sent[0].contains("ANTHROPIC_API_KEY="),
         "masked, not dropped — the rest of the file is still the archive's: {}",
         sent[0]
     );
