@@ -16,8 +16,8 @@
 # runner natively, so each archive is built on its own operating system: run
 # this on macOS, Linux and Windows (Git Bash) runners, with `shell: bash`.
 #
-# Linux needs GTK 4.14 or later with its development files (Ubuntu 24.04:
-# libgtk-4-dev).
+# Linux needs GTK 4.14 or later and JavaScriptCore 6.0 with their development
+# files (Ubuntu 24.04: libgtk-4-dev libjavascriptcoregtk-6.0-dev).
 set -euo pipefail
 
 . "$(dirname -- "$0")/desktop-nsh.sh"

@@ -104,17 +104,20 @@ jobs:
           workspaces: agent/crates/memoar-desktop
           key: desktop-${{ matrix.os }}
           cache-bin: false
-      # NSH's Linux backend is GTK 4, 4.14 or later: Ubuntu 24.04's.
-      - name: Install GTK 4
+      # NSH's Linux backend is GTK 4, 4.14 or later: Ubuntu 24.04's. The
+      # packaged Linux runner also links JavaScriptCore (javascriptcore6-sys),
+      # which libgtk-4-dev does not pull in.
+      - name: Install GTK 4 and JavaScriptCore
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev
+          sudo apt-get install -y libgtk-4-dev libjavascriptcoregtk-6.0-dev
       # Pinned to the `nsh-*` crates in the desktop's Cargo.toml, and cached
-      # because building the CLI costs more than the rest of the job.
-      - name: Cache the nsh CLI
+      # because building the CLI costs more than the rest of the job. Saved as
+      # soon as it is built, so a later failing step does not throw it away.
+      - name: Restore the nsh CLI
         id: nsh-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/bin/nsh
@@ -123,6 +126,14 @@ jobs:
       - name: Install the nsh CLI
         if: steps.nsh-cache.outputs.cache-hit != 'true'
         run: cargo install nsh-cli --version 0.2.0 --locked
+      - name: Save the nsh CLI
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/bin/nsh
+            ~/.cargo/bin/nsh.exe
+          key: nsh-cli-0.2.0-${{ runner.os }}-${{ runner.arch }}
       - name: Formatting and lints
         working-directory: agent/crates/memoar-desktop
         run: |

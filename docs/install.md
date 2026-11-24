@@ -93,7 +93,8 @@ The window is drawn with [NSH](https://nsh.dev): AppKit on macOS 14 or later,
 GTK 4.14 or later on Linux, and Win32 on Windows 10 1809 or later. It lives in
 `agent/crates/memoar-desktop`, a Cargo workspace of its own. To build it you
 need Rust, the `nsh` CLI at the version the crate pins, and on Linux the GTK 4
-development files (`libgtk-4-dev` on Ubuntu 24.04):
+and JavaScriptCore 6.0 development files (`libgtk-4-dev` and
+`libjavascriptcoregtk-6.0-dev` on Ubuntu 24.04):
 
 ```sh
 cargo install nsh-cli --version 0.2.0 --locked
