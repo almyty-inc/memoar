@@ -135,6 +135,24 @@ impl AppError {
         }
     }
 
+    /// A file this client wrote that no longer parses.
+    ///
+    /// It was `MEMOAR_UNKNOWN`, exit 9, "run memoar doctor", and `doctor`
+    /// failed on the same file before checking anything. `login` rewrites both
+    /// files and no longer refuses to start over a damaged one, so it is the
+    /// way back, and the exit is "not initialized" because that is the state.
+    #[must_use]
+    pub fn damaged(path: &std::path::Path, detail: &str) -> Self {
+        Self {
+            exit_code: EXIT_NOT_INITIALIZED,
+            code: "MEMOAR_CONFIG_DAMAGED".to_owned(),
+            kind: "damaged".to_owned(),
+            message: format!("{} is damaged: {detail}", path.display()),
+            hint: "Run memoar login to write it again. Sources you turned off and redaction settings are lost with the file.".to_owned(),
+            retryable: false,
+            http_status: None,
+        }
+    }
     #[must_use]
     pub fn locked(message: impl Into<String>) -> Self {
         Self {
@@ -173,7 +191,22 @@ impl AppError {
 }
 
 pub(crate) fn map_queue_error(error: DaemonError) -> AppError {
-    AppError::queue(error.to_string())
+    // A queue file that is not a database, or is one SQLite says is broken,
+    // is not an unknown fault and `doctor` cannot repair it. Saying what to
+    // move aside is the whole remedy.
+    let message = error.to_string();
+    if message.contains("not a database") || message.contains("malformed") {
+        return AppError {
+            exit_code: EXIT_UNKNOWN,
+            code: "MEMOAR_QUEUE_DAMAGED".to_owned(),
+            kind: "damaged".to_owned(),
+            message,
+            hint: "Move queue.sqlite3 out of the data directory and run memoar sync again. The queue is rebuilt and sessions are captured afresh, and the archive skips what it already has.".to_owned(),
+            retryable: false,
+            http_status: None,
+        };
+    }
+    AppError::queue(message)
 }
 
 pub(crate) fn map_capture_error(error: DaemonError) -> AppError {

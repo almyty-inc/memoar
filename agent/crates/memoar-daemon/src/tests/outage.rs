@@ -152,3 +152,24 @@ fn a_refusal_of_one_artifact_is_still_charged_to_it() {
         .unwrap();
     assert_eq!(later[0].attempts, 1);
 }
+
+/// `memoar sync` ran one pass of at most 256 artifacts and reported success:
+/// a first sync on a machine with a thousand sessions left three quarters of
+/// them queued until somebody ran it again, three more times.
+#[test]
+fn a_drain_keeps_passing_until_the_queue_is_empty() {
+    let temp = tempfile::tempdir().unwrap();
+    let queue = queue_with(&temp, 7);
+    let engine = SyncEngine::with_batch_limit(
+        OutageTransport {
+            succeed: usize::MAX,
+            uploads: Mutex::new(0),
+            refuse_delta: None,
+        },
+        3,
+    );
+    let report = engine.drain(&queue, "machine").unwrap();
+    assert_eq!(report.considered, 7);
+    assert_eq!(report.uploaded, 7);
+    assert!(queue.pending_at(10, Utc::now()).unwrap().is_empty());
+}

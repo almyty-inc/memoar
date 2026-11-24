@@ -110,12 +110,8 @@ impl CredentialStore for FileCredentialStore {
         let bytes = fs::read(&self.path).map_err(|error| {
             AppError::internal(format!("could not read {}: {error}", self.path.display()))
         })?;
-        let credentials: Credentials = serde_json::from_slice(&bytes).map_err(|error| {
-            AppError::internal(format!(
-                "invalid credentials {}: {error}",
-                self.path.display()
-            ))
-        })?;
+        let credentials: Credentials = serde_json::from_slice(&bytes)
+            .map_err(|error| AppError::damaged(&self.path, &error.to_string()))?;
         if let Some(key) = credentials.api_key.filter(|key| !key.is_empty()) {
             return Ok(Some(Credential::ApiKey(key)));
         }

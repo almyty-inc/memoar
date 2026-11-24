@@ -13,6 +13,7 @@ use crate::args::SyncArgs;
 use crate::config::{Config, RuntimePaths, load_config, load_credential};
 use crate::credential::Credential;
 use crate::error::{AppError, map_capture_error, map_queue_error, map_sync_error};
+use crate::lock::acquire_sync_lock;
 use crate::machine::{
     capture_transport, issue_machine_token, machine_refusal, patch_machine_state,
 };
@@ -28,6 +29,8 @@ pub(crate) fn sync(
     }
     let config = load_config(paths)?;
     let credential = load_credential(paths)?;
+    // Held until this function returns, a watch included.
+    let _lock = acquire_sync_lock(paths)?;
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let enabled = enabled_sources(&config);
     let captured = capture_sources_with_redaction(
@@ -102,7 +105,7 @@ pub(crate) fn sync_pending(sweep: &mut Sweep, captured: CaptureSummary) -> Resul
         &token,
         expires_at.as_deref(),
     ))
-    .sync(queue, &config.machine_id)
+    .drain(queue, &config.machine_id)
     .map_err(map_sync_error)?;
     // The instruction files the agents on this machine read, for the projects
     // this account already has sessions in. They are not transcripts and do not

@@ -36,6 +36,39 @@ impl<T: SyncTransport> SyncEngine<T> {
     }
 
     #[cfg(test)]
+    pub(crate) fn with_batch_limit(transport: T, batch_limit: usize) -> Self {
+        Self {
+            transport,
+            batch_limit,
+        }
+    }
+
+    /// Passes until the queue has nothing left that is due.
+    ///
+    /// One pass takes at most `batch_limit` artifacts, and `memoar sync` ran
+    /// one pass: a first sync on a machine with 1,000 sessions uploaded 256
+    /// and reported success, and the rest waited for somebody to run it
+    /// three more times. A pass that fills its batch is followed by another.
+    /// It ends because every artifact a pass offered is either synced or
+    /// waiting out a backoff, so the next pass never offers it again.
+    pub fn drain(&self, queue: &OfflineQueue, machine_id: &str) -> Result<SyncReport, DaemonError> {
+        let mut total = self.sync(queue, machine_id)?;
+        let mut last = total.clone();
+        // A ceiling as well, so a queue that misbehaves cannot spin a sync
+        // for ever: 4,096 passes is a million artifacts.
+        let mut passes = 1;
+        while last.considered >= self.batch_limit && passes < 4096 {
+            passes += 1;
+            last = self.sync(queue, machine_id)?;
+            total.considered += last.considered;
+            total.uploaded += last.uploaded;
+            total.duplicates += last.duplicates;
+            total.failed += last.failed;
+            total.batch_id = last.batch_id.clone().or(total.batch_id);
+        }
+        Ok(total)
+    }
+    #[cfg(test)]
     pub(crate) fn transport(&self) -> &T {
         &self.transport
     }
