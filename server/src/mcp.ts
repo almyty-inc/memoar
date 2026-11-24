@@ -121,7 +121,7 @@ export class McpController {
       void transport.close();
       void server.close();
     });
-    await server.connect(transport as unknown as Parameters<Server["connect"]>[0]);
+    await server.connect(transport);
     await transport.handleRequest(request, response, body);
   }
 
