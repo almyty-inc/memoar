@@ -105,13 +105,13 @@ jobs:
           key: desktop-${{ matrix.os }}
           cache-bin: false
       # NSH's Linux backend is GTK 4, 4.14 or later: Ubuntu 24.04's. The
-      # packaged Linux runner also links JavaScriptCore (javascriptcore6-sys),
-      # which libgtk-4-dev does not pull in.
-      - name: Install GTK 4 and JavaScriptCore
+      # packaged Linux runner (nsh-linux-app) also links WebKitGTK 6.0, whose
+      # development package brings libsoup 3 and JavaScriptCore with it.
+      - name: Install GTK 4 and WebKitGTK 6.0
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libjavascriptcoregtk-6.0-dev
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
       # Pinned to the `nsh-*` crates in the desktop's Cargo.toml, and cached
       # because building the CLI costs more than the rest of the job. Saved as
       # soon as it is built, so a later failing step does not throw it away.

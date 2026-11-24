@@ -16,8 +16,10 @@
 # runner natively, so each archive is built on its own operating system: run
 # this on macOS, Linux and Windows (Git Bash) runners, with `shell: bash`.
 #
-# Linux needs GTK 4.14 or later and JavaScriptCore 6.0 with their development
-# files (Ubuntu 24.04: libgtk-4-dev libjavascriptcoregtk-6.0-dev).
+# Linux needs GTK 4.14 or later and WebKitGTK 6.0 with their development files
+# (Ubuntu 24.04: libgtk-4-dev libwebkitgtk-6.0-dev, which brings libsoup 3 and
+# JavaScriptCore). The packaged app needs libgtk-4-1 and libwebkitgtk-6.0-4 at
+# run time. The .tar.gz declares no dependencies, so install them first.
 set -euo pipefail
 
 . "$(dirname -- "$0")/desktop-nsh.sh"

@@ -93,8 +93,8 @@ The window is drawn with [NSH](https://nsh.dev): AppKit on macOS 14 or later,
 GTK 4.14 or later on Linux, and Win32 on Windows 10 1809 or later. It lives in
 `agent/crates/memoar-desktop`, a Cargo workspace of its own. To build it you
 need Rust, the `nsh` CLI at the version the crate pins, and on Linux the GTK 4
-and JavaScriptCore 6.0 development files (`libgtk-4-dev` and
-`libjavascriptcoregtk-6.0-dev` on Ubuntu 24.04):
+and WebKitGTK 6.0 development files (`libgtk-4-dev` and `libwebkitgtk-6.0-dev`
+on Ubuntu 24.04, which bring libsoup 3 and JavaScriptCore with them):
 
 ```sh
 cargo install nsh-cli --version 0.2.0 --locked
@@ -117,6 +117,15 @@ agent/scripts/package-desktop.sh   # an installable archive for this machine, in
 (`Memoar.exe` and its bundle). CI builds all three on every change to the agent
 and keeps them as workflow artifacts. Developer ID signing, notarization and
 Windows code signing wait on the same release-channel decision as the CLI.
+
+The Linux archive is not a distribution package and declares no dependencies.
+Install GTK 4 and WebKitGTK 6.0 before running it. On Ubuntu 24.04 and Debian
+13:
+
+```sh
+sudo apt-get install libgtk-4-1 libwebkitgtk-6.0-4
+```
+
 ## Materialize a conversion on this machine
 
 `memoar listen` subscribes to this machine's durable command channel and applies conversions the
