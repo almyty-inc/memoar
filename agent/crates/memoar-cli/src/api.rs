@@ -106,6 +106,18 @@ impl ApiClient {
         self.send_json(self.authorize(self.client.get(self.url(path))))
     }
 
+    /// A request whose answer is its status: 204, or a refusal.
+    pub(crate) fn delete(&self, path: &str) -> Result<(), AppError> {
+        self.send(self.authorize(self.client.delete(self.url(path))))
+            .map(|_| ())
+    }
+
+    /// `POST` with no body, for an action named entirely by its path.
+    pub(crate) fn post_empty(&self, path: &str) -> Result<(), AppError> {
+        self.send(self.authorize(self.client.post(self.url(path))))
+            .map(|_| ())
+    }
+
     pub(crate) fn get_query(
         &self,
         path: &str,

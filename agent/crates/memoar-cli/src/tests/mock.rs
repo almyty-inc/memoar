@@ -147,6 +147,27 @@ pub(crate) fn spawn_mock(
 
             let (status, response) = match (method.as_str(), path.as_str()) {
                 ("POST", "/v1/auth/login") => (200, json!({"accessToken": "user-token"})),
+                // A capture key cannot revoke itself: it does not hold
+                // keys:write. The password session can.
+                ("DELETE", path)
+                    if path.starts_with("/v1/auth/api-keys/")
+                        && headers.contains("x-memoar-key") =>
+                {
+                    (
+                        403,
+                        json!({"title": "Forbidden", "detail": "Missing required scope: keys:write"}),
+                    )
+                }
+                ("DELETE", path) if path.starts_with("/v1/auth/api-keys/") => (200, json!({})),
+                ("GET", "/v1/auth/api-keys") => (
+                    200,
+                    json!({"items": [
+                        {"id": "key-by-hand", "name": "ci script", "prefix": "memoar_by-hand"},
+                        {"id": "key-old", "name": "memoar agent · laptop", "prefix": "memoar_old-key"}
+                    ]}),
+                ),
+                ("DELETE", path) if path.starts_with("/v1/machines/") => (200, json!({})),
+                ("POST", "/v1/auth/logout") => (200, json!({})),
                 ("POST", "/v1/machines") => (201, json!({"id": MACHINE_ID})),
                 // A deregistered machine: the archive answers an update with
                 // 404 and leaves it out of the machine list.

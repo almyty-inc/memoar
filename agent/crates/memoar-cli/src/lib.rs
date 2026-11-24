@@ -1,3 +1,4 @@
+mod account;
 mod api;
 mod args;
 mod config;
@@ -9,9 +10,11 @@ mod error;
 mod http_error;
 mod listen;
 mod login;
+mod logout;
 mod machine;
 mod memory;
 mod query;
+mod revoke;
 mod settings;
 mod sse;
 mod status;
@@ -26,8 +29,8 @@ pub use crate::api::{
     MAX_CONVERSION_BUNDLE_BYTES, SLOWEST_TOLERATED_BYTES_PER_SEC,
 };
 pub use crate::args::{
-    Cli, Command, ConvertArgs, ListenArgs, LoginArgs, MemoryCommand, MemoryConvertArgs, PackArgs,
-    RedactionArgs, SearchArgs, SourcesCommand, SyncArgs, ViewArgs,
+    Cli, Command, ConvertArgs, ListenArgs, LoginArgs, LogoutArgs, MemoryCommand, MemoryConvertArgs,
+    PackArgs, RedactionArgs, SearchArgs, SourcesCommand, SyncArgs, ViewArgs,
 };
 pub use crate::config::RuntimePaths;
 pub use crate::credential::{Credential, CredentialStore, FileCredentialStore};
@@ -47,6 +50,7 @@ use crate::convert::convert;
 use crate::doctor::doctor;
 use crate::listen::listen;
 use crate::login::login;
+use crate::logout::logout;
 use crate::memory::memory;
 use crate::query::{pack, search, view};
 use crate::settings::{redaction, sources};
@@ -63,6 +67,7 @@ pub struct CommandOutput {
 pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     match &cli.command {
         Command::Login(args) => login(args, paths),
+        Command::Logout(args) => logout(args, paths),
         Command::Status => status(paths),
         Command::Sources { command } => sources(command, paths),
         Command::Sync(args) => sync(args, cli.json, paths),

@@ -21,7 +21,10 @@ pub fn success_envelope(output: &CommandOutput) -> Value {
 
 #[must_use]
 pub fn error_envelope(error: &AppError) -> Value {
-    json!({ "error": error })
+    // `ok` and `version` as on success, so one check tells the two apart and
+    // a reader of either knows which envelope it is holding. Only `error`
+    // used to be here, and a wrapper testing `ok` read a failure as missing.
+    json!({ "ok": false, "version": ROBOT_ENVELOPE_VERSION, "error": error })
 }
 
 #[must_use]
@@ -50,6 +53,7 @@ pub fn introspect_value() -> Value {
         "contractVersion": memoar_canonical::CONTRACT_VERSION,
         "commands": [
             { "name": "login", "requiresAuth": false, "network": true },
+            { "name": "logout", "requiresAuth": false, "network": true },
             { "name": "status", "requiresAuth": true, "network": false },
             { "name": "sources list", "requiresAuth": false, "network": false },
             { "name": "sources enable", "requiresAuth": true, "network": true },

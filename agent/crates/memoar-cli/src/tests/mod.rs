@@ -1,3 +1,4 @@
+mod account;
 mod commands;
 mod contract;
 mod convert;
@@ -6,6 +7,7 @@ mod doctor;
 mod download;
 mod listen;
 mod login;
+mod logout;
 mod messages;
 mod mock;
 mod retired;
