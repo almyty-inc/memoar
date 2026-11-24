@@ -215,7 +215,8 @@ pub fn sync_now(paths: &Paths, state: &State, now: &str) -> Result<Status, Failu
     Ok(status(paths, state))
 }
 
-/// The archive's web address, derived from the API endpoint this machine uses.
+/// The API endpoint without its `/v1`: where the web application lives when it
+/// is served from the same origin as the API.
 #[must_use]
 pub fn archive_url(endpoint: &str) -> String {
     endpoint
@@ -224,6 +225,22 @@ pub fn archive_url(endpoint: &str) -> String {
         .trim_end_matches("/v1")
         .trim_end_matches('/')
         .to_owned()
+}
+
+/// Where "Open web app" goes: the address the person gave, else the API's
+/// origin.
+///
+/// The API cannot be relied on to serve the web application. In the Compose
+/// deployment they are separate services on separate ports, and the old
+/// derivation alone opened the API's root, which answers 404.
+#[must_use]
+pub fn web_app_url(configured: &str, endpoint: &str) -> String {
+    let configured = configured.trim().trim_end_matches('/');
+    if configured.is_empty() {
+        archive_url(endpoint)
+    } else {
+        configured.to_owned()
+    }
 }
 
 /// The tests live beside this file, to keep each under the size rule.

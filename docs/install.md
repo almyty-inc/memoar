@@ -77,6 +77,11 @@ application, change what is masked before upload, and sign out. Signing out
 removes the machine's credential and keeps its configuration and queue, so
 signing in again reuses the same machine record and loses nothing captured.
 
+"Open web app" goes to the archive address without its `/v1`. When the web
+application is served from somewhere else, as in the Compose stack where the
+API is on port 4000 and the web app on 5173, give its address in the optional
+"Web app address" field at sign-in. The app keeps it on this machine.
+
 Failures are handled by kind. An archive that cannot be reached, or answers
 with a server error, is tried again on the next cycle. A wrong password is
 refused at sign-in with the archive's reason. When the archive stops accepting

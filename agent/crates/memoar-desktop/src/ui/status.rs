@@ -54,6 +54,7 @@ fn details(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> imp
         .child(row("Archive", move || {
             status().endpoint.unwrap_or_default()
         }))
+        .child(row("Web app", move || ctl.web_app().unwrap_or_default()))
         .child(row("Machine", move || {
             status().machine_id.unwrap_or_default()
         }))

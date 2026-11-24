@@ -14,6 +14,7 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
     let password = signal(String::new());
     let api_key = signal(String::new());
     let with_key = signal(false);
+    let web_url = signal(untracked(|| ctl.web_url.get()));
 
     let submit = move || {
         let credentials = if with_key.get() {
@@ -24,7 +25,7 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
                 password: password.get(),
             }
         };
-        ctl.sign_in(endpoint.get(), credentials);
+        ctl.sign_in(endpoint.get(), credentials, web_url.get());
     };
     let idle = move || !ctl.signing_in.get();
 
@@ -42,6 +43,14 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
             endpoint,
             false,
             "https://memoar.example.com/v1",
+            submit,
+        ))
+        .child(field(
+            "Web app address, if it is not the archive's without /v1",
+            "web-url",
+            web_url,
+            false,
+            "Optional, for example https://memoar.example.com",
             submit,
         ))
         .child(

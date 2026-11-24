@@ -170,6 +170,20 @@ fn names_only_the_sources_found_on_disk() {
     assert!(detected_sources(&json!({})).is_empty());
 }
 
+/// In the Compose deployment the web app is on :5173 and the API on :4000, so
+/// stripping `/v1` alone opened the API's root.
+#[test]
+fn a_web_address_given_wins_over_the_derived_one() {
+    let endpoint = "http://127.0.0.1:4000/v1";
+
+    assert_eq!(
+        web_app_url(" http://127.0.0.1:5173/ ", endpoint),
+        "http://127.0.0.1:5173"
+    );
+    assert_eq!(web_app_url("", endpoint), "http://127.0.0.1:4000");
+    assert_eq!(web_app_url("   ", endpoint), "http://127.0.0.1:4000");
+}
+
 #[test]
 fn the_web_app_lives_beside_the_api() {
     assert_eq!(

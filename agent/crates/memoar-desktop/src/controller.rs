@@ -21,6 +21,7 @@ use crate::schedule::{self, Gate, Mode};
 /// Where the window keeps what it knows across restarts.
 const LAST_RUN_KEY: &str = "memoar.desktop.lastRun";
 const PAUSED_KEY: &str = "memoar.desktop.paused";
+const WEB_URL_KEY: &str = "memoar.desktop.webUrl";
 /// How often the status is read again, so "last capture" keeps its meaning
 /// and a capture by the CLI on the same machine shows up.
 const REFRESH: Duration = Duration::from_secs(15);
@@ -45,6 +46,8 @@ pub(crate) struct Controller {
     pub now: Signal<DateTime<Utc>>,
     /// The home directory could not be resolved, so there is nothing to run.
     pub fatal: Signal<Option<String>>,
+    /// The web app's address when it differs from the API's origin.
+    pub web_url: Signal<String>,
 }
 
 fn load_last_run() -> LastRun {
@@ -72,6 +75,7 @@ impl Controller {
             notice: signal(None),
             now: signal(Utc::now()),
             fatal: signal(fatal),
+            web_url: signal(Storage::get_item(WEB_URL_KEY).unwrap_or_default()),
         }
     }
 
@@ -192,7 +196,9 @@ impl Controller {
         );
     }
 
-    pub(crate) fn sign_in(self, endpoint: String, credentials: Credentials) {
+    /// Signs in. `web_url` is where the web app lives when the API does not
+    /// serve it, kept on this machine only, and empty to derive it.
+    pub(crate) fn sign_in(self, endpoint: String, credentials: Credentials, web_url: String) {
         if self.signing_in.get() {
             return;
         }
@@ -204,6 +210,9 @@ impl Controller {
                 self.signing_in.set(false);
                 match result {
                     Ok(status) => {
+                        let web_url = web_url.trim().to_owned();
+                        let _ = Storage::set_item(WEB_URL_KEY, web_url.clone());
+                        self.web_url.set(web_url);
                         self.status.set(Some(status));
                         self.persist();
                         self.capture();
@@ -247,11 +256,16 @@ impl Controller {
         );
     }
 
+    /// Where "Open web app" goes, `None` before this machine has an endpoint.
+    pub(crate) fn web_app(self) -> Option<String> {
+        let endpoint = self.status.get().and_then(|status| status.endpoint)?;
+        Some(capture::web_app_url(&self.web_url.get(), &endpoint))
+    }
+
     pub(crate) fn open_web_app(self) {
-        let Some(endpoint) = self.status.get().and_then(|status| status.endpoint) else {
+        let Some(url) = self.web_app() else {
             return;
         };
-        let url = capture::archive_url(&endpoint);
         self.background(
             move |_| browser::open(&url),
             move |result| {
