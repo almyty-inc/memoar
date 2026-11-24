@@ -1,46 +1,15 @@
-import { In, Not, type EntityManager } from "typeorm";
+import { In, type EntityManager } from "typeorm";
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
 import { withoutNulBytes } from "../nul-bytes.js";
-import { scopeCollidingTurns } from "../turn-identity.js";
+import { scopeCollidingIds } from "../turn-identity.js";
 import { assembleSession } from "./assemble.js";
-
-/** Turn ids per lookup; one bind parameter each, well under Postgres's 65535. */
-const TURN_LOOKUP_BATCH = 1000;
+import { rowIdsHeldElsewhere, rowIdsStoredHere } from "./row-ids.js";
+import { boundedSearchDocument } from "./search-document.js";
 import { decodeCursor, encodeCursor, TenantRunner, TenantScope } from "./runner.js";
-
-/**
- * Postgres refuses a tsvector built from more than 1 MiB of text, so the search
- * document has to be bounded before it is stored.
- *
- * Nothing bounded it. Four real transcripts in the dev archive produced search
- * documents of 1.3 MB, 2.6 MB, 10.4 MB and 13.0 MB, and each one failed its
- * whole parse with `string is too long for tsvector (10357378 bytes, max
- * 1048575 bytes)` — so the session, its turns and its blocks were all lost over
- * the search index, which is the least important thing being written. A session
- * you cannot find is worth more than no session at all.
- *
- * The cap is on the bytes Postgres counts, not the characters: multi-byte text
- * is exactly where this bites, and slicing by length would still overrun. The
- * cut lands on a character boundary because the text is sliced, never the
- * buffer.
- */
-const MAX_SEARCH_DOCUMENT_BYTES = 1_000_000;
-
-export function boundedSearchDocument(session: ArchivedSession): string {
-  const whole = session.turns.flatMap((turn) => turn.blocks.map((block) => block.text ?? "")).join("\n");
-  if (Buffer.byteLength(whole, "utf8") <= MAX_SEARCH_DOCUMENT_BYTES) return whole;
-  // Narrow by characters until the bytes fit. One pass, because the ratio of
-  // bytes to characters only ever shrinks as the string does.
-  let kept = whole.slice(0, MAX_SEARCH_DOCUMENT_BYTES);
-  while (Buffer.byteLength(kept, "utf8") > MAX_SEARCH_DOCUMENT_BYTES) {
-    kept = kept.slice(0, Math.floor(kept.length * 0.9));
-  }
-  return kept;
-}
 
 export class PostgresSessionStore implements SessionStore {
   constructor(private readonly runner: TenantRunner) {}
@@ -79,23 +48,15 @@ export class PostgresSessionStore implements SessionStore {
       const sessionRepository = manager.getRepository(SessionEntity);
       const turnRepository = manager.getRepository(TurnEntity);
       const blockRepository = manager.getRepository(ContentBlockEntity);
-      // Which of these turn ids another session already holds. Asked inside the
-      // lock, so the answer is the one the inserts below will meet. See
-      // `scopeCollidingTurns` for why a shared id is rescoped rather than refused.
-      //
-      // In batches: one bind parameter per turn, and a single transcript runs to
-      // tens of thousands of turns — the same 65535-parameter ceiling the
-      // annotation insert hit.
-      const ids = cleaned.turns.map((turn) => turn.id);
-      const taken = new Set<string>();
-      for (let index = 0; index < ids.length; index += TURN_LOOKUP_BATCH) {
-        const rows = await turnRepository.find({
-          select: { id: true },
-          where: { tenantId: context.tenantId, id: In(ids.slice(index, index + TURN_LOOKUP_BATCH)), sessionId: Not(cleaned.id) },
-        });
-        for (const row of rows) taken.add(row.id);
-      }
-      const session = scopeCollidingTurns(cleaned, taken);
+      // Which of these turn and block ids a row outside this session already
+      // holds, in any account, and which this session already stores in their
+      // rescoped form. Asked inside the lock, so the answer is the one the
+      // inserts below will meet. See `scopeCollidingIds` for why a shared id is
+      // rescoped rather than refused, and `rowIdsHeldElsewhere` for why the
+      // lookup cannot be an ordinary query.
+      const elsewhere = await rowIdsHeldElsewhere(manager, context.tenantId, cleaned);
+      const here = await rowIdsStoredHere(manager, context.tenantId, cleaned.id);
+      const session = scopeCollidingIds(cleaned, elsewhere, here);
       await blockRepository.delete({ tenantId: context.tenantId, sessionId: session.id });
       await turnRepository.delete({ tenantId: context.tenantId, sessionId: session.id });
       const searchDocument = boundedSearchDocument(session);
