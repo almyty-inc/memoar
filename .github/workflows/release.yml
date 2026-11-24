@@ -450,6 +450,8 @@ jobs:
             "memoar-desktop-${VERSION}-${PLATFORM}-"*) ;;
             *) echo "::error::${name} is not named memoar-desktop-${VERSION}-${PLATFORM}-<arch>"; exit 1 ;;
           esac
+          # Git Bash prints /d/a/... paths, which PowerShell steps cannot open.
+          if [ "$RUNNER_OS" = Windows ]; then archive=$(cygpath -w "$archive"); fi
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           mkdir -p dist
