@@ -12,6 +12,7 @@ mod login;
 mod logout;
 mod messages;
 mod mock;
+mod mock_keys;
 mod retired;
 mod sync;
 mod watch;

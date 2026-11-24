@@ -101,12 +101,12 @@ pub struct LoginArgs {
 }
 
 /// What `logout` needs. All optional: without an account credential the
-/// stored key is asked to revoke itself, which today's archive refuses, and
-/// the report says where to finish the job.
+/// stored key revokes itself, and where that is not possible the report says
+/// where to finish the job.
 #[derive(Debug, Args)]
 pub struct LogoutArgs {
-    /// Revoke the stored API key with this account's password. The key
-    /// cannot revoke itself, because it is scoped to capture.
+    /// Revoke the stored API key with this account's password. Needed only for
+    /// a key stored without its id, or an archive that predates self-revocation.
     #[arg(long)]
     pub email: Option<String>,
     /// The account password. `-` reads it from standard input.

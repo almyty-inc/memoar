@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::mock::{RecordedRequest, configured_paths, spawn_mock_api};
+use super::mock::{MockOptions, RecordedRequest, configured_paths, spawn_mock, spawn_mock_api};
 use crate::args::{LoginArgs, LogoutArgs};
 use crate::config::{RuntimePaths, load_config, save_config};
 use crate::credential::{Credential, CredentialStore};
@@ -147,26 +147,60 @@ fn logout_with_a_password_revokes_the_key_deregisters_and_forgets() {
     );
 }
 
-/// Without an account credential the key is asked to revoke itself, which
-/// the archive refuses. The computer is still signed out, and the report says
-/// the key is live and where to revoke it.
+fn bare_logout() -> LogoutArgs {
+    LogoutArgs {
+        email: None,
+        password: None,
+        token: None,
+        deregister: false,
+    }
+}
+
+/// Without an account credential the key revokes itself, which the archive
+/// allows without `keys:write`. Before that, `logout` signed the computer out
+/// and left the key working on the server.
 #[test]
-fn logout_without_a_password_says_the_key_is_still_live() {
-    let (endpoint, _requests, _server) = spawn_mock_api(1, None);
+fn logout_without_a_password_revokes_the_key_with_itself() {
+    let (endpoint, requests, _server) = spawn_mock_api(1, None);
     let temp = tempfile::tempdir().unwrap();
     let paths = configured_paths(&temp, &endpoint);
     with_minted_key(&paths);
 
-    let result = logout(
-        &LogoutArgs {
-            email: None,
-            password: None,
-            token: None,
-            deregister: false,
-        },
-        &paths,
-    )
-    .unwrap();
+    let result = logout(&bare_logout(), &paths).unwrap();
+
+    assert_eq!(result.data["key"]["revoked"], true, "{}", result.data);
+    assert!(
+        result.data["nextStep"]
+            .as_str()
+            .unwrap()
+            .contains("memoar login")
+    );
+    let requests = requests.lock().unwrap();
+    assert_eq!(asked(&requests), ["DELETE /v1/auth/api-keys/key-old"]);
+    assert!(
+        requests[0]
+            .headers
+            .contains(&format!("x-memoar-key: {OLD_KEY}")),
+        "revoked with the key itself"
+    );
+    assert!(paths.credential_store().load().unwrap().is_none());
+}
+
+/// An archive from before a key could revoke itself answers 403. The computer
+/// is still signed out, and the report says the key is live and where to
+/// revoke it.
+#[test]
+fn logout_against_an_older_archive_says_the_key_is_still_live() {
+    let (endpoint, _requests, _server) = spawn_mock(MockOptions {
+        request_count: 1,
+        refuse_self_revocation: true,
+        ..MockOptions::default()
+    });
+    let temp = tempfile::tempdir().unwrap();
+    let paths = configured_paths(&temp, &endpoint);
+    with_minted_key(&paths);
+
+    let result = logout(&bare_logout(), &paths).unwrap();
 
     assert_eq!(result.data["key"]["revoked"], false);
     assert!(
