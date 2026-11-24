@@ -16,10 +16,6 @@ ensure_nsh
 stub_address=127.0.0.1:47613
 target_dir=${CARGO_TARGET_DIR:-"$desktop_dir/target"}
 
-native_path() {
-  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1"; fi
-}
-
 cd "$desktop_dir"
 cargo test --locked --all-targets
 cargo build --locked --example stub_archive

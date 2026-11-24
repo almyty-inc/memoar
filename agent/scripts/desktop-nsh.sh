@@ -31,3 +31,10 @@ host_target() {
 exe_suffix() {
   if [ "$(host_target)" = windows ]; then echo .exe; fi
 }
+
+# A path as native programs read it. Git Bash on Windows spells paths
+# `/d/a/...`, which neither Rust nor actions/upload-artifact understand, so
+# there it becomes `D:/a/...`. Elsewhere it is returned unchanged.
+native_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else echo "$1"; fi
+}

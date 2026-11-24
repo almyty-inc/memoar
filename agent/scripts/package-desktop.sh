@@ -68,6 +68,7 @@ if [ ! -s "$package" ]; then
   ls -la "$staging" >&2
   exit 1
 fi
+package=$(native_path "$package")
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "package=$package" >>"$GITHUB_OUTPUT"
 fi
