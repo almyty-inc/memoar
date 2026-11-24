@@ -6,7 +6,7 @@ import { runMigrations } from "../src/migrate.js";
 import { runtimeRole } from "../src/main.js";
 import { assertTenantIsolationEnforced } from "../src/startup-checks.js";
 import { ENTITIES } from "../src/entities.js";
-import { connectWithRetry, dockerAvailable, queryRows } from "./helpers/postgres.js";
+import { connectWithRetry, dockerAvailable, migrationRoleUrl, prepareMigrationRole, queryRows } from "./helpers/postgres.js";
 
 const CONTAINER = "memoar-migrations-test";
 const PORT = 55981;
@@ -23,6 +23,7 @@ const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable(
 const suite = usePostgres ? describe : describe.skip;
 
 let owner: DataSource | null = null;
+let migrator: DataSource | null = null;
 
 function docker(...args: string[]): string {
   return execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
@@ -51,6 +52,16 @@ beforeAll(async () => {
   // Shares the readiness retry: pg_isready passes while the image is still
   // initialising and about to restart, so a first connection can be reset.
   await connectWithRetry(owner, { container: CONTAINER, port: PORT });
+  // The cluster runs migrations as a schema owner that is neither a superuser
+  // nor BYPASSRLS. Run as the superuser, they passed here while a probe and a
+  // repair did nothing under row-level security in the deployment.
+  prepareMigrationRole(CONTAINER);
+  if (migrator?.isInitialized) await migrator.destroy();
+  migrator = new DataSource({
+    type: "postgres", url: migrationRoleUrl({ container: CONTAINER, port: PORT }), entities: [...ENTITIES],
+    migrations: MIGRATIONS, synchronize: false, migrationsRun: false,
+  });
+  await connectWithRetry(migrator, { container: CONTAINER, port: PORT });
 }, 180_000);
 
 afterAll(async () => {
@@ -65,13 +76,13 @@ afterAll(async () => {
  */
 suite("migrations", () => {
   it("applies every registered migration to an empty database", async () => {
-    const applied = await owner!.runMigrations({ transaction: "all" });
+    const applied = await migrator!.runMigrations({ transaction: "all" });
     expect(applied.length).toBe(MIGRATIONS.length);
   }, 120_000);
 
   it("reverts every migration without leaving tables behind", async () => {
     for (let index = 0; index < MIGRATIONS.length; index += 1) {
-      await owner!.undoLastMigration({ transaction: "all" });
+      await migrator!.undoLastMigration({ transaction: "all" });
     }
     const remaining = await queryRows<{ tablename: string }>(
       owner!,
@@ -81,7 +92,7 @@ suite("migrations", () => {
   }, 120_000);
 
   it("re-applies cleanly after a full revert", async () => {
-    const reapplied = await owner!.runMigrations({ transaction: "all" });
+    const reapplied = await migrator!.runMigrations({ transaction: "all" });
     expect(reapplied.length).toBe(MIGRATIONS.length);
   }, 120_000);
 
@@ -172,15 +183,14 @@ suite("migrations", () => {
       }
       if (!ready) throw new Error(`${container} never accepted a query`);
 
-      // The extensions the schema needs. They take a superuser, which is why
-      // they are not in a migration: the migration role owns the schema and is
-      // deliberately not one.
-      docker("exec", container, "psql", "-U", "memoar", "-d", "memoar", "-c",
-        `CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
+      // The extensions and the migration role, as the cluster has them: the
+      // extensions take a superuser, and the migration role owns the schema and
+      // is deliberately not one.
+      prepareMigrationRole(container);
 
       const previousUrl = process.env.MIGRATION_DATABASE_URL;
       const previousPassword = process.env.MEMOAR_APP_DB_PASSWORD;
-      process.env.MIGRATION_DATABASE_URL = `postgres://memoar:migrate@127.0.0.1:${port}/memoar`;
+      process.env.MIGRATION_DATABASE_URL = migrationRoleUrl({ container, port });
       process.env.MEMOAR_APP_DB_PASSWORD = "a-runtime-password-of-real-length";
       try {
         await runMigrations();

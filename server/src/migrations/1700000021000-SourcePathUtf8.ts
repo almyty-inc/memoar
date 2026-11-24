@@ -27,9 +27,15 @@ const SUSPECT = String.raw`~ '[\u0080-ÿ]'`;
  *   touched, so a directory a transcript named in its own UTF-8 body is never
  *   rewritten.
  *
- * Row-level security filters the migration role unless it is a superuser or
- * holds BYPASSRLS. Without that this migration repairs nothing and changes
- * nothing, and the server still decodes every new capture correctly.
+ * Every table here FORCEs row-level security, which binds even the owner, and
+ * the migration role is deliberately neither a superuser nor BYPASSRLS. Under
+ * those policies, with no tenant set, it would read no rows at all, and the
+ * repair would quietly change nothing. So the migration lifts FORCE on the three
+ * tables for its own transaction, as their owner may, and puts it back before
+ * committing. It then checks that row-level security no longer applies to it,
+ * and stops the migration if it still does. A failure rolls the whole
+ * transaction back, FORCE included. The tables are locked for those moments,
+ * which is a deploy-time pause, not an outage.
  *
  * Not reversible, by design: the garbled form carries no information the
  * repaired one lacks.
@@ -38,6 +44,10 @@ export class SourcePathUtf81700000021000 implements MigrationInterface {
   name = "SourcePathUtf81700000021000";
 
   async up(queryRunner: QueryRunner): Promise<void> {
+    await withRowSecurityLifted(queryRunner, ["sessions", "session_identities", "raw_artifacts"], () => this.repair(queryRunner));
+  }
+
+  private async repair(queryRunner: QueryRunner): Promise<void> {
     // Workspaces first, while artifact paths still hold the garbled form they are matched against.
     const workspaces = await rows<{ id: string; path: string }>(queryRunner, `
       SELECT s.id, s.workspace->>'path' AS path FROM sessions s
@@ -93,4 +103,44 @@ function repairable<T extends { id: string }>(found: readonly T[], field: keyof 
     const repaired = repairLatin1Utf8(value);
     return repaired === value ? [] : [{ id: row.id, repaired }];
   });
+}
+
+/**
+ * Runs `work` with FORCE ROW LEVEL SECURITY lifted from `tables`, and restores
+ * it afterwards whether `work` succeeds or not.
+ *
+ * Refuses to run `work` at all while row-level security still applies to this
+ * role, because then every read below sees nothing and the repair would report
+ * success having repaired nothing.
+ */
+async function withRowSecurityLifted(queryRunner: QueryRunner, tables: readonly string[], work: () => Promise<void>): Promise<void> {
+  const forced = await rows<{ table: string }>(queryRunner, `
+    SELECT relname AS table FROM pg_class
+     WHERE relnamespace = current_schema()::regnamespace AND relforcerowsecurity
+       AND relname IN (${tables.map((table) => `'${table}'`).join(", ")})`);
+  let failure: Error | null = null;
+  try {
+    for (const { table } of forced) await queryRunner.query(`ALTER TABLE ${table} NO FORCE ROW LEVEL SECURITY`);
+    for (const table of tables) {
+      const [state] = await rows<{ active: boolean }>(queryRunner, `SELECT row_security_active('${table}') AS active`);
+      if (state?.active !== false) {
+        throw new Error(
+          `SourcePathUtf8: row-level security still applies to ${table} for the migration role, so the repair would see no rows. ` +
+          "Run migrations as the owner of the tables.",
+        );
+      }
+    }
+    await work();
+  } catch (error) {
+    failure = error instanceof Error ? error : new Error(String(error));
+  }
+  // Inside the migration transaction a failure rolls FORCE back with
+  // everything else, and these statements fail on the aborted transaction.
+  // That must not hide the error that caused it.
+  try {
+    for (const { table } of forced) await queryRunner.query(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`);
+  } catch (restoreError) {
+    if (failure === null) throw restoreError;
+  }
+  if (failure !== null) throw failure;
 }

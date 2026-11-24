@@ -1,10 +1,10 @@
-import type { DataSource } from "typeorm";
+import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ArchivedSession } from "../src/archive-store.js";
 import { SourcePathUtf81700000021000 } from "../src/migrations/1700000021000-SourcePathUtf8.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
-import { dockerAvailable, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { appRoleUrl, dockerAvailable, migrationRoleUrl, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 /**
  * The repair of capture paths stored as latin1 readings of UTF-8.
@@ -66,14 +66,11 @@ suite("repairing garbled capture paths", () => {
     const lookalike = "/srv/Ã¼ber";
     await store.saveSession(TEST_CONTEXT, session("0191cafe-0000-7000-8000-0000000f2000", lookalike, "own-native-id"));
 
-    const queryRunner = owner!.createQueryRunner();
-    try {
-      await new SourcePathUtf81700000021000().up(queryRunner);
-      // A second run changes nothing.
-      await new SourcePathUtf81700000021000().up(queryRunner);
-    } finally {
-      await queryRunner.release();
-    }
+    // As the deploy runs it: the cluster's migration role, which FORCE row-level
+    // security binds, inside one transaction. Twice, because a second run must
+    // change nothing.
+    await runRepairAs(migrationRoleUrl(FIXTURE));
+    await runRepairAs(migrationRoleUrl(FIXTURE));
 
     expect((await single<{ path: string }>(`SELECT "sourcePath" AS path FROM raw_artifacts WHERE sha256 = $1`, ["f".repeat(64)])).path).toBe(PATH);
     const repaired = await single<{ path: string; native: string }>(
@@ -87,5 +84,36 @@ suite("repairing garbled capture paths", () => {
     // And the next capture, decoded correctly, lands on the same session.
     expect(await store.resolveSessionIdentity(TEST_CONTEXT, { sourceTool: "codex", sourceVersion: "v1", nativeSessionId: `path:${MACHINE}:${PATH}` }, "0191cafe-0000-7000-8000-0000000f9999"))
       .toBe("0191cafe-0000-7000-8000-0000000f1000");
+
+    // FORCE is back on every table it lifted.
+    const forced = await queryRows<{ relname: string; relforcerowsecurity: boolean }>(owner!,
+      `SELECT relname, relforcerowsecurity FROM pg_class WHERE relname IN ('sessions', 'session_identities', 'raw_artifacts') ORDER BY relname`);
+    expect(forced.every((row) => row.relforcerowsecurity), JSON.stringify(forced)).toBe(true);
+  });
+
+  it("fails loudly instead of repairing nothing when it cannot see the rows", async () => {
+    // memoar_app does not own the tables, so row-level security cannot be lifted
+    // for it. The migration must stop, not report success over zero rows.
+    await expect(runRepairAs(appRoleUrl(FIXTURE))).rejects.toThrow(/must be owner|row-level security still applies/u);
   });
 });
+
+/** Runs the repair as `url`'s role, inside a transaction as the deploy job does. */
+async function runRepairAs(url: string): Promise<void> {
+  const connection = new DataSource({ type: "postgres", url, entities: [], synchronize: false });
+  await connection.initialize();
+  const queryRunner = connection.createQueryRunner();
+  try {
+    await queryRunner.startTransaction();
+    try {
+      await new SourcePathUtf81700000021000().up(queryRunner);
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    }
+  } finally {
+    await queryRunner.release();
+    await connection.destroy();
+  }
+}
