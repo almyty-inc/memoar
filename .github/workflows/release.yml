@@ -1,13 +1,25 @@
 name: release
 
-# Builds the capture agent for every platform the launcher knows about, and —
-# only when asked — publishes them where `npx memoar` can find them.
+# Builds the Memoar CLI for every platform the launcher serves, packages the
+# desktop app, signs what the configured credentials allow, verifies the result
+# through every installer on all three operating systems, and only then, when
+# asked, publishes.
 #
-# Nothing here publishes by accident. A tag builds and attaches assets to a
-# GitHub Release; the npm package goes out only on an explicit dispatch with
-# `publish_npm: true`. Both are one-way doors: a release tag is public the
-# moment the repository is, and an npm version cannot be replaced once it is
-# out.
+# What triggers what:
+#
+#   push of a v* tag       build, desktop, verify, GitHub Release
+#   workflow_dispatch      only what the inputs switch on. With build_binaries
+#                          alone it is a dry run that publishes nothing.
+#
+# Publishing is a one-way door. A release tag is public the moment it exists,
+# and an npm version cannot be replaced once it is out. docs/releasing.md is
+# the runbook.
+#
+# Signing is best effort by design. Without the signing secrets every artifact
+# is still built, verified and published, unsigned, and the run summary and the
+# release notes say which ones and why. Set the repository variable
+# MEMOAR_REQUIRE_SIGNING to true to make missing signing credentials fail the
+# run instead.
 
 on:
   push:
@@ -15,15 +27,19 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to build (without the leading v)
-        required: true
+        description: Version without the leading v (default agent/Cargo.toml). For an npm-only publish, the launcher's version.
+        required: false
         type: string
       build_binaries:
-        description: Build every platform binary the launcher can ask for (skip for a launcher-only npm publish)
+        description: Build, sign and verify the CLI on every platform (a dry run when nothing below is on)
+        type: boolean
+        default: false
+      build_desktop:
+        description: Also package the desktop app on macOS, Linux and Windows
         type: boolean
         default: false
       publish_release:
-        description: Attach the binaries to a GitHub Release
+        description: Publish a GitHub Release with the verified files (irreversible)
         type: boolean
         default: false
       publish_npm:
@@ -32,30 +48,115 @@ on:
         default: false
 
 permissions:
-  contents: write
-  # npm authenticates this workflow by its GitHub Actions identity rather than
-  # by a stored token — the same trusted-publishing setup almyty uses. There is
-  # no NPM_TOKEN to create, rotate, or leak into a transcript.
-  id-token: write
+  contents: read
+
+# Two runs for the same ref would race to create the same release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  # The launcher asks for ${base}/v${version}/${asset}, so the asset names here
-  # are the ones `lib/platform.js` computes. They are not free-form.
   CARGO_TERM_COLOR: always
+  # The desktop app is packaged by nsh's prebuilt runners. This pins them.
+  NSH_VERSION: ${{ vars.NSH_VERSION || '0.6.1' }}
+  MEMOAR_REQUIRE_SIGNING: ${{ vars.MEMOAR_REQUIRE_SIGNING || 'false' }}
 
 jobs:
-  # Only when binaries are actually wanted.
-  #
-  # This ran unconditionally, so publishing the launcher to npm — which needs
-  # no binary at all — compiled every target first, two of them on macOS
-  # runners, which bill at ten times the Linux rate. Three npm attempts failed
-  # at the publish step having built all of it for nothing.
-  build:
-    name: ${{ matrix.target }}
-    if: >-
-      startsWith(github.ref, 'refs/tags/v')
-      || github.event.inputs.publish_release == 'true'
-      || github.event.inputs.build_binaries == 'true'
+  plan:
+    name: Plan and check versions
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.flags.outputs.build }}
+      desktop: ${{ steps.flags.outputs.desktop }}
+      publish_release: ${{ steps.flags.outputs.publish_release }}
+      publish_npm: ${{ steps.flags.outputs.publish_npm }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Decide what this run does
+        id: flags
+        shell: bash
+        env:
+          IS_TAG: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+          BUILD: ${{ inputs.build_binaries }}
+          DESKTOP: ${{ inputs.build_desktop }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          PUBLISH_NPM: ${{ inputs.publish_npm }}
+        run: |
+          set -euo pipefail
+          on() { [ "${1:-false}" = true ] && echo true || echo false; }
+          if [ "$IS_TAG" = true ]; then
+            build=true; desktop=true; publish_release=true; publish_npm=false
+          else
+            desktop=$(on "$DESKTOP")
+            publish_release=$(on "$PUBLISH_RELEASE")
+            publish_npm=$(on "$PUBLISH_NPM")
+            # A release, or a desktop package, is nothing without the CLI.
+            build=$(on "$BUILD")
+            if [ "$publish_release" = true ] || [ "$desktop" = true ]; then build=true; fi
+          fi
+          {
+            echo "build=$build"
+            echo "desktop=$desktop"
+            echo "publish_release=$publish_release"
+            echo "publish_npm=$publish_npm"
+          } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Version, Cargo, lockfile and launcher agree
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          BUILD: ${{ steps.flags.outputs.build }}
+          PUBLISH_NPM: ${{ steps.flags.outputs.publish_npm }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$INPUT_VERSION" ]; then args+=(--version "$INPUT_VERSION"); elif [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
+          if [ "$BUILD" = true ]; then args+=(--binaries); fi
+          if [ "$PUBLISH_NPM" = true ]; then args+=(--npm); fi
+          node scripts/release/check-versions.mjs "${args[@]}"
+
+      # An npm-only publish ships a launcher that downloads AGENT_VERSION. That
+      # release has to exist already, or every `npx memoar` 404s.
+      - name: The agent release the launcher installs exists
+        if: steps.flags.outputs.publish_npm == 'true' && steps.flags.outputs.build != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          agent=$(node -p 'require("./packages/npx/lib/platform").AGENT_VERSION')
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${agent}/memoar-x86_64-unknown-linux-gnu.sha256"
+          curl -fsSLI "$url" >/dev/null || { echo "::error::the launcher installs agent v${agent}, but ${url} does not exist"; exit 1; }
+          echo "launcher installs agent v${agent}, which is published"
+
+      - name: Summary
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "## Release plan for ${VERSION}"
+            echo
+            echo "| Step | Runs |"
+            echo "| --- | --- |"
+            echo "| Build, sign and verify the CLI | ${{ steps.flags.outputs.build }} |"
+            echo "| Package the desktop app | ${{ steps.flags.outputs.desktop }} |"
+            echo "| Publish the GitHub Release | ${{ steps.flags.outputs.publish_release }} |"
+            echo "| Publish the launcher to npm | ${{ steps.flags.outputs.publish_npm }} |"
+            echo "| Signing required | ${MEMOAR_REQUIRE_SIGNING} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  cli:
+    name: cli / ${{ matrix.target }}
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,207 +164,660 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-14
+          # Built on Apple silicon and run there under Rosetta.
           - target: x86_64-apple-darwin
             os: macos-14
+          # Linux builds go through cargo-zigbuild so the glibc binaries link
+          # against glibc 2.28 (RHEL 8, Debian 10, Ubuntu 20.04 and newer)
+          # rather than the runner's own. v0.3.0 was built against the
+          # runner's glibc 2.39 and refused to start on Debian 12 and Ubuntu
+          # 22.04. The floor image runs the binary on the oldest glibc we
+          # claim.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
+            zig: ".2.28"
+            floor: rockylinux:8
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            zig: ""
+            floor: alpine:3.20
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            linker: aarch64-linux-gnu-gcc
-            apt: gcc-aarch64-linux-gnu
+            os: ubuntu-24.04-arm
+            zig: ".2.28"
+            floor: rockylinux:8
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            zig: ""
+            floor: alpine:3.20
           - target: x86_64-pc-windows-msvc
-            os: windows-latest
-          # Windows on ARM. `lib/platform.js` has mapped win32-arm64 here since
-          # the launcher was written and nothing ever built it: v0.3.0 shipped
-          # five assets, and `npx memoar` on an ARM Windows machine asked for
-          # memoar-aarch64-pc-windows-msvc.exe and got a 404. Cross-compiled on
-          # the x64 runner, whose Visual Studio image carries the ARM64
-          # toolchain — and so, like aarch64 Linux, not runnable where built.
+            os: windows-2022
+          # Native, so the binary runs where it is built.
           - target: aarch64-pc-windows-msvc
-            os: windows-latest
+            os: windows-11-arm
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TARGET: ${{ matrix.target }}
+      HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && vars.AZURE_TRUSTED_SIGNING_ACCOUNT != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reproducible build settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Timestamps from the commit, paths without the runner's checkout
+          # directory, and on Windows the C runtime linked in, so the .exe does
+          # not need the Visual C++ redistributable.
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          flags="--remap-path-prefix=${GITHUB_WORKSPACE}=/memoar"
+          case "$TARGET" in *windows*) flags="$flags -C target-feature=+crt-static" ;; esac
+          echo "RUSTFLAGS=$flags" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      # Without this every run compiles the whole dependency graph from scratch
-      # on five runners, two of them billed at ten times the rate.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent
-          key: ${{ matrix.target }}
+          key: release-${{ matrix.target }}
 
-      - name: Cross-compilation linker
-        if: matrix.apt != ''
-        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+      - uses: mlugg/setup-zig@v2
+        if: runner.os == 'Linux'
+        with:
+          version: 0.17.1
+
+      - uses: taiki-e/install-action@v2
+        if: runner.os == 'Linux'
+        with:
+          tool: cargo-zigbuild@0.24.1
 
       - name: Build
         working-directory: agent
         shell: bash
-        env:
-          # Cargo needs to be told which linker to hand an object file from a
-          # different architecture.
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
-        run: cargo build --release -p memoar-cli --target ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rustc -vV
+          if [ "$RUNNER_OS" = Linux ]; then
+            cargo zigbuild --locked --release -p memoar-cli --target "${TARGET}${{ matrix.zig }}"
+          else
+            cargo build --locked --release -p memoar-cli --target "$TARGET"
+          fi
 
-      - name: Name the asset and record its digest
+      - name: Stage the asset
         id: asset
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ matrix.target }}" in
-            *windows*) suffix=".exe" ;;
-            *)         suffix="" ;;
-          esac
-          asset="memoar-${{ matrix.target }}${suffix}"
+          case "$TARGET" in *windows*) suffix=.exe ;; *) suffix= ;; esac
+          asset="memoar-${TARGET}${suffix}"
           mkdir -p dist
-          cp "agent/target/${{ matrix.target }}/release/memoar${suffix}" "dist/${asset}"
-          cd dist
-          # The launcher reads the first field of this file and refuses the
-          # download when it does not match what it fetched.
-          if command -v sha256sum >/dev/null; then
-            sha256sum "${asset}" > "${asset}.sha256"
-          else
-            shasum -a 256 "${asset}" > "${asset}.sha256"
-          fi
-          cat "${asset}.sha256"
+          cp "agent/target/${TARGET}/release/memoar${suffix}" "dist/${asset}"
           echo "name=${asset}" >> "$GITHUB_OUTPUT"
+          echo "status=${RUNNER_TEMP}/${asset}.signing" >> "$GITHUB_OUTPUT"
 
-      # The natively-built ones only: a cross-compiled binary cannot run on the
-      # runner that produced it. Named explicitly rather than matched by
-      # substring, which would silently start skipping the wrong target.
-      - name: The binary must run on the machine that built it
-        if: matrix.target != 'aarch64-unknown-linux-gnu' && matrix.target != 'aarch64-pc-windows-msvc'
+      - name: The binary runs and reports the release version
         shell: bash
-        run: ./dist/${{ steps.asset.outputs.name }} --version
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+        run: |
+          set -euo pipefail
+          reported=$("./dist/${ASSET}" --version)
+          echo "$reported"
+          test "$reported" = "memoar ${VERSION}" || { echo "::error::${ASSET} reports '${reported}', expected 'memoar ${VERSION}'"; exit 1; }
+
+      - name: The binary runs on the oldest supported Linux
+        if: matrix.floor != ''
+        shell: bash
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+          FLOOR: ${{ matrix.floor }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/dist:/dist:ro" "$FLOOR" "/dist/${ASSET}" --version
+          docker run --rm -v "$PWD/dist:/dist:ro" -e HOME=/tmp "$FLOOR" "/dist/${ASSET}" sources list --json > /dev/null
+
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+          STATUS: ${{ steps.asset.outputs.status }}
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/macos-sign.sh sign "$STATUS" "dist/${ASSET}"
+          bash scripts/release/macos-sign.sh notarize "$STATUS" "dist/${ASSET}"
+
+      - name: Sign with Azure Trusted Signing (Windows)
+        if: runner.os == 'Windows' && env.HAS_AZURE_SIGNING == 'true'
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Sign with a certificate file, or record why not (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+          STATUS: ${{ steps.asset.outputs.status }}
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: ./scripts/release/windows-sign.ps1 -StatusFile $env:STATUS -Files "dist/$env:ASSET"
+
+      - name: Record that Linux binaries are not code-signed
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          STATUS: ${{ steps.asset.outputs.status }}
+        run: |
+          echo "signature: n/a (Linux binaries are verified by SHA256SUMS and the provenance attestation)" > "$STATUS"
+
+      - name: Checksum sidecar
+        shell: bash
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+          STATUS: ${{ steps.asset.outputs.status }}
+        run: |
+          set -euo pipefail
+          # Taken after signing, because a signature changes the file. The
+          # launcher reads the first field and refuses a download that does not
+          # match it.
+          "./dist/${ASSET}" --version
+          cd dist
+          if command -v sha256sum >/dev/null; then digest=$(sha256sum "$ASSET" | cut -d' ' -f1); else digest=$(shasum -a 256 "$ASSET" | cut -d' ' -f1); fi
+          printf '%s  %s\n' "$digest" "$ASSET" > "${ASSET}.sha256"
+          cp "$STATUS" "${ASSET}.signing"
+          cat "${ASSET}.sha256" "${ASSET}.signing"
+          {
+            echo "### ${ASSET}"
+            echo
+            echo '```'
+            cat "${ASSET}.sha256" "${ASSET}.signing"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: cli-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
-  verify:
-    name: The launcher resolves what was built
-    needs: build
-    runs-on: ubuntu-latest
+  desktop:
+    name: desktop / ${{ matrix.platform }}
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-14
+            arch: arm64
+          - platform: linux
+            os: ubuntu-24.04
+            arch: x86_64
+          - platform: windows
+            os: windows-2022
+            arch: x86_64
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      PLATFORM: ${{ matrix.platform }}
+      PACKAGE: memoar-desktop-${{ needs.plan.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}
+      HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && vars.AZURE_TRUSTED_SIGNING_ACCOUNT != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The packaging script is the contract between this workflow and the
+      # desktop app. docs/releasing.md describes it. Until it exists on the
+      # released commit, the desktop is skipped, loudly, and the CLI release
+      # goes ahead without it.
+      - name: Find the packaging script
+        id: contract
+        shell: bash
+        run: |
+          if [ -f agent/scripts/package-desktop.sh ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            message="agent/scripts/package-desktop.sh does not exist on ${GITHUB_SHA::8}, so the desktop app was not packaged for ${PLATFORM}"
+            echo "::warning title=Desktop not packaged::${message}"
+            { echo "## Desktop ${PLATFORM}: not packaged"; echo; echo "${message}."; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.contract.outputs.present == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.contract.outputs.present == 'true'
+        with:
+          workspaces: agent
+          key: desktop-${{ matrix.platform }}
+          cache-bin: true
+
+      - name: GTK 4 (Linux)
+        if: steps.contract.outputs.present == 'true' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+
+      - name: nsh ${{ env.NSH_VERSION }}
+        if: steps.contract.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v nsh >/dev/null && nsh --version | grep -q " ${NSH_VERSION} "; then
+            nsh --version
+          else
+            cargo install --locked "nsh-cli@${NSH_VERSION}" "nsh-${PLATFORM}-app@${NSH_VERSION}"
+          fi
+
+      - name: Package
+        if: steps.contract.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/desktop"
+          rm -rf "$out"
+          if [ "$RUNNER_OS" = Windows ] && [ -f agent/scripts/package-desktop.ps1 ]; then
+            pwsh -NoProfile -File agent/scripts/package-desktop.ps1 -Target "$PLATFORM" -Version "$VERSION" -Out "$out"
+          else
+            bash agent/scripts/package-desktop.sh --target "$PLATFORM" --version "$VERSION" --out "$out"
+          fi
+          echo "OUT=$out" >> "$GITHUB_ENV"
+          find "$out" -maxdepth 2
+
+      - name: Sign, notarize and wrap in a disk image (macOS)
+        if: steps.contract.outputs.present == 'true' && runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          app=$(find "$OUT" -maxdepth 2 -name '*.app' -type d | head -n 1)
+          test -n "$app" || { echo "::error::package-desktop.sh left no .app in $OUT"; exit 1; }
+          status="${RUNNER_TEMP}/${PACKAGE}.dmg.signing"
+          bash scripts/release/macos-sign.sh sign "$status" "$app"
+          mkdir -p dist
+          hdiutil create -volname Memoar -srcfolder "$app" -ov -format UDZO "dist/${PACKAGE}.dmg"
+          bash scripts/release/macos-sign.sh sign "$status" "dist/${PACKAGE}.dmg"
+          bash scripts/release/macos-sign.sh notarize "$status" "dist/${PACKAGE}.dmg"
+          cp "$status" "dist/${PACKAGE}.dmg.signing"
+
+      - name: Collect the archive (Linux)
+        if: steps.contract.outputs.present == 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=$(find "$OUT" -maxdepth 2 -name '*.tar.gz' -type f | head -n 1)
+          test -n "$archive" || { echo "::error::package-desktop.sh left no .tar.gz in $OUT"; exit 1; }
+          mkdir -p dist
+          cp "$archive" "dist/${PACKAGE}.tar.gz"
+          tar -tzf "dist/${PACKAGE}.tar.gz" | grep -q '\.desktop$' || { echo "::error::the archive holds no .desktop file"; exit 1; }
+          echo "signature: n/a (Linux packages are verified by SHA256SUMS and the provenance attestation)" > "dist/${PACKAGE}.tar.gz.signing"
+
+      - name: Find the app directory (Windows)
+        if: steps.contract.outputs.present == 'true' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=$(find "$OUT" -name '*.exe' -type f | head -n 1)
+          test -n "$exe" || { echo "::error::package-desktop.sh left no .exe in $OUT"; exit 1; }
+          echo "APP_DIR=$(cygpath -w "$(dirname "$exe")")" >> "$GITHUB_ENV"
+
+      - name: Sign with Azure Trusted Signing (Windows)
+        if: steps.contract.outputs.present == 'true' && runner.os == 'Windows' && env.HAS_AZURE_SIGNING == 'true'
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ env.APP_DIR }}
+          files-folder-filter: exe,dll
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Sign, or record why not, and zip (Windows)
+        if: steps.contract.outputs.present == 'true' && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $status = Join-Path $env:RUNNER_TEMP "$env:PACKAGE.zip.signing"
+          $binaries = @(Get-ChildItem -Path $env:APP_DIR -Recurse -Include *.exe, *.dll | ForEach-Object FullName)
+          ./scripts/release/windows-sign.ps1 -StatusFile $status -Files $binaries
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path $env:APP_DIR -DestinationPath "dist/$env:PACKAGE.zip" -CompressionLevel Optimal
+          # The status file has one line per binary. The release table shows
+          # the last, and any unsigned one has to surface.
+          $lines = Get-Content $status
+          $unsigned = @($lines | Where-Object { $_ -like 'signature: none*' })
+          $summary = if ($unsigned.Count -gt 0) { $unsigned[0] } else { $lines[-1] }
+          Set-Content -Path "dist/$env:PACKAGE.zip.signing" -Value $summary
+
+      - name: Checksum sidecar
+        if: steps.contract.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for file in memoar-desktop-*; do
+            case "$file" in *.signing) continue ;; esac
+            if command -v sha256sum >/dev/null; then digest=$(sha256sum "$file" | cut -d' ' -f1); else digest=$(shasum -a 256 "$file" | cut -d' ' -f1); fi
+            printf '%s  %s\n' "$digest" "$file" > "${file}.sha256"
+            cat "${file}.sha256" "${file}.signing"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: steps.contract.outputs.present == 'true'
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  assemble:
+    name: Assemble release files
+    needs: [plan, cli, desktop]
+    if: >-
+      always()
+      && needs.plan.result == 'success'
+      && needs.cli.result == 'success'
+      && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped')
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - uses: actions/download-artifact@v4
         with:
-          path: assets
+          path: artifacts
 
-      # The step below resolves through the launcher on *this* runner, which is
-      # linux-x64, so it says nothing about the other five platforms the
-      # launcher claims to serve — which is how win32-arm64 sat in `TARGETS`
-      # for a release with nothing building it. Comparing the two lists is the
-      # only check that covers a platform no runner here happens to be.
-      - name: Every platform the launcher offers was actually built
+      - name: Room for the SBOM
+        run: mkdir -p artifacts/sbom
+
+      # The dependency inventory of the Rust workspace, from Cargo.lock.
+      - uses: anchore/sbom-action@v0
+        with:
+          path: agent
+          format: spdx-json
+          output-file: artifacts/sbom/memoar-${{ needs.plan.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Assemble, checksum, formula and notes
+        run: bash scripts/release/assemble.sh "$VERSION" artifacts release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: release/*
+          if-no-files-found: error
+
+  verify:
+    name: verify / ${{ matrix.os }}
+    needs: [plan, assemble]
+    if: always() && needs.assemble.result == 'success'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      MEMOAR_DOWNLOAD_BASE: http://127.0.0.1:8799
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: serve/v${{ needs.plan.outputs.version }}
+
+      # Served the way a GitHub Release serves them, so every installer runs
+      # against the files that would be published, before they are.
+      - name: Serve the release files
         shell: bash
         run: |
           set -euo pipefail
-          find assets -type f ! -name '*.sha256' -exec basename {} \; | sort > built.txt
-          echo "built:"; cat built.txt
-          node -e '
-            const fs = require("node:fs");
-            const { assetName } = require("./packages/npx/lib/platform");
-            const built = new Set(fs.readFileSync("built.txt", "utf8").split("\n").filter(Boolean));
-            // Every pair the launcher will answer for, taken from the launcher
-            // itself rather than restated here — a copy of the list is a second
-            // thing to keep in step, and this check exists because two lists
-            // drifted.
-            const pairs = [
-              ["darwin", "arm64"], ["darwin", "x64"],
-              ["linux", "arm64"], ["linux", "x64"],
-              ["win32", "arm64"], ["win32", "x64"],
-            ];
-            const missing = pairs
-              .map(([platform, architecture]) => [`${platform}-${architecture}`, assetName(platform, architecture)])
-              .filter(([, asset]) => !built.has(asset));
-            if (missing.length > 0) {
-              for (const [pair, asset] of missing) {
-                console.error(`${pair}: the launcher downloads ${asset}, which this release does not contain`);
-              }
-              process.exit(1);
-            }
-            console.log(`all ${pairs.length} platforms the launcher offers have an asset`);
-          '
-
-      # Serving the assets the way a release does, and resolving through the
-      # real launcher, is the only way to know the names, the layout and the
-      # checksums agree before anyone runs `npx memoar`.
-      - name: Download, verify and execute through the launcher
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ github.event.inputs.version || github.ref_name }}"
-          version="${version#v}"
-          mkdir -p "serve/v${version}"
-          find assets -type f -exec cp {} "serve/v${version}/" \;
-          ls -l "serve/v${version}"
-          npx --yes http-server serve -p 8799 --silent &
+          node scripts/release/serve.mjs serve 8799 > "$RUNNER_TEMP/serve.log" 2>&1 &
           for _ in $(seq 1 30); do
-            curl -sf "http://127.0.0.1:8799/v${version}/" >/dev/null && break
+            curl -sf http://127.0.0.1:8799/__ready >/dev/null && exit 0
             sleep 1
           done
-          MEMOAR_DOWNLOAD_BASE=http://127.0.0.1:8799 \
-          XDG_CACHE_HOME="$PWD/cache" \
-          node -e '
-            const { ensureBinary } = require("./packages/npx/lib/platform");
+          cat "$RUNNER_TEMP/serve.log"
+          exit 1
+
+      - name: Checksums match the files
+        shell: bash
+        working-directory: serve/v${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
+
+      - name: The launcher's own tests
+        working-directory: packages/npx
+        run: npm run check --workspaces=false && npm test --workspaces=false
+
+      - name: The npm launcher downloads, verifies and runs this platform's binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          XDG_CACHE_HOME="$RUNNER_TEMP/launcher-cache" node -e '
+            const { ensureBinary, assetName } = require("./packages/npx/lib/platform");
             const { execFileSync } = require("node:child_process");
+            console.log("asset", assetName());
             ensureBinary({ version: process.env.VERSION, localCandidates: [] })
               .then((binary) => {
-                console.log("resolved", binary);
-                console.log(execFileSync(binary, ["--version"]).toString().trim());
+                const reported = execFileSync(binary, ["--version"]).toString().trim();
+                console.log(binary, reported);
+                if (reported !== `memoar ${process.env.VERSION}`) throw new Error(`launcher ran ${reported}`);
               })
               .catch((error) => { console.error(error.message); process.exit(1); });
           '
-        env:
-          VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
-  # Assets are attached to this repository's own releases, which is what the
-  # launcher downloads from. That works without any stored credential —
-  # GITHUB_TOKEN can write releases here — and it is the reason the repository
-  # is public: a private repository's release assets need authentication, and
-  # `npx` has none.
+      - name: install.sh
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/install-sh"
+          MEMOAR_INSTALL_DIR="$bin" sh "serve/v${VERSION}/install.sh"
+          test "$("$bin/memoar" --version)" = "memoar ${VERSION}"
+
+      # The same installer, end to end, inside the distributions the Linux
+      # binaries claim: Alpine has to get the musl build without being told,
+      # and Rocky Linux 8 is the glibc 2.28 floor.
+      - name: install.sh on Alpine and Rocky Linux 8
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in alpine:3.20 rockylinux:8; do
+            echo "--- ${image}"
+            docker run --rm --network host -v "$PWD/serve:/serve:ro" \
+              -e MEMOAR_DOWNLOAD_BASE -e VERSION -e MEMOAR_VERSION="$VERSION" "$image" sh -c '
+                set -eu
+                command -v curl >/dev/null || apk add --no-cache curl >/dev/null
+                sh "/serve/v${VERSION}/install.sh"
+                test "$("$HOME/.local/bin/memoar" --version)" = "memoar ${VERSION}"
+                "$HOME/.local/bin/memoar" sources list --json >/dev/null
+                echo "ok on $(. /etc/os-release && echo "$PRETTY_NAME")"
+              '
+          done
+
+      - name: Homebrew formula
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+          HOMEBREW_NO_ANALYTICS: "1"
+        run: |
+          set -euo pipefail
+          released="serve/v${VERSION}/memoar.rb"
+          ruby -c "$released"
+          # The attached formula points at github.com. The one installed here is
+          # generated the same way against the local server, and must differ
+          # from the attached one only in that address.
+          local_formula="$RUNNER_TEMP/memoar.rb"
+          bash scripts/release/homebrew-formula.sh "$VERSION" "serve/v${VERSION}" "$MEMOAR_DOWNLOAD_BASE" > "$local_formula"
+          diff <(sed "s#${MEMOAR_DOWNLOAD_BASE}#BASE#" "$local_formula") \
+               <(sed "s#https://github.com/${GITHUB_REPOSITORY}/releases/download#BASE#" "$released")
+          brew tap-new --no-git memoar-release/verify
+          cp "$local_formula" "$(brew --repository memoar-release/verify)/Formula/memoar.rb"
+          brew install --formula memoar-release/verify/memoar
+          brew test memoar-release/verify/memoar
+          test "$("$(brew --prefix)/bin/memoar" --version)" = "memoar ${VERSION}"
+          brew uninstall memoar
+          brew untap memoar-release/verify
+
+      - name: install.ps1 under PowerShell 7 and Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:MEMOAR_VERSION = $env:VERSION
+          foreach ($shell in 'pwsh', 'powershell') {
+            $dir = Join-Path $env:RUNNER_TEMP "install-ps1-$shell"
+            $env:MEMOAR_INSTALL_DIR = $dir
+            & $shell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "serve/v$env:VERSION/install.ps1"
+            if ($LASTEXITCODE -ne 0) { throw "install.ps1 failed under $shell" }
+            $reported = & (Join-Path $dir 'memoar.exe') --version
+            if ($reported -ne "memoar $env:VERSION") { throw "$shell installed '$reported'" }
+            Write-Host "$shell installed $reported"
+          }
+          # The iex form the docs give, which cannot take parameters.
+          $env:MEMOAR_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'install-ps1-iex'
+          $env:MEMOAR_NO_MODIFY_PATH = '1'
+          Get-Content -Raw "serve/v$env:VERSION/install.ps1" | Invoke-Expression
+          & (Join-Path $env:MEMOAR_INSTALL_DIR 'memoar.exe') --version
+
+      - name: The npm tarball holds the launcher and nothing else
+        if: runner.os == 'Linux'
+        working-directory: packages/npx
+        run: |
+          set -euo pipefail
+          npm pack --dry-run --json --ignore-scripts > "$RUNNER_TEMP/pack.json"
+          node -e '
+            const [pack] = require(process.argv[1]);
+            const files = pack.files.map((file) => file.path).sort();
+            const expected = ["README.md", "bin/memoar.js", "install.sh", "lib/platform.js", "package.json"];
+            if (JSON.stringify(files) !== JSON.stringify(expected)) {
+              console.error("tarball contents differ:", files);
+              process.exit(1);
+            }
+            console.log(`${pack.name}@${pack.version}: ${files.join(", ")}`);
+          ' "$RUNNER_TEMP/pack.json"
+
   release:
-    name: Publish binaries
-    needs: verify
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
-    runs-on: ubuntu-latest
+    name: Publish the GitHub Release
+    needs: [plan, verify]
+    if: always() && needs.verify.result == 'success' && needs.plan.outputs.publish_release == 'true'
+    runs-on: ubuntu-24.04
+    # Add required reviewers to this environment to put a human between a tag
+    # and a public release.
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: assets
-      - name: Flatten
-        run: mkdir -p dist && find assets -type f -exec cp {} dist/ \;
+          name: release-files
+          path: release
+
+      - name: Keep the notes out of the assets
+        run: mv release/release-notes.md "$RUNNER_TEMP/release-notes.md"
+
+      # Signed by this workflow's identity through Sigstore. Anyone can check a
+      # download with `gh attestation verify <file> --repo almyty-inc/memoar`.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: release/SHA256SUMS
+
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
-          files: dist/*
+          tag_name: v${{ needs.plan.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Memoar ${{ needs.plan.outputs.version }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          prerelease: ${{ contains(needs.plan.outputs.version, '-') }}
+          files: release/*
           fail_on_unmatched_files: true
 
-  # Deliberately not `needs: release`. The launcher and the agent are separate
-  # artifacts with separate versions: fixing a URL or a README in the launcher
-  # must not require cutting an agent release, and the agent's version is the
-  # canonical contract's, which does not move because a Node package needed
-  # republishing. The launcher's tests hold AGENT_VERSION to a release that
-  # exists, which is the constraint that actually matters.
+  # The launcher and the agent version separately, so this does not need a
+  # release in the same run. When the run builds one, it waits for it, so a
+  # launcher is never published ahead of the binaries it downloads.
   npm:
-    name: npm
-    if: github.event.inputs.publish_npm == 'true'
-    runs-on: ubuntu-latest
+    name: Publish the launcher to npm
+    needs: [plan, verify, release]
+    if: >-
+      always()
+      && needs.plan.result == 'success'
+      && needs.plan.outputs.publish_npm == 'true'
+      && (needs.plan.outputs.build != 'true' || needs.verify.result == 'success')
+      && (needs.plan.outputs.publish_release != 'true' || needs.release.result == 'success')
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -273,22 +827,10 @@ jobs:
         working-directory: packages/npx
         run: npm run check --workspaces=false && npm test --workspaces=false
 
-      # The version in package.json selects which release the launcher
-      # downloads, so publishing one that does not match the tag would 404 for
-      # every installer. A test already holds it to the agent's version; this
-      # holds it to the thing actually being released.
-      - name: The published version must be the one that was built
-        working-directory: packages/npx
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.inputs.version || github.ref_name }}"
-          expected="${tag#v}"
-          actual="$(node -p "require('./package.json').version")"
-          test "$actual" = "$expected" || {
-            echo "packages/npx is $actual but the release is $expected"
-            exit 1
-          }
+      - name: The published version is the one this run checked
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: node scripts/release/check-versions.mjs --version "$VERSION" --npm
 
       - name: Publish
         working-directory: packages/npx
