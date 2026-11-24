@@ -152,9 +152,21 @@ impl ApiClient {
             })?;
         // The redirect to storage carries the same bytes, so it carries the
         // same budget: the 30-second default cut this one off too.
-        let bytes = self.send_bytes(self.client.get(url).timeout(self.download_timeout))?;
+        let bytes = self.fetch_presigned(url)?;
         serde_json::from_slice(&bytes)
             .map_err(|error| AppError::network(format!("invalid conversion bundle: {error}")))
+    }
+
+    /// Fetches a pre-signed storage URL: no credential, because the signature
+    /// in the URL is the credential, and the download budget, because what is
+    /// behind it is a conversion bundle.
+    ///
+    /// `listen` fetched its bundles with the two-minute control-plane budget,
+    /// which bounds the whole body, so a large conversion pushed to a machine
+    /// failed on a deadline it could never meet. `convert --here` already had
+    /// the download budget.
+    pub(crate) fn fetch_presigned(&self, url: &str) -> Result<Vec<u8>, AppError> {
+        self.send_bytes(self.client.get(url).timeout(self.download_timeout))
     }
 
     fn send_json(&self, request: RequestBuilder) -> Result<Value, AppError> {
