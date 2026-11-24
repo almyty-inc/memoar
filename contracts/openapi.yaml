@@ -304,6 +304,13 @@ paths:
     delete:
       tags: [Auth]
       operationId: revokeApiKey
+      description: >-
+        Revokes an API key. A caller holding keys:write may revoke any key on the
+        account. Any API key may revoke itself without that scope, which is how a
+        signed-in CLI signs out. Revoking a key that is already revoked succeeds
+        and keeps the first revocation time. The answer is 404 for an unknown id,
+        and also for a key the caller may not revoke, so a narrow key cannot
+        learn which ids exist.
       parameters:
         - $ref: '#/components/parameters/KeyId'
       responses:
@@ -1749,6 +1756,10 @@ components:
         scopes: { type: array, items: { type: string } }
         createdAt: { type: string, format: date-time }
         lastUsedAt: { type: [string, 'null'], format: date-time }
+        revokedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the key was revoked, or null while it still authenticates. Revoked keys stay in the list so a client can see that a sign-out took effect.
     IngestManifest:
       type: object
       required: [machineId, batchId, artifacts]
