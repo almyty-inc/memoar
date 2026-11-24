@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use crate::error::DaemonError;
 use crate::manifest::{IngestManifest, IngestReceipt, SyncTransport};
+use crate::patient::send_patiently;
 use crate::queue::QueuedArtifact;
 
 /// The machine token the transport is currently using, and when it dies.
@@ -50,6 +51,8 @@ pub struct HttpTransport {
     endpoint: String,
     credential: Mutex<Credential>,
     mint: Option<TokenMinter>,
+    /// How a wait for a rate limit is spent. A field so a test can skip it.
+    pause: fn(Duration),
 }
 
 /// The largest artifact the archive accepts, mirroring `MEMOAR_MAX_ARTIFACT_BYTES`
@@ -110,9 +113,16 @@ impl HttpTransport {
                 expires_at: expires_at.and_then(parse_expiry),
             }),
             mint,
+            pause: std::thread::sleep,
         }
     }
 
+    /// The same transport, recording rate-limit waits instead of sleeping.
+    #[cfg(test)]
+    pub(crate) fn without_pauses(mut self) -> Self {
+        self.pause = |_| {};
+        self
+    }
     /// The token to start a request with, re-minted if the one held is within
     /// `CREDENTIAL_MARGIN` of expiry.
     ///
@@ -154,11 +164,19 @@ impl HttpTransport {
         path: &str,
         body: &B,
     ) -> Result<reqwest::blocking::Response, DaemonError> {
-        let response = self
+        let request = self
             .authorize(self.client.post(format!("{}{path}", self.endpoint)))?
-            .json(body)
-            .send()
-            .map_err(|error| transport_error(&error))?;
+            .json(body);
+        self.send(request)
+    }
+
+    /// Sends, waits out a rate limit, and refuses anything but success.
+    fn send(
+        &self,
+        request: reqwest::blocking::RequestBuilder,
+    ) -> Result<reqwest::blocking::Response, DaemonError> {
+        let response =
+            send_patiently(request, self.pause).map_err(|error| transport_error(&error))?;
         require_success(response)
     }
 }
@@ -174,12 +192,10 @@ fn parse_expiry(value: &str) -> Option<DateTime<Utc>> {
 
 impl SyncTransport for HttpTransport {
     fn missing(&self, machine_id: &str, hashes: &[String]) -> Result<HashSet<String>, DaemonError> {
-        let response = self
+        let request = self
             .authorize(self.client.post(format!("{}/ingest/delta", self.endpoint)))?
-            .json(&serde_json::json!({ "machineId": machine_id, "hashes": hashes }))
-            .send()
-            .map_err(|error| transport_error(&error))?;
-        let response = require_success(response)?;
+            .json(&serde_json::json!({ "machineId": machine_id, "hashes": hashes }));
+        let response = self.send(request)?;
         #[derive(Deserialize)]
         struct Delta {
             missing: Vec<String>,
@@ -191,7 +207,7 @@ impl SyncTransport for HttpTransport {
     }
 
     fn upload(&self, artifact: &QueuedArtifact, bytes: Vec<u8>) -> Result<(), DaemonError> {
-        let response = self
+        let request = self
             .authorize(self.client.put(format!(
                 "{}/ingest/artifacts/{}",
                 self.endpoint, artifact.sha256
@@ -199,22 +215,18 @@ impl SyncTransport for HttpTransport {
             .header("x-memoar-source", &artifact.source)
             .header("x-memoar-source-path", &artifact.source_path)
             .header("content-type", "application/octet-stream")
-            .body(bytes)
-            .send()
-            .map_err(|error| transport_error(&error))?;
-        require_success(response).map(|_| ())
+            .body(bytes);
+        self.send(request).map(|_| ())
     }
 
     fn submit_manifest(&self, manifest: &IngestManifest) -> Result<IngestReceipt, DaemonError> {
-        let response = self
+        let request = self
             .authorize(
                 self.client
                     .post(format!("{}/ingest/manifests", self.endpoint)),
             )?
-            .json(manifest)
-            .send()
-            .map_err(|error| transport_error(&error))?;
-        require_success(response)?
+            .json(manifest);
+        self.send(request)?
             .json::<IngestReceipt>()
             .map_err(|error| DaemonError::Protocol(error.to_string()))
     }
