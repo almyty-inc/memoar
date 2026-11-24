@@ -13,7 +13,9 @@ use crate::args::SyncArgs;
 use crate::config::{Config, RuntimePaths, load_config, load_credential};
 use crate::credential::Credential;
 use crate::error::{AppError, map_capture_error, map_queue_error, map_sync_error};
-use crate::machine::{capture_transport, issue_machine_token, patch_machine_state};
+use crate::machine::{
+    capture_transport, issue_machine_token, machine_refusal, patch_machine_state,
+};
 use crate::watch::watch;
 
 pub(crate) fn sync(
@@ -90,8 +92,10 @@ pub(crate) fn sync_pending(sweep: &mut Sweep, captured: CaptureSummary) -> Resul
         ..
     } = *sweep;
     let api = ApiClient::new(&config.endpoint, Some(credential));
-    patch_machine_state(&api, config, paths)?;
-    let (token, expires_at) = issue_machine_token(&api, &config.machine_id)?;
+    patch_machine_state(&api, config, paths)
+        .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
+    let (token, expires_at) = issue_machine_token(&api, &config.machine_id)
+        .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
     let report = SyncEngine::new(capture_transport(
         config,
         credential,

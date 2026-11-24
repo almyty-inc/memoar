@@ -16,6 +16,14 @@ pub enum DaemonError {
     Discovery(#[from] memoar_connectors::DiscoveryError),
     #[error("sync transport failed: {0}")]
     Transport(String),
+    /// The connection itself could not be made: no route, refused, DNS, or the
+    /// connect timeout. Nothing was sent, so nothing about the artifact is
+    /// implicated.
+    #[error("the archive could not be reached: {0}")]
+    Unreachable(String),
+    /// The archive answered, and the answer was not a success.
+    #[error("HTTP {status}: {}", problem_detail(.body))]
+    Http { status: u16, body: String },
     #[error("server returned an invalid response: {0}")]
     Protocol(String),
     #[error(
@@ -61,4 +69,40 @@ impl DaemonError {
     pub fn is_skippable(&self) -> bool {
         self.is_unredactable() || matches!(self, DaemonError::TooLarge { .. })
     }
+
+    /// The whole pass is stopped by this, not just the artifact that drew it.
+    ///
+    /// An archive that cannot be reached, will not take this machine's
+    /// credential, or is overloaded refuses the next artifact exactly as it
+    /// refused this one. Treating that as the artifact's fault cost every
+    /// artifact in the batch an attempt, and a request each: 256 connection
+    /// timeouts of 20 seconds on a dead network is an hour and a half spent
+    /// learning one fact. Eight such outages abandoned the artifact for good.
+    pub fn is_pass_wide(&self) -> bool {
+        match self {
+            DaemonError::Unreachable(_) => true,
+            DaemonError::Http { status, .. } => {
+                matches!(status, 401 | 403 | 408 | 429 | 502 | 503 | 504)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// The sentence in a problem document, or the start of a body that is not one.
+///
+/// The queue's `last_error` held the whole RFC 9457 document, and a proxy's
+/// HTML error page in full, which nobody reading `status` wants.
+fn problem_detail(body: &str) -> String {
+    let parsed = serde_json::from_str::<serde_json::Value>(body).ok();
+    let field = |name: &str| {
+        parsed
+            .as_ref()
+            .and_then(|problem| problem.get(name))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+    };
+    field("detail")
+        .or_else(|| field("title"))
+        .unwrap_or_else(|| body.trim().chars().take(200).collect())
 }

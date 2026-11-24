@@ -6,6 +6,7 @@ mod credential;
 mod doctor;
 mod envelope;
 mod error;
+mod http_error;
 mod listen;
 mod login;
 mod machine;

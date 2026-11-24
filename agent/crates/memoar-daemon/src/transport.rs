@@ -237,6 +237,12 @@ fn transport_error(error: &reqwest::Error) -> DaemonError {
     if error.is_timeout() {
         message.push_str(" (timed out)");
     }
+    // A connect failure sent nothing, so it says nothing about the artifact.
+    // A failure after connecting may be the artifact's own doing, a body the
+    // ingress cut off for its size, and stays a plain transport error.
+    if error.is_connect() {
+        return DaemonError::Unreachable(message);
+    }
     DaemonError::Transport(message)
 }
 
@@ -246,7 +252,7 @@ fn require_success(
     if response.status().is_success() {
         return Ok(response);
     }
-    let status = response.status();
+    let status = response.status().as_u16();
     let body = response.text().unwrap_or_default();
-    Err(DaemonError::Transport(format!("HTTP {status}: {body}")))
+    Err(DaemonError::Http { status, body })
 }

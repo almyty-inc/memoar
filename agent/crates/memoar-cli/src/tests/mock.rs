@@ -43,6 +43,8 @@ pub(crate) struct MockOptions {
     /// test can find out which timeout a request was given.
     pub(crate) slow_path: &'static str,
     pub(crate) slow_by: Duration,
+    /// The machine in the config was deregistered with `DELETE /machines/{id}`.
+    pub(crate) retired_machine: bool,
 }
 
 pub(crate) fn spawn_mock_api(
@@ -91,6 +93,7 @@ pub(crate) fn spawn_mock(
         dropped_connections,
         slow_path,
         slow_by,
+        retired_machine,
     } = options;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
@@ -145,6 +148,13 @@ pub(crate) fn spawn_mock(
             let (status, response) = match (method.as_str(), path.as_str()) {
                 ("POST", "/v1/auth/login") => (200, json!({"accessToken": "user-token"})),
                 ("POST", "/v1/machines") => (201, json!({"id": MACHINE_ID})),
+                // A deregistered machine: the archive answers an update with
+                // 404 and leaves it out of the machine list.
+                ("PATCH", path) if path.starts_with("/v1/machines/") && retired_machine => (
+                    404,
+                    json!({"title": "Not Found", "status": 404, "detail": "Machine not found"}),
+                ),
+                ("GET", "/v1/machines") if retired_machine => (200, json!({"items": []})),
                 ("PATCH", path) if path.starts_with("/v1/machines/") => (200, json!({})),
                 ("GET", "/v1/machines") => (200, json!({"items": [{"id": MACHINE_ID}]})),
                 ("POST", "/v1/auth/api-keys") => (

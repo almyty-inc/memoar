@@ -25,6 +25,12 @@ pub struct AppError {
     pub message: String,
     pub hint: String,
     pub retryable: bool,
+    /// The status the archive answered with, when it answered at all.
+    ///
+    /// Kept so a caller can decide what a refusal means without reading the
+    /// prose: `sync --watch` and `doctor` used to match on the message text.
+    #[serde(skip)]
+    pub http_status: Option<u16>,
 }
 
 impl AppError {
@@ -37,6 +43,7 @@ impl AppError {
             message: message.into(),
             hint: "Run memoar introspect for the command surface.".to_owned(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -49,6 +56,7 @@ impl AppError {
             message: "Memoar is not initialized on this machine.".to_owned(),
             hint: "Run memoar login.".to_owned(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -61,6 +69,7 @@ impl AppError {
             message: message.into(),
             hint: "Check the endpoint, connection, and credentials, then retry.".to_owned(),
             retryable: true,
+            http_status: None,
         }
     }
 
@@ -83,6 +92,7 @@ impl AppError {
             message: message.into(),
             hint: hint.into(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -101,6 +111,7 @@ impl AppError {
             message: message.into(),
             hint: hint.into(),
             retryable: true,
+            http_status: None,
         }
     }
 
@@ -120,6 +131,7 @@ impl AppError {
             message: message.into(),
             hint: hint.into(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -133,6 +145,7 @@ impl AppError {
             hint: "Resolve the competing process or native-session collision, then retry."
                 .to_owned(),
             retryable: true,
+            http_status: None,
         }
     }
 
@@ -145,6 +158,7 @@ impl AppError {
             message: message.into(),
             hint: "Run memoar doctor and retry with the latest client.".to_owned(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -173,7 +187,13 @@ pub(crate) fn map_capture_error(error: DaemonError) -> AppError {
 
 pub(crate) fn map_sync_error(error: DaemonError) -> AppError {
     match error {
-        DaemonError::Transport(_) => AppError::network(error.to_string()),
+        // The archive answered: its status decides, as it does for every
+        // other request this client makes. A revoked machine token was a
+        // retryable network error here, and a watch retried it for ever.
+        DaemonError::Http { status, ref body } => crate::http_error::http_error(status, body),
+        DaemonError::Transport(_) | DaemonError::Unreachable(_) => {
+            AppError::network(error.to_string())
+        }
         _ => AppError::queue(error.to_string()),
     }
 }

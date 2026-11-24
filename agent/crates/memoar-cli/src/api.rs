@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::credential::Credential;
 use crate::error::AppError;
+use crate::http_error::http_error;
 
 /// A dead host should not cost a whole download budget to discover.
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
@@ -168,7 +169,7 @@ impl ApiClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().unwrap_or_default();
-            return Err(AppError::network(problem_message(status.as_u16(), &body)));
+            return Err(http_error(status.as_u16(), &body));
         }
         Ok(response)
     }

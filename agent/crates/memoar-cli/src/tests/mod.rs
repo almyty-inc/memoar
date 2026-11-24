@@ -8,5 +8,6 @@ mod listen;
 mod login;
 mod messages;
 mod mock;
+mod retired;
 mod sync;
 mod watch;

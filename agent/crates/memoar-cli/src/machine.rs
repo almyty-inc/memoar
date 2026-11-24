@@ -8,6 +8,7 @@ use crate::api::ApiClient;
 use crate::config::{Config, RuntimePaths};
 use crate::credential::Credential;
 use crate::error::AppError;
+use crate::http_error::explain_machine_refusal;
 
 pub(crate) fn patch_machine_state(
     api: &ApiClient,
@@ -58,11 +59,21 @@ pub(crate) fn machine_exists(api: &ApiClient, machine_id: &str) -> Result<bool, 
         }))
 }
 
+/// Says "this machine was deregistered" when that is why a machine-scoped
+/// request was refused, and hands every other error back unchanged.
+pub(crate) fn machine_refusal(api: &ApiClient, machine_id: &str, error: AppError) -> AppError {
+    explain_machine_refusal(machine_id, error, || machine_exists(api, machine_id))
+}
+
 pub(crate) fn verify_machine(api: &ApiClient, machine_id: &str) -> Result<(), AppError> {
     if !machine_exists(api, machine_id)? {
-        return Err(AppError::network(format!(
-            "machine {machine_id} is not registered for this credential"
-        )));
+        // The archive answered, and the answer was no: asking again changes
+        // nothing, so this is a refusal and not a network error.
+        return Err(AppError::refused(
+            "MEMOAR_MACHINE_UNKNOWN",
+            format!("machine {machine_id} is not registered for this credential"),
+            "Drop --machine-id to register this computer, or pass an id from the machine list in the web app.",
+        ));
     }
     Ok(())
 }
@@ -90,10 +101,26 @@ pub(crate) fn capture_transport(
         expires_at,
         Some(Box::new(move || {
             let api = ApiClient::new(&endpoint, Some(&credential));
-            issue_machine_token(&api, &machine_id)
-                .map_err(|error| DaemonError::Transport(error.message.clone()))
+            issue_machine_token(&api, &machine_id).map_err(|error| minter_error(&error))
         })),
     )
+}
+
+/// A failed mint, in the daemon's terms.
+///
+/// Every failure used to become a bare transport error, so a mint the archive
+/// refused, because the key was revoked or the machine deregistered, looked to
+/// the sync engine like a flaky connection on whichever artifact was next, and
+/// cost that artifact an attempt. The status is kept so it is judged as what
+/// it is.
+fn minter_error(error: &AppError) -> DaemonError {
+    match error.http_status {
+        Some(status) => DaemonError::Http {
+            status,
+            body: json!({ "detail": error.message }).to_string(),
+        },
+        None => DaemonError::Transport(error.message.clone()),
+    }
 }
 
 /// Mints a machine token, and reports when it dies.
