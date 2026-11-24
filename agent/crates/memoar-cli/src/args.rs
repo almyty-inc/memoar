@@ -79,13 +79,12 @@ pub struct LoginArgs {
     /// out of shell history and the process list.
     #[arg(long, env = "MEMOAR_PASSWORD", hide_env_values = true)]
     pub password: Option<String>,
-    /// Existing user/API credential. A machine is still registered or verified.
-    #[arg(
-        long,
-        env = "MEMOAR_TOKEN",
-        hide_env_values = true,
-        conflicts_with_all = ["email", "password"]
-    )]
+    /// Existing user/API credential, used when --email is not given. A machine
+    /// is still registered or verified.
+    ///
+    /// No clap conflict with --email: with MEMOAR_TOKEN or MEMOAR_PASSWORD
+    /// exported, a conflict made the other way of signing in unusable.
+    #[arg(long, env = "MEMOAR_TOKEN", hide_env_values = true)]
     pub token: Option<String>,
     /// Reuse this machine id instead of registering one. Needs --token.
     #[arg(long, requires = "token")]
@@ -111,15 +110,10 @@ pub struct LogoutArgs {
     #[arg(long)]
     pub email: Option<String>,
     /// The account password. `-` reads it from standard input.
-    #[arg(
-        long,
-        env = "MEMOAR_PASSWORD",
-        hide_env_values = true,
-        requires = "email"
-    )]
+    #[arg(long, env = "MEMOAR_PASSWORD", hide_env_values = true)]
     pub password: Option<String>,
-    /// An account credential allowed to revoke keys, instead of a password.
-    #[arg(long, hide_env_values = true, conflicts_with_all = ["email", "password"])]
+    /// An account credential allowed to revoke keys. Used when --email is not given.
+    #[arg(long)]
     pub token: Option<String>,
     /// Also deregister this machine, which revokes its machine tokens.
     #[arg(long)]

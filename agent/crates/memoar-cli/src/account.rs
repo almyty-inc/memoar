@@ -22,7 +22,9 @@ pub(crate) fn sign_in(
     token: Option<&str>,
     command: &str,
 ) -> Result<Credential, AppError> {
-    if let Some(token) = token {
+    // An email decides it: the token may well be MEMOAR_TOKEN left in the
+    // environment by something else, and the person typed the email.
+    if let Some(token) = token.filter(|_| email.is_none()) {
         if token.trim().is_empty() {
             return Err(AppError::usage("--token cannot be empty"));
         }
