@@ -671,7 +671,7 @@ jobs:
         run: |
           set -euo pipefail
           bin="$RUNNER_TEMP/install-sh"
-          MEMOAR_INSTALL_DIR="$bin" sh "serve/v${VERSION}/install.sh"
+          MEMOAR_VERSION="$VERSION" MEMOAR_INSTALL_DIR="$bin" sh "serve/v${VERSION}/install.sh"
           test "$("$bin/memoar" --version)" = "memoar ${VERSION}"
 
       # The same installer, end to end, inside the distributions the Linux

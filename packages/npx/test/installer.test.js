@@ -6,7 +6,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const test = require("node:test");
+// install.sh is the macOS and Linux installer. Windows has install.ps1, tested
+// in install-ps1.test.js, and Git Bash there cannot run the installed fixture.
+const test = process.platform === "win32" ? require("node:test").skip : require("node:test");
 
 const installer = path.resolve(__dirname, "../install.sh");
 

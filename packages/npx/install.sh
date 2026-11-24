@@ -25,7 +25,7 @@ os_name=${MEMOAR_OS:-$(uname -s)}
 arch_name=${MEMOAR_ARCH:-$(uname -m)}
 
 say() { printf 'memoar: %s\n' "$*"; }
-fail() { printf 'memoar: %s\n' "$*" >&2; exit "${2:-1}"; }
+fail() { printf 'memoar: %s\n' "$1" >&2; exit "${2:-1}"; }
 
 # A shell under Rosetta reports x86_64 on Apple silicon. The native binary is
 # the one to install there.
