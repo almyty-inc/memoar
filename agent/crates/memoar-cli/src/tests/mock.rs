@@ -45,6 +45,8 @@ pub(crate) struct MockOptions {
     pub(crate) slow_by: Duration,
     /// The machine in the config was deregistered with `DELETE /machines/{id}`.
     pub(crate) retired_machine: bool,
+    /// How many ingest requests to refuse as if the machine token was revoked.
+    pub(crate) revoked_machine_tokens: usize,
 }
 
 pub(crate) fn spawn_mock_api(
@@ -94,12 +96,14 @@ pub(crate) fn spawn_mock(
         slow_path,
         slow_by,
         retired_machine,
+        revoked_machine_tokens,
     } = options;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
     let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let recorded = requests.clone();
     let handle = std::thread::spawn(move || {
+        let mut revoked_tokens = revoked_machine_tokens;
         // Accepted and hung up on: the client sees a transport failure with
         // no HTTP status to interpret, which is the case the watcher used to
         // die on.
@@ -186,6 +190,15 @@ pub(crate) fn spawn_mock(
                     201,
                     json!({"token": "machine-token", "expiresAt": "2099-01-01T00:00:00Z"}),
                 ),
+                // A machine token revoked with POST /machines/{id}/tokens/revoke
+                // is refused on its next request, once.
+                ("POST", "/v1/ingest/delta") if revoked_tokens > 0 => {
+                    revoked_tokens -= 1;
+                    (
+                        401,
+                        json!({"title": "Unauthorized", "detail": "Valid bearer, machine, or API-key credentials are required"}),
+                    )
+                }
                 ("POST", "/v1/ingest/delta") => {
                     let request: Value = serde_json::from_slice(&body).unwrap();
                     (200, json!({"missing": request["hashes"]}))

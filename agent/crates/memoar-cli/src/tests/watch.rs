@@ -2,9 +2,9 @@ use std::fs;
 use std::time::{Duration, Instant};
 
 use super::mock::{MockOptions, configured_paths, spawn_mock, spawn_mock_api};
-use crate::api::problem_message;
 use crate::args::SyncArgs;
 use crate::error::AppError;
+use crate::http_error::http_error;
 use crate::sync::sync;
 use crate::watch::fatal_for_watch;
 
@@ -91,22 +91,50 @@ fn a_lost_network_does_not_end_a_watch() {
 /// minutes hides that from whoever has to fix it.
 #[test]
 fn a_refused_credential_ends_a_watch_but_a_dead_network_does_not() {
-    assert!(fatal_for_watch(&AppError::network(problem_message(
-        401, ""
-    ))));
-    assert!(fatal_for_watch(&AppError::network(problem_message(
-        403, ""
-    ))));
+    assert!(fatal_for_watch(&http_error(401, "")));
+    assert!(fatal_for_watch(&http_error(403, "")));
     assert!(fatal_for_watch(&AppError::usage("no such source")));
     assert!(fatal_for_watch(&AppError::internal("queue is corrupt")));
     assert!(!fatal_for_watch(&AppError::network(
         "error sending request: connection refused"
     )));
-    assert!(!fatal_for_watch(&AppError::network(problem_message(
-        503, ""
-    ))));
+    assert!(!fatal_for_watch(&http_error(503, "")));
     assert!(
         !fatal_for_watch(&AppError::locked("database is locked")),
         "another process holding the queue is a wait, not a stop"
+    );
+}
+
+/// `POST /machines/{id}/tokens/revoke` is for a leaked token, and the
+/// contract says the agent mints a new one at its next cycle. A watch must
+/// ride that out, not stop as it does for a revoked key.
+#[test]
+fn a_revoked_machine_token_is_replaced_at_the_next_cycle() {
+    let (endpoint, _requests, _server) = spawn_mock(MockOptions {
+        // PATCH, mint, refused delta, then PATCH, mint, delta, upload,
+        // manifest, sessions, with room to spare: a request too few hangs the
+        // watch on a closed port instead of failing.
+        request_count: 12,
+        revoked_machine_tokens: 1,
+        ..MockOptions::default()
+    });
+    let temp = tempfile::tempdir().unwrap();
+    let paths = configured_paths(&temp, &endpoint);
+    fs::create_dir_all(paths.home.join(".claude/projects/p")).unwrap();
+    fs::write(paths.home.join(".claude/projects/p/s.jsonl"), "{}\n").unwrap();
+    let result = sync(
+        &SyncArgs {
+            watch: true,
+            interval_seconds: 1,
+            debounce_seconds: 1,
+            max_cycles: 1,
+        },
+        false,
+        &paths,
+    );
+    assert!(
+        result.is_ok(),
+        "the watch stopped on a token it was meant to replace: {:?}",
+        result.err().map(|error| error.message)
     );
 }
