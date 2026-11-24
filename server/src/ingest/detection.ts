@@ -1,6 +1,18 @@
 import { isSqliteBytes } from "../../libs/parsers/src/index.js";
 import { unzipSync } from "fflate";
-import { SECRET_PATTERNS, type SecretKind, type SecretPattern } from "../redaction.js";
+import { secretSpan, SECRET_PATTERNS, type SecretKind, type SecretPattern } from "../redaction.js";
+import { ClaimedSpans } from "./claimed-spans.js";
+
+/**
+ * A hint of which secret a finding is, without the secret.
+ *
+ * Four characters from each end of a long token says which key it was. Four
+ * from each end of an eight-character password is the password, and the
+ * key/value rule finds those too, so a short secret gets no hint at all.
+ */
+function previewOf(secret: string): string {
+  return secret.length >= 16 ? `${secret.slice(0, 4)}…${secret.slice(-4)}` : "…";
+}
 
 
 /** Native stores whose schema was confirmed against the tool itself. */
@@ -136,14 +148,21 @@ export class SecretScanner {
    */
   private scanText(text: string, patterns: readonly SecretPattern[], previewPrefix = ""): SecretFinding[] {
     const findings: SecretFinding[] = [];
+    // One secret is one finding. `api_key=sk_live_…` is a Stripe key to one
+    // rule and a key/value pair to another, and the capture agent, which masks
+    // in order, counts it once. A span an earlier rule already claimed is not
+    // reported again.
+    const claimed = new ClaimedSpans();
     for (const { kind, expression } of patterns) {
       for (const match of text.matchAll(expression)) {
         if (findings.length >= MAX_SECRET_FINDINGS) return findings;
+        const [start, end] = secretSpan(match);
+        if (!claimed.claim(start, end)) continue;
         findings.push({
           kind,
-          start: match.index,
-          end: match.index + match[0].length,
-          preview: `${previewPrefix}${match[0].slice(0, 4)}…${match[0].slice(-4)}`,
+          start,
+          end,
+          preview: `${previewPrefix}${previewOf(text.slice(start, end))}`,
         });
       }
     }
