@@ -57,8 +57,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # The desktop app is packaged by nsh's prebuilt runners. This pins them.
-  NSH_VERSION: ${{ vars.NSH_VERSION || '0.6.1' }}
   MEMOAR_REQUIRE_SIGNING: ${{ vars.MEMOAR_REQUIRE_SIGNING || 'false' }}
 
 jobs:
@@ -370,36 +368,36 @@ jobs:
     needs: plan
     if: needs.plan.outputs.desktop == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: macos
             os: macos-latest
-            arch: arm64
           - platform: linux
             os: ubuntu-24.04
-            arch: x86_64
           - platform: windows
             os: windows-2022
-            arch: x86_64
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       PLATFORM: ${{ matrix.platform }}
-      PACKAGE: memoar-desktop-${{ needs.plan.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}
       HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && vars.AZURE_TRUSTED_SIGNING_ACCOUNT != '' }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      # The packaging script is the contract between this workflow and the
-      # desktop app. docs/releasing.md describes it. Until it exists on the
-      # released commit, the desktop is skipped, loudly, and the CLI release
-      # goes ahead without it.
+      # agent/scripts/package-desktop.sh belongs to the desktop app. It builds
+      # one archive for the OS it runs on, installs the nsh CLI it pins when
+      # that is missing, and prints the archive's path. docs/releasing.md
+      # describes the contract. Until the script exists on the released
+      # commit the desktop is skipped, loudly, and the CLI release goes ahead.
       - name: Find the packaging script
         id: contract
-        shell: bash
         run: |
           if [ -f agent/scripts/package-desktop.sh ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
@@ -416,44 +414,51 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         if: steps.contract.outputs.present == 'true'
         with:
-          workspaces: agent
-          key: desktop-${{ matrix.platform }}
-          cache-bin: true
+          workspaces: agent/crates/memoar-desktop
+          key: release-desktop-${{ matrix.platform }}
+          cache-bin: false
 
+      # NSH's Linux backend is GTK 4, 4.14 or later: Ubuntu 24.04's.
       - name: GTK 4 (Linux)
         if: steps.contract.outputs.present == 'true' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
 
-      - name: nsh ${{ env.NSH_VERSION }}
+      # The script pins the nsh version, so its hash is the cache key.
+      - name: Cache the nsh CLI
         if: steps.contract.outputs.present == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v nsh >/dev/null && nsh --version | grep -q " ${NSH_VERSION} "; then
-            nsh --version
-          else
-            cargo install --locked "nsh-cli@${NSH_VERSION}" "nsh-${PLATFORM}-app@${NSH_VERSION}"
-          fi
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/nsh
+            ~/.cargo/bin/nsh.exe
+          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('agent/scripts/desktop-nsh.sh') }}
 
       - name: Package
+        id: package
         if: steps.contract.outputs.present == 'true'
-        shell: bash
+        env:
+          MEMOAR_DESKTOP_VERSION: ${{ needs.plan.outputs.version }}
         run: |
           set -euo pipefail
           out="${RUNNER_TEMP}/desktop"
           rm -rf "$out"
-          if [ "$RUNNER_OS" = Windows ] && [ -f agent/scripts/package-desktop.ps1 ]; then
-            pwsh -NoProfile -File agent/scripts/package-desktop.ps1 -Target "$PLATFORM" -Version "$VERSION" -Out "$out"
-          else
-            bash agent/scripts/package-desktop.sh --target "$PLATFORM" --version "$VERSION" --out "$out"
-          fi
-          echo "OUT=$out" >> "$GITHUB_ENV"
-          find "$out" -maxdepth 2
+          bash agent/scripts/package-desktop.sh "$out" | tee "$RUNNER_TEMP/package.log"
+          archive=$(tail -n 1 "$RUNNER_TEMP/package.log")
+          test -s "$archive" || { echo "::error::package-desktop.sh did not leave the archive it printed: ${archive}"; exit 1; }
+          name=$(basename "$archive")
+          case "$name" in
+            "memoar-desktop-${VERSION}-${PLATFORM}-"*) ;;
+            *) echo "::error::${name} is not named memoar-desktop-${VERSION}-${PLATFORM}-<arch>"; exit 1 ;;
+          esac
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          mkdir -p dist
 
       - name: Sign, notarize and wrap in a disk image (macOS)
         if: steps.contract.outputs.present == 'true' && runner.os == 'macOS'
-        shell: bash
         env:
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          NAME: ${{ steps.package.outputs.name }}
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -465,36 +470,43 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           set -euo pipefail
-          app=$(find "$OUT" -maxdepth 2 -name '*.app' -type d | head -n 1)
-          test -n "$app" || { echo "::error::package-desktop.sh left no .app in $OUT"; exit 1; }
-          status="${RUNNER_TEMP}/${PACKAGE}.dmg.signing"
+          unpacked="${RUNNER_TEMP}/desktop-app"
+          rm -rf "$unpacked" && mkdir -p "$unpacked"
+          ditto -x -k "$ARCHIVE" "$unpacked"
+          app=$(find "$unpacked" -maxdepth 2 -name '*.app' -type d | head -n 1)
+          test -n "$app" || { echo "::error::${NAME} holds no .app"; exit 1; }
+          dmg="dist/${NAME%.zip}.dmg"
+          status="${RUNNER_TEMP}/$(basename "$dmg").signing"
           bash scripts/release/macos-sign.sh sign "$status" "$app"
-          mkdir -p dist
-          hdiutil create -volname Memoar -srcfolder "$app" -ov -format UDZO "dist/${PACKAGE}.dmg"
-          bash scripts/release/macos-sign.sh sign "$status" "dist/${PACKAGE}.dmg"
-          bash scripts/release/macos-sign.sh notarize "$status" "dist/${PACKAGE}.dmg"
-          cp "$status" "dist/${PACKAGE}.dmg.signing"
+          hdiutil create -volname Memoar -srcfolder "$app" -ov -format UDZO "$dmg"
+          bash scripts/release/macos-sign.sh sign "$status" "$dmg"
+          bash scripts/release/macos-sign.sh notarize "$status" "$dmg"
+          hdiutil verify "$dmg"
+          cp "$status" "${dmg}.signing"
 
-      - name: Collect the archive (Linux)
+      - name: Check the archive (Linux)
         if: steps.contract.outputs.present == 'true' && runner.os == 'Linux'
-        shell: bash
+        env:
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          NAME: ${{ steps.package.outputs.name }}
         run: |
           set -euo pipefail
-          archive=$(find "$OUT" -maxdepth 2 -name '*.tar.gz' -type f | head -n 1)
-          test -n "$archive" || { echo "::error::package-desktop.sh left no .tar.gz in $OUT"; exit 1; }
-          mkdir -p dist
-          cp "$archive" "dist/${PACKAGE}.tar.gz"
-          tar -tzf "dist/${PACKAGE}.tar.gz" | grep -q '\.desktop$' || { echo "::error::the archive holds no .desktop file"; exit 1; }
-          echo "signature: n/a (Linux packages are verified by SHA256SUMS and the provenance attestation)" > "dist/${PACKAGE}.tar.gz.signing"
+          tar -tzf "$ARCHIVE" | grep -q '\.desktop$' || { echo "::error::${NAME} holds no .desktop file"; exit 1; }
+          cp "$ARCHIVE" "dist/${NAME}"
+          echo "signature: n/a (Linux packages are verified by SHA256SUMS and the provenance attestation)" > "dist/${NAME}.signing"
 
-      - name: Find the app directory (Windows)
+      - name: Unpack for signing (Windows)
         if: steps.contract.outputs.present == 'true' && runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
+        env:
+          ARCHIVE: ${{ steps.package.outputs.archive }}
         run: |
-          set -euo pipefail
-          exe=$(find "$OUT" -name '*.exe' -type f | head -n 1)
-          test -n "$exe" || { echo "::error::package-desktop.sh left no .exe in $OUT"; exit 1; }
-          echo "APP_DIR=$(cygpath -w "$(dirname "$exe")")" >> "$GITHUB_ENV"
+          $ErrorActionPreference = 'Stop'
+          $unpacked = Join-Path $env:RUNNER_TEMP 'desktop-app'
+          if (Test-Path $unpacked) { Remove-Item -Recurse -Force $unpacked }
+          Expand-Archive -Path $env:ARCHIVE -DestinationPath $unpacked
+          if (-not (Get-ChildItem -Path $unpacked -Recurse -Filter *.exe)) { throw "$env:ARCHIVE holds no .exe" }
+          "APP_DIR=$unpacked" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Sign with Azure Trusted Signing (Windows)
         if: steps.contract.outputs.present == 'true' && runner.os == 'Windows' && env.HAS_AZURE_SIGNING == 'true'
@@ -513,30 +525,29 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Sign, or record why not, and zip (Windows)
+      - name: Sign, or record why not, and zip again (Windows)
         if: steps.contract.outputs.present == 'true' && runner.os == 'Windows'
         shell: pwsh
         env:
+          NAME: ${{ steps.package.outputs.name }}
           WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
           WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $status = Join-Path $env:RUNNER_TEMP "$env:PACKAGE.zip.signing"
+          $status = Join-Path $env:RUNNER_TEMP "$env:NAME.signing"
           $binaries = @(Get-ChildItem -Path $env:APP_DIR -Recurse -Include *.exe, *.dll | ForEach-Object FullName)
           ./scripts/release/windows-sign.ps1 -StatusFile $status -Files $binaries
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path $env:APP_DIR -DestinationPath "dist/$env:PACKAGE.zip" -CompressionLevel Optimal
-          # The status file has one line per binary. The release table shows
-          # the last, and any unsigned one has to surface.
-          $lines = Get-Content $status
+          # The same top-level entries as the archive nsh wrote.
+          Compress-Archive -Path (Join-Path $env:APP_DIR '*') -DestinationPath "dist/$env:NAME" -CompressionLevel Optimal
+          # One status line per binary. An unsigned one has to surface.
+          $lines = @(Get-Content $status)
           $unsigned = @($lines | Where-Object { $_ -like 'signature: none*' })
           $summary = if ($unsigned.Count -gt 0) { $unsigned[0] } else { $lines[-1] }
-          Set-Content -Path "dist/$env:PACKAGE.zip.signing" -Value $summary
+          Set-Content -Path "dist/$env:NAME.signing" -Value $summary
 
       - name: Checksum sidecar
         if: steps.contract.outputs.present == 'true'
-        shell: bash
         run: |
           set -euo pipefail
           cd dist
@@ -545,6 +556,13 @@ jobs:
             if command -v sha256sum >/dev/null; then digest=$(sha256sum "$file" | cut -d' ' -f1); else digest=$(shasum -a 256 "$file" | cut -d' ' -f1); fi
             printf '%s  %s\n' "$digest" "$file" > "${file}.sha256"
             cat "${file}.sha256" "${file}.signing"
+            {
+              echo "### ${file}"
+              echo
+              echo '```'
+              cat "${file}.sha256" "${file}.signing"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           done
 
       - uses: actions/upload-artifact@v4

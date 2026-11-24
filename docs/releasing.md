@@ -18,8 +18,8 @@ undone: a public release tag, and an npm version.
 | `memoar-x86_64-unknown-linux-musl`, `memoar-aarch64-unknown-linux-musl` | Linux CLI, static, for Alpine and other musl systems |
 | `memoar-x86_64-pc-windows-msvc.exe`, `memoar-aarch64-pc-windows-msvc.exe` | Windows CLI, x64 and ARM64, C runtime linked in |
 | `memoar-desktop-<v>-macos-arm64.dmg` | Desktop app for macOS, when packaged |
-| `memoar-desktop-<v>-linux-x86_64.tar.gz` | Desktop app for Linux (GTK 4), when packaged |
-| `memoar-desktop-<v>-windows-x86_64.zip` | Desktop app for Windows, when packaged |
+| `memoar-desktop-<v>-linux-x64.tar.gz` | Desktop app for Linux (GTK 4), when packaged |
+| `memoar-desktop-<v>-windows-x64.zip` | Desktop app for Windows, when packaged |
 | `<file>.sha256` | One per binary or package. The npm launcher and both installers read it |
 | `SHA256SUMS` | Every file above in `sha256sum -c` format |
 | `memoar-<v>.spdx.json` | SPDX SBOM of the Rust workspace, from `Cargo.lock` |
@@ -189,39 +189,39 @@ publishing. On npmjs.com the `memoar` package must list the trusted publisher
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `MEMOAR_REQUIRE_SIGNING` | `false` | Fail instead of publishing unsigned macOS or Windows artifacts |
-| `NSH_VERSION` | `0.6.1` | The nsh CLI and app runners used to package the desktop app |
 
 ## The desktop packaging contract
 
-The release workflow does not know how the desktop app is built. It calls one
-script on each OS and signs and names what it leaves behind:
+The release workflow does not know how the desktop app is built. It calls the
+desktop app's own script once on each OS, with `shell: bash` (Git Bash on
+Windows), and signs what it leaves behind:
 
 ```sh
-agent/scripts/package-desktop.sh --target macos|linux|windows --version <X.Y.Z> --out <dir>
+MEMOAR_DESKTOP_VERSION=<X.Y.Z> agent/scripts/package-desktop.sh <out-dir>
 ```
 
-On Windows, `agent/scripts/package-desktop.ps1 -Target windows -Version <X.Y.Z> -Out <dir>`
-is used instead when it exists.
-
-Before the call, the workflow has installed the stable Rust toolchain, GTK 4
-development packages on Linux, and `nsh-cli` plus `nsh-<target>-app` at
-`NSH_VERSION` when `nsh` is not on `PATH`. The script must:
+Before the call, the workflow has installed the stable Rust toolchain and, on
+Linux, `libgtk-4-dev`, and restored the `nsh` CLI from a cache keyed on
+`agent/scripts/desktop-nsh.sh`, which pins its version. The script must:
 
 - exit non-zero on any failure
-- leave in `<dir>`, at most two levels deep:
-  - macOS: one `.app` bundle, ad hoc signed as `nsh package --target macos` leaves it
-  - Linux: one `.tar.gz` that contains a `.desktop` file
-  - Windows: one directory holding the app's `.exe` and its files
+- install the `nsh` it needs when it is missing
+- write one archive into `<out-dir>` and print its path as the last line:
+  - macOS: `memoar-desktop-<X.Y.Z>-macos-<arch>.zip` holding one ad hoc signed `.app`
+  - Linux: `memoar-desktop-<X.Y.Z>-linux-<arch>.tar.gz` holding a `.desktop` file
+  - Windows: `memoar-desktop-<X.Y.Z>-windows-<arch>.zip` holding the app's `.exe`
 - not sign anything with a real identity, and not upload anything
 
-The workflow then produces `memoar-desktop-<version>-<target>-<arch>.dmg`,
-`.tar.gz` or `.zip`, with a `.sha256` sidecar and a signing status.
+`<arch>` is `x64` or `arm64`. The workflow then turns the macOS zip into a
+signed, notarized and stapled `.dmg` of the same name, signs the Windows
+executables and zips them again under the same name, attaches the Linux
+archive as it is, and writes a `.sha256` sidecar and a signing status for each.
 
 When the script does not exist on the commit being released, the desktop jobs
 skip with a warning in the run summary, and the release goes ahead with the
 CLI only. When the script exists and fails, the release does not happen.
 
-Today it packages macOS arm64, Linux x86-64 and Windows x64.
+Today it packages macOS arm64, Linux x64 and Windows x64.
 
 ## Decisions that need a human
 

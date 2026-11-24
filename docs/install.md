@@ -169,8 +169,8 @@ The window shows capture state only. Reading the archive stays in the web
 application, which the window can open.
 
 From a release that includes it, the desktop app comes as
-`memoar-desktop-<version>-macos-arm64.dmg`, `memoar-desktop-<version>-linux-x86_64.tar.gz`
-and `memoar-desktop-<version>-windows-x86_64.zip`. Releases built before the
+`memoar-desktop-<version>-macos-arm64.dmg`, `memoar-desktop-<version>-linux-x64.tar.gz`
+and `memoar-desktop-<version>-windows-x64.zip`. Releases built before the
 desktop app's packaging script landed do not include it. Packaging is
 described in [releasing.md](releasing.md).
 
