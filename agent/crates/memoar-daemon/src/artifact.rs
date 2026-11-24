@@ -90,7 +90,14 @@ fn redact_zip(
             path: path.to_path_buf(),
             message: error.to_string(),
         })?;
-        let name = entry.name().to_owned();
+        // zip 9 decodes the name fallibly instead of handing back mangled text.
+        let name = entry
+            .name()
+            .map_err(|error| DaemonError::Zip {
+                path: path.to_path_buf(),
+                message: error.to_string(),
+            })?
+            .into_owned();
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(entry.compression())
             .unix_permissions(entry.unix_mode().unwrap_or(0o600));
