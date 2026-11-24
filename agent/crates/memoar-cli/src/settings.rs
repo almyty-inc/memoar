@@ -53,21 +53,36 @@ fn update_source(
     enabled: bool,
 ) -> Result<CommandOutput, AppError> {
     if !SOURCES.iter().any(|item| item.id == source) {
-        return Err(AppError::usage(format!("unknown source: {source}")));
+        let known: Vec<&str> = SOURCES.iter().map(|item| item.id).collect();
+        return Err(AppError::usage(format!(
+            "unknown source: {source}. Known sources: {}",
+            known.join(", ")
+        )));
     }
     let mut config = load_config(paths)?;
+    let token = load_credential(paths)?;
     if enabled {
         config.disabled_sources.remove(source);
     } else {
         config.disabled_sources.insert(source.to_owned());
     }
     save_config(paths, &config)?;
-    let token = load_credential(paths)?;
-    patch_machine_state(
+    // The setting is this file: capture reads it, and it is already written.
+    // The archive only keeps a copy for the web app to show. Failing the
+    // command when that copy could not be updated reported a change that had
+    // taken effect as one that had not, with exit 4.
+    let archive = match patch_machine_state(
         &ApiClient::new(&config.endpoint, Some(&token)),
         &config,
         paths,
-    )?;
+    ) {
+        Ok(()) => json!({ "updated": true }),
+        Err(error) => json!({
+            "updated": false,
+            "detail": error.message,
+            "hint": "The next memoar sync updates it.",
+        }),
+    };
     Ok(CommandOutput {
         command: if enabled {
             "sources.enable"
@@ -75,7 +90,7 @@ fn update_source(
             "sources.disable"
         }
         .to_owned(),
-        data: json!({ "source": source, "enabled": enabled }),
+        data: json!({ "source": source, "enabled": enabled, "archive": archive }),
     })
 }
 

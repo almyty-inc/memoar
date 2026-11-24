@@ -1,10 +1,12 @@
 use std::fs;
 
 use super::mock::{configured_paths, fixture_paths, spawn_mock_api};
-use crate::args::{LoginArgs, SyncArgs};
+use crate::args::{LoginArgs, SourcesCommand, SyncArgs};
+use crate::config::load_config;
 use crate::error::{EXIT_LOCKED, EXIT_NOT_INITIALIZED};
 use crate::lock::acquire_sync_lock;
 use crate::login::login;
+use crate::settings::sources;
 use crate::status::status;
 use crate::sync::sync;
 
@@ -137,4 +139,37 @@ fn the_queue_and_config_directories_are_owner_only() {
         let mode = fs::metadata(&directory).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700, "{} is {mode:o}", directory.display());
     }
+}
+
+/// Turning a source off is a local setting, and it is written before the
+/// archive is told. An unreachable archive made the command fail with exit 4
+/// after the change had taken effect.
+#[test]
+fn turning_a_source_off_works_offline_and_says_the_archive_was_not_told() {
+    let temp = tempfile::tempdir().unwrap();
+    let paths = configured_paths(&temp, "http://127.0.0.1:9/v1");
+    let output = sources(
+        &SourcesCommand::Disable {
+            source: "cursor".to_owned(),
+        },
+        &paths,
+    )
+    .expect("the setting took effect, so the command succeeded");
+    assert_eq!(output.data["enabled"], false);
+    assert_eq!(output.data["archive"]["updated"], false);
+    assert!(
+        load_config(&paths)
+            .unwrap()
+            .disabled_sources
+            .contains("cursor")
+    );
+
+    let error = sources(
+        &SourcesCommand::Disable {
+            source: "nope".to_owned(),
+        },
+        &paths,
+    )
+    .unwrap_err();
+    assert!(error.message.contains("claude-code"), "{}", error.message);
 }
