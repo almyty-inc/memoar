@@ -23,6 +23,7 @@ import { MachineInstallation1700000017000 } from "./migrations/1700000017000-Mac
 import { MachineRetirement1700000018000 } from "./migrations/1700000018000-MachineRetirement.js";
 import { SessionCutoff1700000019000 } from "./migrations/1700000019000-SessionCutoff.js";
 import { ForeignRowIds1700000020000 } from "./migrations/1700000020000-ForeignRowIds.js";
+import { SourcePathUtf81700000021000 } from "./migrations/1700000021000-SourcePathUtf8.js";
 
 export const MIGRATIONS = [
   Initial1700000000000, CredentialBilling1700000001000, SessionIdentity1700000002000,
@@ -32,7 +33,7 @@ export const MIGRATIONS = [
   TenantProviderCredentials1700000012000, OAuthIdentities1700000013000,
   TeamInvitations1700000014000, TeamShareOptins1700000015000,
   MemoryRedaction1700000016000, MachineInstallation1700000017000, MachineRetirement1700000018000,
-  SessionCutoff1700000019000, ForeignRowIds1700000020000,
+  SessionCutoff1700000019000, ForeignRowIds1700000020000, SourcePathUtf81700000021000,
 ];
 
 /** A connection that runs no migrations and creates no account, for operator tools. */

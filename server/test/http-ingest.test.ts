@@ -177,4 +177,49 @@ describe("binary raw ingest HTTP", () => {
     await request(httpServer(app)).get(`/v1/ingest/artifacts/${absent}/status`).expect(404);
     await request(httpServer(app)).get("/v1/ingest/artifacts/not-a-digest/status").expect(400);
   });
+
+  /*
+    A capture path with non-ASCII in it.
+
+    Node reads a header as latin1, and the agent sent raw UTF-8, so
+    `/Users/ünï 日本/x` was archived as `/Users/Ã¼nÃ¯ æ...`. A current agent
+    percent-encodes the path. An older one still sends the raw bytes, which this
+    server now reads back as the UTF-8 they were. Plain ASCII, the only thing
+    that ever arrived intact, is taken exactly as before.
+  */
+  it("reads the capture path as UTF-8 whether the agent encoded it or not", async () => {
+    const path = "/Users/ünï 日本/x.jsonl";
+    const cases: { header: string; expected: string }[] = [
+      { header: "%2FUsers%2F%C3%BCn%C3%AF%20%E6%97%A5%E6%9C%AC%2Fx.jsonl", expected: path },
+      // What an older agent's bytes look like to Node: one character per byte.
+      { header: Buffer.from(path, "utf8").toString("latin1"), expected: path },
+      // A raw path is never decoded, even one that contains a valid escape.
+      { header: "/tmp/100%41.jsonl", expected: "/tmp/100%41.jsonl" },
+    ];
+    for (const [index, { header, expected }] of cases.entries()) {
+      const bytes = Buffer.from(`non-ascii path ${index}`);
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      await request(httpServer(app))
+        .put(`/v1/ingest/artifacts/${sha256}`)
+        .set("content-type", "application/octet-stream")
+        .set("x-memoar-source", "future-vendor@v9")
+        .set("x-memoar-source-path", header)
+        .send(bytes)
+        .expect(201);
+      const stored = await request(httpServer(app)).get(`/v1/ingest/artifacts/${sha256}/status`).expect(200);
+      expect((stored.body as { sourcePath: string }).sourcePath, header).toBe(expected);
+    }
+  });
+
+  it("refuses a control character spelled as an escape", async () => {
+    const bytes = Buffer.from("escaped control character");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    await request(httpServer(app))
+      .put(`/v1/ingest/artifacts/${sha256}`)
+      .set("content-type", "application/octet-stream")
+      .set("x-memoar-source", "future-vendor@v9")
+      .set("x-memoar-source-path", "%2Ftmp%2Fa%0Ab")
+      .send(bytes)
+      .expect(400);
+  });
 });

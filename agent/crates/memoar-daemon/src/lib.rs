@@ -7,6 +7,7 @@ mod attempts;
 mod capture;
 mod enqueue;
 mod error;
+mod header_path;
 mod manifest;
 mod patient;
 mod queue;
