@@ -116,6 +116,10 @@ done
   echo "\$env:MEMOAR_VERSION = '${version}'; irm https://github.com/almyty-inc/memoar/releases/download/v${version}/install.ps1 | iex"
   echo '```'
   echo
+  if compgen -G "$out/memoar-desktop-*-linux-*.tar.gz" >/dev/null; then
+    echo "The Linux desktop archive needs GTK 4 and WebKitGTK 6 at runtime, on Debian and Ubuntu \`libgtk-4-1 libwebkitgtk-6.0-4\`."
+    echo
+  fi
   echo "### Signing"
   echo
   printf '%b' "$table"
