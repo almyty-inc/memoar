@@ -17,13 +17,18 @@ function start() {
   return open(".", { width: 560, height: 1000, platform: "macos" });
 }
 
+// The form starts empty except for the address, which is the one this machine
+// used last. That is kept when it is already right: `clear` empties a field
+// headless, but NSH 0.2.0's macOS host removes one character, so a run with
+// `--target macos` would otherwise type after what was there.
 async function signIn(app: Awaited<ReturnType<typeof start>>, endpoint: string, email: string, password: string) {
   await app.waitFor("text:Sign in to your archive", SLOW);
-  await app.clear("id:endpoint");
-  await app.type("id:endpoint", endpoint);
-  await app.clear("id:email");
+  if (app.value("id:endpoint") !== endpoint) {
+    await app.clear("id:endpoint");
+    await app.type("id:endpoint", endpoint);
+  }
+  expect(app.value("id:endpoint")).toBe(endpoint);
   await app.type("id:email", email);
-  await app.clear("id:password");
   await app.type("id:password", password);
   await app.press("id:sign-in");
 }

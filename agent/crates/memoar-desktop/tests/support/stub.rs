@@ -63,6 +63,13 @@ pub fn serve(address: &str) -> String {
 fn handle(mut stream: TcpStream, archive: &Archive) -> std::io::Result<()> {
     let request = read_request(&mut stream)?;
     let (status, body) = answer(&request, archive);
+    // One line per request, which is what a failing CI run has to go on.
+    println!(
+        "{} {} -> {status} ({})",
+        request.method,
+        request.path,
+        body.get("detail").and_then(Value::as_str).unwrap_or("ok")
+    );
     let body = serde_json::to_vec(&body).unwrap_or_default();
     write!(
         stream,

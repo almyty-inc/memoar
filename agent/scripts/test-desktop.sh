@@ -27,6 +27,11 @@ cargo build --locked --example stub_archive
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/memoar-desktop-test.XXXXXX")
 stub_pid=
 cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ] && [ -f "$scratch/stub.log" ]; then
+    echo "memoar desktop: what the stub archive was asked" >&2
+    cat "$scratch/stub.log" >&2
+  fi
   if [ -n "$stub_pid" ]; then kill "$stub_pid" 2>/dev/null || true; fi
   rm -rf "$scratch"
 }
