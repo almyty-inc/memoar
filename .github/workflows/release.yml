@@ -417,11 +417,11 @@ jobs:
           workspaces: agent/crates/memoar-desktop
           key: release-desktop-${{ matrix.platform }}
           cache-bin: false
-
-      # NSH's Linux backend is GTK 4, 4.14 or later: Ubuntu 24.04's.
-      - name: GTK 4 (Linux)
+      # NSH's Linux backend is GTK 4, 4.14 or later (Ubuntu 24.04's), and its
+      # JavaScript engine there is the system JavaScriptCore.
+      - name: GTK 4 and JavaScriptCore (Linux)
         if: steps.contract.outputs.present == 'true' && runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libjavascriptcoregtk-6.0-dev
 
       # The script pins the nsh version, so its hash is the cache key.
       - name: Cache the nsh CLI

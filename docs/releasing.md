@@ -201,7 +201,7 @@ MEMOAR_DESKTOP_VERSION=<X.Y.Z> agent/scripts/package-desktop.sh <out-dir>
 ```
 
 Before the call, the workflow has installed the stable Rust toolchain and, on
-Linux, `libgtk-4-dev`, and restored the `nsh` CLI from a cache keyed on
+Linux, `libgtk-4-dev` and `libjavascriptcoregtk-6.0-dev`, and restored the `nsh` CLI from a cache keyed on
 `agent/scripts/desktop-nsh.sh`, which pins its version. The script must:
 
 - exit non-zero on any failure
