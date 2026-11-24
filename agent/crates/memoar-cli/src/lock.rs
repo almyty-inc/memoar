@@ -11,7 +11,6 @@
 //! behind locks nothing.
 
 use std::fs::{File, OpenOptions, TryLockError};
-use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::config::RuntimePaths;
 use crate::error::AppError;
@@ -23,8 +22,9 @@ pub(crate) struct SyncLock {
 
 pub(crate) fn acquire_sync_lock(paths: &RuntimePaths) -> Result<SyncLock, AppError> {
     let path = paths.data_dir.join("sync.lock");
+    let holder_path = paths.data_dir.join("sync.pid");
     crate::config::create_private_dir(&paths.data_dir)?;
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
@@ -36,8 +36,7 @@ pub(crate) fn acquire_sync_lock(paths: &RuntimePaths) -> Result<SyncLock, AppErr
     match file.try_lock() {
         Ok(()) => {}
         Err(TryLockError::WouldBlock) => {
-            let mut holder = String::new();
-            let _ = file.read_to_string(&mut holder);
+            let holder = std::fs::read_to_string(&holder_path).unwrap_or_default();
             let holder = holder.trim();
             let mut error = AppError::locked(if holder.is_empty() {
                 "another memoar sync is already running with this data directory".to_owned()
@@ -56,11 +55,10 @@ pub(crate) fn acquire_sync_lock(paths: &RuntimePaths) -> Result<SyncLock, AppErr
             )));
         }
     }
-    // Who holds it, for the message the next one prints. Best effort: the
-    // lock is what matters, not this note.
-    let _ = file.set_len(0);
-    let _ = file.seek(SeekFrom::Start(0));
-    let _ = write!(file, "{}", std::process::id());
-    let _ = file.flush();
+    // Who holds it, for the message the next one prints, in a file of its
+    // own: Windows locks the bytes of a locked file against other handles,
+    // so a note inside `sync.lock` could not be read by the process that
+    // needs it. Best effort, and only read while the lock is held.
+    let _ = std::fs::write(&holder_path, std::process::id().to_string());
     Ok(SyncLock { _file: file })
 }
