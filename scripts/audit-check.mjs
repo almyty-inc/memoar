@@ -20,29 +20,12 @@ import { execFileSync } from "node:child_process";
  *
  * `until` is not a guess about when upstream will fix it. It is when we have to
  * look again.
+ *
+ * Empty on purpose. The multer entries that used to live here were retired once
+ * multer 2.5.0 shipped the fix. Add an entry only for an advisory that has no
+ * upstream fix or does not reach this code, and say which in the reason.
  */
-const ACKNOWLEDGED = [
-  {
-    package: "multer",
-    until: "2026-12-01",
-    reason:
-      "Multipart parsing: denial of service and limit bypass. Reached only through "
-      + "FileInterceptor, which this codebase does not use — every upload is "
-      + "application/octet-stream, streamed and hashed by the ingest controller. "
-      + "npm's only offered fix is downgrading @nestjs/core from 11 to 7.5.5, which "
-      + "would be a far larger risk than the one it removes.",
-  },
-  {
-    package: "@nestjs/core",
-    until: "2026-12-01",
-    reason: "Flagged only for depending on multer, above.",
-  },
-  {
-    package: "@nestjs/platform-express",
-    until: "2026-12-01",
-    reason: "Flagged only for depending on multer, above.",
-  },
-];
+const ACKNOWLEDGED = [];
 
 const SEVERITIES = ["moderate", "high", "critical"];
 
