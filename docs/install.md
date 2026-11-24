@@ -60,22 +60,62 @@ exercised against a scratch location without touching your real agent stores.
 
 ## The desktop application
 
-For a machine where nobody wants a command-line tool, `memoar-desktop` does the
-same capture in a window: sign in, and it registers the machine and captures
-every two minutes, showing what it has uploaded and any failure. It reads and
-writes the same configuration and offline queue as the CLI, so a machine set up
-with one is already set up for the other.
+For a machine where nobody wants a command-line tool, the Memoar desktop
+application does the same capture in a native window on macOS, Linux and
+Windows. Sign in with the archive's address and either an email and password
+or an API key, the same two ways `memoar login` accepts. The app registers the
+machine and captures every two minutes. Its window shows:
+
+- the archive and the machine's id
+- when it last captured, and how many sessions that capture uploaded
+- how many artifacts this machine has uploaded in total, and how many wait in the queue
+- which agents' session stores it found on this machine
+- the last failure, in a sentence, with what the archive said underneath
+
+From the window you can capture now, pause and resume the timer, open the web
+application, change what is masked before upload, and sign out. Signing out
+removes the machine's credential and keeps its configuration and queue, so
+signing in again reuses the same machine record and loses nothing captured.
+
+Failures are handled by kind. An archive that cannot be reached, or answers
+with a server error, is tried again on the next cycle. A wrong password is
+refused at sign-in with the archive's reason. When the archive stops accepting
+the machine's key, because it was revoked or the machine was removed, the app
+stops capturing and asks for a new sign-in instead of retrying every two
+minutes.
+
+The app runs the CLI's own code and reads and writes the same configuration
+(`~/.config/memoar`) and offline queue (`~/.local/share/memoar`) as `memoar`,
+so a machine set up with one is already set up for the other. It honours
+`MEMOAR_CONFIG_DIR`, `MEMOAR_DATA_DIR` and `MEMOAR_CAPTURE_HOME` as the CLI does.
+
+The window is drawn with [NSH](https://nsh.dev): AppKit on macOS 14 or later,
+GTK 4.14 or later on Linux, and Win32 on Windows 10 1809 or later. It lives in
+`agent/crates/memoar-desktop`, a Cargo workspace of its own. To build it you
+need Rust, the `nsh` CLI at the version the crate pins, and on Linux the GTK 4
+development files (`libgtk-4-dev` on Ubuntu 24.04):
 
 ```sh
-cargo run --release -p memoar-desktop --manifest-path agent/Cargo.toml
+cargo install nsh-cli --version 0.2.0 --locked
+cd agent/crates/memoar-desktop
+nsh run                       # a development window on this machine
+cargo run --release           # the same window, without nsh
 ```
 
-The window shows capture state only. Reading the archive stays in the web
-application, which the window can open.
+Tests and packages:
 
-Packaging it — the installer, signing, and where it is downloaded from — waits
-on the same release-channel decision as the CLI.
+```sh
+agent/scripts/test-desktop.sh      # Rust tests, then the window headless (nsh test) against a stand-in archive
+agent/scripts/package-desktop.sh   # an installable archive for this machine, in agent/dist/desktop
+```
 
+`package-desktop.sh` builds on the operating system it runs on and writes
+`memoar-desktop-<version>-macos-<arch>.zip` (an ad hoc signed `Memoar.app`),
+`memoar-desktop-<version>-linux-<arch>.tar.gz` (the runner, its bundle and a
+`.desktop` file) or `memoar-desktop-<version>-windows-<arch>.zip`
+(`Memoar.exe` and its bundle). CI builds all three on every change to the agent
+and keeps them as workflow artifacts. Developer ID signing, notarization and
+Windows code signing wait on the same release-channel decision as the CLI.
 ## Materialize a conversion on this machine
 
 `memoar listen` subscribes to this machine's durable command channel and applies conversions the
