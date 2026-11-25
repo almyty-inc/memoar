@@ -19,6 +19,12 @@ import type {
   TransferRecord,
 } from "./records.js";
 
+/** Which parser wrote a session, and on which machine it was captured. */
+export interface SessionParse {
+  parserVersion: string | null;
+  machineId: string | null;
+}
+
 export interface SessionStore {
   saveSession(context: TenantContext, session: ArchivedSession): Promise<void>;
   /**
@@ -50,6 +56,13 @@ export interface SessionStore {
    * machine read "0 sessions" however much had been archived from it.
    */
   countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]>;
+  /**
+   * The parser that wrote each session, from its native provenance entry, and
+   * the machine that captured it, without reading turns. `reprocess
+   * --stale-parser` compares the versions with the ones the deployed parsers
+   * stamp, and keeps a run to the machine it acts for.
+   */
+  sessionParserVersions(context: TenantContext): Promise<Map<string, SessionParse>>;
   /**
    * Hydrates many sessions in one round trip set. Search results are hydrated
    * in bulk; doing it one session at a time is an N+1 inside every query.

@@ -1,7 +1,10 @@
 import type { Turn } from "../../canonical/src/generated.js";
 import { claudeCodeIdentity } from "./claude-code-identity.js";
-import { incrementUuid, isRecord, mapParent, MIN_JSON_SHARE, parseBlock, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
+import { parseBlock } from "./blocks.js";
+import { recordTurn } from "./claude-code-records.js";
+import { incrementUuid, isRecord, mapParent, MIN_JSON_SHARE, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 /** What the artifact turned out to be, in the words of what was actually read. */
 function describeRefusal(read: JsonLinesReport): string {
@@ -80,30 +83,41 @@ export class ClaudeCodeV1Parser implements VersionedParser {
       original.
     */
     const usedTurnIds = new Set<string>();
-    const turns: Turn[] = records.map((record, ordinal) => {
-      const message = record.message as Record<string, unknown>;
+    const uniqueId = (nativeId: string): string => {
       // Claude Code writes real uuids, so this normally returns exactly what
       // the transcript said. It is here for the transcript that does not.
-      const derived = turnId(stringValue(record, "uuid")!, request.seed.id);
+      const derived = turnId(nativeId, request.seed.id);
       let id = derived;
       for (let attempt = 1; usedTurnIds.has(id); attempt += 1) id = incrementUuid(derived, attempt);
       usedTurnIds.add(id);
-      const roleValue = stringValue(message, "role") ?? stringValue(record, "type") ?? "user";
-      const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
-      const content = message.content;
-      const rawBlocks = Array.isArray(content) ? content : [content];
-      const blocks = rawBlocks.map((block) => parseBlock(block, mintBlock())).filter((block) => block !== null);
-      return withModelAndTokens({
-        id,
-        ordinal,
-        // Through the same derivation as the id above, or a remapped turn would
-        // be pointed at by a parent link that still names the original.
-        parentId: mapParent(stringValue(record, "parentUuid"), request.seed.id),
-        role,
+      return id;
+    };
+    // Blocks of the lines that are not messages are numbered in a range of
+    // their own, so the ids of message blocks are the ones earlier parsers gave
+    // them, and a redaction mask anchored on one still finds it after a re-parse.
+    let recordOrdinal = 0;
+    const mintRecordBlock = () => incrementUuid(request.seed.id, 0x9000000 + (recordOrdinal += 1));
+    const turns: Turn[] = [];
+    for (const [index, record] of read.records.entries()) {
+      const isMessage = stringValue(record, "uuid") !== null && isRecord(record.message);
+      if (isMessage) {
+        turns.push(this.messageTurn(record, uniqueId(stringValue(record, "uuid")!), turns.length, mintBlock, request));
+        continue;
+      }
+      const extra = recordTurn(record, mintRecordBlock);
+      if (!extra) continue;
+      const leaf = stringValue(record, "leafUuid");
+      const nativeId = stringValue(record, "uuid") ?? `summary:${leaf ?? index}`;
+      turns.push({
+        id: uniqueId(nativeId),
+        ordinal: turns.length,
+        parentId: mapParent(stringValue(record, "parentUuid") ?? leaf, request.seed.id),
+        role: extra.role,
         createdAt: stringValue(record, "timestamp") ?? request.seed.createdAt,
-        blocks,
-      }, typeof message.model === "string" ? message.model : request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
-    });
+        blocks: extra.blocks,
+        ext: extra.ext,
+      });
+    }
     // A transcript names its own conversation, its working directory and its
     // branch. Without the session id the archive identified a capture by the
     // hash of the file, so the same conversation captured again after it grew
@@ -112,17 +126,26 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     // archived after its first capture.
     //
     // A subagent transcript names its parent's session id instead of its own.
-    // See `claudeCodeIdentity`.
+    // See `claudeCodeIdentity`. Read from the first message line, as before
+    // non-message lines became turns.
     const first = records[0]!;
     const { nativeSessionId, parent } = claudeCodeIdentity(first);
     const cwd = stringValue(first, "cwd");
     const branch = stringValue(first, "gitBranch");
+    // The title Claude Code shows for the conversation, a person's rename
+    // winning over the generated one. The last line of each kind is current.
+    const titles = read.records.flatMap((record) => {
+      const value = stringValue(record, "customTitle") ?? stringValue(record, "aiTitle");
+      return value && (record.type === "custom-title" || record.type === "ai-title") ? [{ custom: record.type === "custom-title", value }] : [];
+    });
+    const title = (titles.findLast((entry) => entry.custom) ?? titles.at(-1))?.value;
     return {
       kind: "parsed",
-      parser: "claude-code:v1:0.4.0",
+      parser: parserVersion(this.source),
       sessions: [{
         ...request.seed,
         ...(nativeSessionId ? { source: { ...request.seed.source, nativeSessionId } } : {}),
+        ...(title ? { title } : {}),
         ...(parent ? { ext: { ...request.seed.ext, claudeCode: { parentNativeSessionId: parent.nativeSessionId, agentId: parent.agentId } } } : {}),
         ...(cwd || branch ? {
           workspace: {
@@ -134,5 +157,24 @@ export class ClaudeCodeV1Parser implements VersionedParser {
         turns,
       }],
     };
+  }
+
+  private messageTurn(record: Record<string, unknown>, id: string, ordinal: number, mintBlock: () => string, request: ParseRequest): Turn {
+    const message = record.message as Record<string, unknown>;
+    const roleValue = stringValue(message, "role") ?? stringValue(record, "type") ?? "user";
+    const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
+    const content = message.content;
+    const rawBlocks = Array.isArray(content) ? content : [content];
+    const blocks = rawBlocks.map((block) => parseBlock(block, mintBlock())).filter((block) => block !== null);
+    return withModelAndTokens({
+      id,
+      ordinal,
+      // Through the same derivation as the id, or a remapped turn would be
+      // pointed at by a parent link that still names the original.
+      parentId: mapParent(stringValue(record, "parentUuid"), request.seed.id),
+      role,
+      createdAt: stringValue(record, "timestamp") ?? request.seed.createdAt,
+      blocks,
+    }, typeof message.model === "string" ? message.model : request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
   }
 }

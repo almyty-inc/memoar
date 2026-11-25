@@ -1,6 +1,8 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
-import { arrayValue, derivedBlockId, epochToIso, incrementUuid, isRecord, parseBlock, stringValue } from "./common.js";
+import { parseBlock } from "./blocks.js";
+import { arrayValue, derivedBlockId, epochToIso, incrementUuid, isRecord, stringValue, turnId } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 /** Keys an exported task might carry its messages under. */
 const MESSAGE_KEYS = ["apiConversationHistory", "history", "messages", "conversation"];
@@ -51,7 +53,8 @@ export class TaskHistoryParser implements VersionedParser {
       const turns = messages.flatMap((message, ordinal): Turn[] => {
         if (!isRecord(message)) return [];
         const role = stringValue(message, "role") === "assistant" ? "assistant" : "user";
-        const id = stringValue(message, "id") ?? incrementUuid(seed.id, ordinal + 1);
+        const nativeId = stringValue(message, "id");
+        const id = nativeId ? turnId(nativeId, seed.id) : incrementUuid(seed.id, ordinal + 1);
 
         // Anthropic allows a bare string as well as a block array.
         const content = message.content;
@@ -60,7 +63,9 @@ export class TaskHistoryParser implements VersionedParser {
           : Array.isArray(content) ? content : [];
         const blocks = rawBlocks
           .map((block, index) => parseBlock(block, derivedBlockId(id, index + 1, seed.id, ordinal)))
-          .filter((block): block is ContentBlock => block !== null && (block.kind !== "text" || (block.text ?? "").length > 0));
+          // An empty text block is dropped. A text block that carries an unknown
+          // native item in `ext` is not empty, and is kept.
+          .filter((block): block is ContentBlock => block !== null && (block.kind !== "text" || (block.text ?? "").length > 0 || block.ext !== undefined));
         if (blocks.length === 0) return [];
 
         const turn: Turn = {
@@ -88,7 +93,7 @@ export class TaskHistoryParser implements VersionedParser {
         ...(title ? { title } : {}),
         turns,
       };
-      return { kind: "parsed", parser: `${this.source}:v1:0.2.0`, sessions: [session] };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions: [session] };
     } catch (error) {
       return {
         kind: "unknown",

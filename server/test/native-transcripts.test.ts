@@ -150,14 +150,16 @@ describe("codex rollouts", () => {
     expect(result.sessions[0]!.source.nativeSessionId).toBe("rollout-1");
   });
 
-  it("ignores item types this build has never seen", () => {
+  it("keeps item types this build has never seen instead of failing or dropping them", () => {
     const result = parse("codex", "rollout-v1", rollout([
       { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
       { type: "something_codex_added_later", detail: "unknown" },
     ]));
     expect(result.kind).toBe("parsed");
     if (result.kind !== "parsed") return;
-    expect(result.sessions[0]!.turns).toHaveLength(1);
+    const turns = result.sessions[0]!.turns;
+    expect(turns).toHaveLength(2);
+    expect(turns[1]!.blocks[0]).toMatchObject({ kind: "system", name: "something_codex_added_later", data: { detail: "unknown" } });
   });
 
   it("reports a rollout whose items carry nothing readable", () => {
@@ -194,15 +196,18 @@ describe("antigravity-cli transcripts", () => {
     expect(turns[1]!.blocks[1]!.data).toEqual({ AbsolutePath: "/a.ts" });
   });
 
-  it("ignores the CLI's own bookkeeping and unfamiliar step types", () => {
+  it("ignores the CLI's own bookkeeping and keeps unfamiliar step types", () => {
     const raw = lines([
       { step_index: 0, source: "USER_EXPLICIT", type: "USER_INPUT", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "hello" },
-      { step_index: 1, source: "SYSTEM", type: "SOMETHING_ADDED_LATER", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "opaque" },
+      { step_index: 1, source: "SYSTEM", type: "CHECKPOINT", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "{{ CHECKPOINT 0 }}" },
+      { step_index: 2, source: "SYSTEM", type: "SOMETHING_ADDED_LATER", status: "DONE", created_at: "2026-08-01T00:00:00.000Z", content: "opaque" },
     ]);
     const result = parse("antigravity-cli", "v1", raw);
     expect(result.kind).toBe("parsed");
     if (result.kind !== "parsed") return;
-    expect(result.sessions[0]!.turns).toHaveLength(1);
+    const turns = result.sessions[0]!.turns;
+    expect(turns).toHaveLength(2);
+    expect(turns[1]!.blocks[0]).toMatchObject({ kind: "system", name: "SOMETHING_ADDED_LATER", text: "opaque" });
   });
 
   it("reports a transcript with no readable steps", () => {

@@ -1,0 +1,169 @@
+{
+  "id": "0191cafe-0000-7000-8000-00000000041a",
+  "source": {
+    "vendor": "openai",
+    "tool": "chatgpt-export",
+    "version": "2026-08",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "rich-chatgpt-conversation"
+  },
+  "workspace": {
+    "path": "/workspace/example-1",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2025-08-20T09:00:00.000Z",
+  "updatedAt": "2025-08-20T09:00:00.000Z",
+  "title": "Importer chart",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "gpt-5"
+  ],
+  "tokenTotals": {
+    "input": 139,
+    "output": 160,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "import",
+      "sourceId": "chatgpt-export:2026-08:1",
+      "capturedAt": "2026-08-01T09:00:00.000Z",
+      "parserVersion": "0.4.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "ext": {
+    "fixtureSource": "chatgpt-export"
+  },
+  "turns": [
+    {
+      "id": "3210bcd2-525f-5cc4-bf4e-9ba7b7db5eb4",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "system",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-00000200041b",
+          "kind": "system",
+          "name": "user_editable_context",
+          "text": "Profile text the person wrote for the assistant.\n\nInstructions: answer in short paragraphs."
+        }
+      ]
+    },
+    {
+      "id": "f65c463b-b5fd-5a59-8963-1c78bb7538a1",
+      "ordinal": 1,
+      "parentId": "3210bcd2-525f-5cc4-bf4e-9ba7b7db5eb4",
+      "role": "user",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-00000200041c",
+          "kind": "text",
+          "text": "What does this chart of importer errors show?"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00000200041d",
+          "kind": "attachment",
+          "artifactRef": "file-service://file-RichFixtureImage",
+          "mimeType": "image/*",
+          "data": {
+            "content_type": "image_asset_pointer",
+            "asset_pointer": "file-service://file-RichFixtureImage",
+            "size_bytes": 68,
+            "width": 1,
+            "height": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9b65c6cb-6039-55ec-b391-90858782b62c",
+      "ordinal": 2,
+      "parentId": "f65c463b-b5fd-5a59-8963-1c78bb7538a1",
+      "role": "assistant",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-00000200041e",
+          "kind": "thinking",
+          "text": "Reading the chart\n\nThe chart shows errors rising after the importer change."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00000200041f",
+          "kind": "thinking",
+          "text": "Thought about the importer chart for a few seconds."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000002000420",
+          "kind": "tool_call",
+          "name": "python",
+          "callId": "r5",
+          "data": {
+            "arguments": "import pandas\nprint(errors_by_day())"
+          }
+        }
+      ],
+      "model": "gpt-5",
+      "tokens": {
+        "input": 139,
+        "output": 160
+      }
+    },
+    {
+      "id": "3e35e990-ae98-578d-8372-8a84b0a36c67",
+      "ordinal": 3,
+      "parentId": "9b65c6cb-6039-55ec-b391-90858782b62c",
+      "role": "tool",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000002000421",
+          "kind": "tool_result",
+          "text": "day 1: 3 errors in the importer\nday 2: 9 errors in the importer"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000002000422",
+          "kind": "text",
+          "text": "Release notes quote about the importer change.",
+          "name": "Importer release notes",
+          "artifactRef": "https://example.invalid/importer"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000002000423",
+          "kind": "error",
+          "text": "The browsing tool returned an error for the importer page.",
+          "name": "tool_error"
+        }
+      ]
+    },
+    {
+      "id": "c93c8611-3afa-5033-a549-9e79d0167009",
+      "ordinal": 4,
+      "parentId": "3e35e990-ae98-578d-8372-8a84b0a36c67",
+      "role": "assistant",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000002000424",
+          "kind": "text",
+          "text": "The importer change tripled the daily error count."
+        }
+      ],
+      "model": "gpt-5",
+      "tokens": {
+        "input": 139,
+        "output": 160
+      }
+    }
+  ]
+}

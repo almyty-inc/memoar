@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { ArchiveStore, TenantContext } from "./archive-store.js";
 import { AppModule } from "./app.module.js";
+import { uuidV5 } from "./ids.js";
 import { DefaultPipelineSeedFactory, FormatDetector, IngestPipeline, SecretScanner, type ObjectStorage } from "./ingest.js";
 import { ParserRegistry } from "../libs/parsers/src/index.js";
 import { selectForReprocess } from "./reprocess-selection.js";
@@ -10,7 +11,7 @@ import { ARCHIVE_STORE, OBJECT_STORAGE } from "./tokens.js";
 
 const USAGE = [
   "usage: reprocess --tenant <tenantId> [--user <userId>] (--machine <machineId> | --no-machine)",
-  "                 [--sha256 <hash>] [--status <status>] [--merged-sessions] [--dry-run]",
+  "                 [--sha256 <hash>] [--status <status>] [--merged-sessions] [--stale-parser] [--dry-run]",
 ].join("\n");
 
 function argValue(name: string): string | null {
@@ -51,10 +52,23 @@ export async function runReprocess(): Promise<void> {
       sha256: argValue("sha256"),
       status: argValue("status"),
       mergedSessions: flag("merged-sessions"),
+      // Without a machine the run acts as an upload, so it may only touch
+      // sessions already filed under the upload placeholder machine.
+      staleParser: flag("stale-parser")
+        ? { sessions: await store.sessionParserVersions(context), machineId: machineId ?? uuidV5(`${tenantId}:uploads`) }
+        : null,
     });
     if (flag("dry-run")) {
       const selected = artifacts.map(({ sha256, status, sourcePath, capturedAt, sessionIds }) => ({ sha256, status, sourcePath, capturedAt, sessionIds }));
-      console.log(JSON.stringify({ tenantId, dryRun: true, selected: selected.length, artifacts: selected }, null, 2));
+      // Counted per source first, because a stale-parser run on a whole
+      // archive selects thousands of artifacts and the list alone says little.
+      const bySource: Record<string, { artifacts: number; bytes: number }> = {};
+      for (const artifact of artifacts) {
+        const entry = bySource[artifact.source] ??= { artifacts: 0, bytes: 0 };
+        entry.artifacts += 1;
+        entry.bytes += artifact.size;
+      }
+      console.log(JSON.stringify({ tenantId, dryRun: true, selected: selected.length, bySource, artifacts: selected }, null, 2));
       return;
     }
     const results = [];

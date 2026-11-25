@@ -1,0 +1,67 @@
+[
+  {
+    "role": "user",
+    "ts": 1755680400000,
+    "content": [
+      {
+        "type": "text",
+        "text": "<task>Make the task importer keep tool output.</task>"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "ts": 1755680401000,
+    "content": [
+      {
+        "type": "reasoning",
+        "text": "The task history stores Anthropic blocks verbatim."
+      },
+      {
+        "type": "thinking",
+        "thinking": "Tool results arrive as arrays of text and images.",
+        "signature": "U2lnbmF0dXJlRm9yVGFza0hpc3RvcnlGaXh0dXJl"
+      },
+      {
+        "type": "text",
+        "text": "Reading the importer source first."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_task_read",
+        "name": "read_file",
+        "input": {
+          "path": "src/task.ts"
+        }
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "ts": 1755680402000,
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_task_read",
+        "content": [
+          {
+            "type": "text",
+            "text": "export const keepOutput = false; // task importer"
+          },
+          {
+            "type": "image",
+            "source": {
+              "type": "base64",
+              "media_type": "image/png",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            }
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "text": "<environment_details>Workspace listing for the task importer</environment_details>"
+      }
+    ]
+  }
+]

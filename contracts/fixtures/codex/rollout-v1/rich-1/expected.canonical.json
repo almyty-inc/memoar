@@ -1,0 +1,205 @@
+{
+  "id": "0191cafe-0000-7000-8000-0000000003f2",
+  "source": {
+    "vendor": "openai",
+    "tool": "codex",
+    "version": "rollout-v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "rich-codex-rollout"
+  },
+  "workspace": {
+    "path": "/workspace/example-1",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-12T09:00:00.000Z",
+  "updatedAt": "2026-08-12T09:00:00.000Z",
+  "title": "Codex rich fixture",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "gpt-5"
+  ],
+  "tokenTotals": {
+    "input": 135,
+    "output": 156,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "codex:rollout-v1:1",
+      "capturedAt": "2026-08-12T09:00:00.000Z",
+      "parserVersion": "0.4.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "ext": {
+    "fixtureSource": "codex"
+  },
+  "turns": [
+    {
+      "id": "0191cafe-0000-7000-8000-0000000003f3",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "system",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f3",
+          "kind": "text",
+          "text": "Developer instructions: keep answers short and cite files."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000003f4",
+      "ordinal": 1,
+      "parentId": "0191cafe-0000-7000-8000-0000000003f3",
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f4",
+          "kind": "text",
+          "text": "Why does the rollout importer lose images?"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f5",
+          "kind": "attachment",
+          "mimeType": "image/png",
+          "data": {
+            "imageUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+          }
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000003f5",
+      "ordinal": 2,
+      "parentId": "0191cafe-0000-7000-8000-0000000003f4",
+      "role": "assistant",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f6",
+          "kind": "thinking",
+          "text": "Looking at how tool outputs are stored by the importer.",
+          "data": {
+            "encrypted": "Z0FBQUFBQm9FbmNyeXB0ZWRSZWFzb25pbmdGaXh0dXJl"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f7",
+          "kind": "tool_call",
+          "name": "shell",
+          "callId": "call_rich_shell",
+          "data": {
+            "command": [
+              "rg",
+              "output",
+              "src/importer"
+            ]
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f8",
+          "kind": "tool_result",
+          "callId": "call_rich_shell",
+          "text": "src/importer/codex.ts: const output = stringify(payload.output)"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003f9",
+          "kind": "tool_call",
+          "name": "apply_patch",
+          "callId": "call_rich_patch",
+          "data": {
+            "arguments": "*** Begin Patch\n*** Update File: src/importer/codex.ts\n-old line of the importer\n+new line of the importer\n*** End Patch"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003fa",
+          "kind": "tool_result",
+          "callId": "call_rich_patch",
+          "text": "Patch applied to the importer successfully.",
+          "data": {
+            "content": [
+              {
+                "type": "input_text",
+                "text": "Patch applied to the importer successfully."
+              },
+              {
+                "type": "input_image",
+                "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                "detail": "auto"
+              }
+            ]
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003fb",
+          "kind": "tool_call",
+          "name": "local_shell",
+          "callId": "call_rich_local",
+          "data": {
+            "type": "exec",
+            "command": [
+              "npm",
+              "test",
+              "--",
+              "importer"
+            ]
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003fc",
+          "kind": "text",
+          "text": "The importer stringified array outputs; it now keeps text and images."
+        }
+      ],
+      "model": "gpt-5",
+      "tokens": {
+        "input": 135,
+        "output": 156
+      }
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000003f6",
+      "ordinal": 3,
+      "parentId": "0191cafe-0000-7000-8000-0000000003f5",
+      "role": "system",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003fd",
+          "kind": "system",
+          "name": "compaction",
+          "text": "Compaction summary: the importer now keeps array outputs."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000003f7",
+      "ordinal": 4,
+      "parentId": "0191cafe-0000-7000-8000-0000000003f6",
+      "role": "system",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000040003fe",
+          "kind": "system",
+          "name": "compaction",
+          "data": {
+            "encrypted": "Q29tcGFjdGlvbkVuY3J5cHRlZEhpc3RvcnlGaXh0dXJl"
+          }
+        }
+      ]
+    }
+  ]
+}

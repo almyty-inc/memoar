@@ -1,7 +1,7 @@
 import type { DataSource } from "typeorm";
 import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
-import type { AnnotationStore, ArchiveStore, MemoryCapture } from "../interfaces.js";
+import type { AnnotationStore, ArchiveStore, MemoryCapture, SessionParse } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
   RawArtifactRecord, RedactionReviewRecord, ShareGrantRecord, ShareTokenLookup,
@@ -65,6 +65,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> { return this.sessions.getSession(context, sessionId); }
   sessionExists(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessions.sessionExists(context, sessionId); }
   countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]> { return this.sessions.countSessionsByMachineSource(context); }
+  sessionParserVersions(context: TenantContext): Promise<Map<string, SessionParse>> { return this.sessions.sessionParserVersions(context); }
   getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> { return this.sessions.getSessions(context, sessionIds); }
   deleteSession(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessions.deleteSession(context, sessionId); }
 

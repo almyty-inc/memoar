@@ -18,8 +18,36 @@ import type { ArchivedSession } from "../context.js";
  */
 const MAX_SEARCH_DOCUMENT_BYTES = 1_000_000;
 
+/**
+ * Characters of one block that the search document takes, by kind.
+ *
+ * Tool output became searchable when the parsers started keeping it, and it
+ * is most of a transcript by volume: one `cat` of a lockfile is larger than
+ * every word a person typed in the session. Taken whole, the first few tool
+ * results filled the 1 MB cap and the conversation after them could not be
+ * found at all. The head of each output is what a search for it usually
+ * names (the command, the error, the file), so each output contributes that
+ * much, and prose is taken whole.
+ */
+const PER_BLOCK_CHARACTERS: Readonly<Partial<Record<string, number>>> = {
+  tool_result: 2_000,
+  attachment: 2_000,
+  system: 2_000,
+  error: 2_000,
+  thinking: 8_000,
+};
+
+function searchableText(kind: string, text: string | undefined): string {
+  if (!text) return "";
+  const cap = PER_BLOCK_CHARACTERS[kind];
+  return cap !== undefined && text.length > cap ? text.slice(0, cap) : text;
+}
+
 export function boundedSearchDocument(session: ArchivedSession): string {
-  const whole = session.turns.flatMap((turn) => turn.blocks.map((block) => block.text ?? "")).join("\n");
+  const whole = session.turns
+    .flatMap((turn) => turn.blocks.map((block) => searchableText(block.kind, block.text)))
+    .filter((text) => text.length > 0)
+    .join("\n");
   if (Buffer.byteLength(whole, "utf8") <= MAX_SEARCH_DOCUMENT_BYTES) return whole;
   // Narrow by characters until the bytes fit. One pass, because the ratio of
   // bytes to characters only ever shrinks as the string does.

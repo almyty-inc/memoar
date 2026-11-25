@@ -1,8 +1,10 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
 import { epochToIso, incrementUuid } from "./common.js";
+import { goosePart } from "./native-parts.js";
 import { parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 export class GooseV1Parser implements VersionedParser {
   readonly source = "goose";
@@ -37,7 +39,7 @@ export class GooseV1Parser implements VersionedParser {
               role: row.role,
               createdAt: epochToIso(row.created_timestamp, request.seed.createdAt),
               blocks: parseJsonColumn(row.content_json, `messages.content_json row ${ordinal}`),
-            }, ordinal, request.seed);
+            }, ordinal, request.seed, goosePart);
             previousId = id;
             return turn;
           });
@@ -51,7 +53,7 @@ export class GooseV1Parser implements VersionedParser {
           };
         });
       });
-      return { kind: "parsed", parser: "goose:v1:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions };
     } catch (error) {
       return { kind: "unknown", diagnostic: `goose v1 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`, raw: request.raw };
     }

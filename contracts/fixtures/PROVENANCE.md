@@ -248,6 +248,24 @@ the failure this whole file exists to prevent.
 | --- | --- |
 | `canonical-bundle` | Memoar's own export format. The fixture and the writer are supposed to agree, and a round-trip test is the real check. It is also the one parser that must *refuse* an unstorable id rather than deriving one, because re-importing a bundle is supposed to preserve identity — deriving would silently renumber an archive being moved between deployments. |
 
+## Rich fixtures (`rich-1`)
+
+Each source that reads a tool's own store has a `rich-1` fixture holding every
+content shape the dev archive lost: tool results as a string and as an array
+with an image, error flags, thinking with its signature, redacted and encrypted
+reasoning, images and documents, and the system, compaction and summary records
+around them. The inputs are synthetic, written by
+`contracts/scripts/rich-transcripts.mjs` and `rich-stores.mjs`. Their shapes
+were taken from real stores on this machine by key name and count only, never
+by content, for Claude Code (300 transcripts), Codex (472 rollouts) and
+Antigravity (655 transcripts). The others follow each tool's source and are as
+verified as the table above says that source is.
+
+Their expected output is what the parser produces, so it records behaviour and
+is not an oracle. The oracle is `server/test/parser-fidelity.test.ts`: every
+string of 16 characters or more in every fixture's input must reach the parsed
+session, unless that source declares the drop and why.
+
 ## When a tool changes its format
 
 The fixtures do not notice. Nothing here polls upstream, and a tool that changes

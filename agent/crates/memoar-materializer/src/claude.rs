@@ -1,14 +1,15 @@
 //! Writing a canonical session out as Claude Code's native transcript.
 
-use serde_json::{Value, json};
+use serde_json::json;
 use std::path::Path;
 
 use crate::bundle::{MaterializationResult, MaterializedReport, PlannedFile};
+use crate::claude_blocks::claude_block;
 use crate::commit::commit_plan;
 use crate::error::MaterializeError;
-use crate::native::{degraded_text, encode_claude_workspace, json_lines, report};
+use crate::native::{encode_claude_workspace, json_lines, report};
 use crate::target::Target;
-use memoar_canonical::{ContentBlock, ContentBlockKind, Session};
+use memoar_canonical::Session;
 
 pub(crate) fn materialize_claude(
     session: &Session,
@@ -48,30 +49,4 @@ pub(crate) fn materialize_claude(
         resume_command: format!("claude -r {}", session.id),
         report: MaterializedReport::Local(report(session, degraded)),
     })
-}
-
-fn claude_block(block: &ContentBlock, degraded: &mut usize) -> Value {
-    match block.kind {
-        ContentBlockKind::Text => {
-            json!({ "type": "text", "text": block.text.clone().unwrap_or_default() })
-        }
-        ContentBlockKind::Thinking => {
-            json!({ "type": "thinking", "thinking": block.text.clone().unwrap_or_default() })
-        }
-        ContentBlockKind::ToolCall => json!({
-            "type": "tool_use",
-            "id": block.call_id.clone().unwrap_or_else(|| block.id.clone()),
-            "name": block.name.clone().unwrap_or_else(|| "memoar_tool".to_owned()),
-            "input": block.data.clone().unwrap_or_default()
-        }),
-        ContentBlockKind::ToolResult => json!({
-            "type": "tool_result",
-            "tool_use_id": block.call_id.clone().unwrap_or_else(|| block.id.clone()),
-            "content": block.text.clone().unwrap_or_default()
-        }),
-        _ => {
-            *degraded += 1;
-            json!({ "type": "text", "text": degraded_text(block) })
-        }
-    }
 }

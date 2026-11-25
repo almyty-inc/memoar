@@ -30,14 +30,22 @@ export function textForDegraded(block: ContentBlock): string {
 
 export function nativeBlocks(turn: Turn, report: ConversionReport): Record<string, unknown>[] {
   return turn.blocks.map((block) => {
-    if (block.kind === "text" || block.kind === "thinking" || block.kind === "tool_call" || block.kind === "tool_result") {
+    // Attachments are carried as they are, with their bytes, reference or
+    // text. System and error notes still degrade to attributed text.
+    if (block.kind === "text" || block.kind === "thinking" || block.kind === "tool_call" || block.kind === "tool_result" || block.kind === "attachment") {
       report.mapped += 1;
+      // Everything the parser kept: a tool result's error flag and images and
+      // a thinking block's signature are in `data`, an image's media type in
+      // `mimeType`. Dropping them here undid the parse.
       return {
         id: block.id,
         kind: block.kind,
         ...(block.text ? { text: block.text } : {}),
         ...(block.name ? { name: block.name } : {}),
         ...(block.callId ? { callId: block.callId } : {}),
+        ...(block.language ? { language: block.language } : {}),
+        ...(block.mimeType ? { mimeType: block.mimeType } : {}),
+        ...(block.artifactRef ? { artifactRef: block.artifactRef } : {}),
         ...(block.data ? { data: block.data } : {}),
       };
     }

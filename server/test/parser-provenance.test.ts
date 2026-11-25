@@ -63,7 +63,7 @@ describe("the provenance of a parsed session", () => {
 
     expect(result.status).toBe("parsed");
     const native = sessions[0]!.provenance.find((entry) => entry.kind === "native");
-    expect(native?.parserVersion).toBe("claude-code:v1:0.4.0");
+    expect(native?.parserVersion).toBe("claude-code:v1:0.5.0");
   });
 
   it("keeps no placeholder from the seed", async () => {

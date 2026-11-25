@@ -82,6 +82,8 @@
         {
           "id": "0191cafe-0000-7000-8000-00001000004b",
           "kind": "tool_result",
+          "name": "VIEW_FILE",
+          "callId": "0191cafe-0000-7000-8000-00001000004a",
           "text": "Created At: 2026-08-08T09:00:00.000Z\nparentId: nativeParentId"
         },
         {

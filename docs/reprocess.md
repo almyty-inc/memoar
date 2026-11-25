@@ -23,6 +23,7 @@ kubectl -n <namespace> exec deploy/<release>-worker -- node dist/reprocess.js \
 | `--sha256 <hash>` | One artifact. |
 | `--status <status>` | Only artifacts in this status, for example `stored`. |
 | `--merged-sessions` | Only artifacts linked to a session that more than one file writes to. |
+| `--stale-parser` | Only `parsed` artifacts whose sessions an older parser wrote, the newest capture of each session, and with `--machine` only sessions that machine captured. |
 | `--dry-run` | Print the selection and parse nothing. |
 
 The selection is processed oldest capture first. Without a selection flag the
@@ -95,3 +96,76 @@ kubectl -n memoar-dev exec deploy/dev-worker -- node dist/reprocess.js \
 Only artifacts older than a pass in flight belong in this run. A sync uploads up
 to 256 artifacts before it sends their manifest, so `stored` artifacts captured
 in the last few minutes are waiting for it and need nothing.
+
+## Repair: sessions an older parser wrote
+
+Parsers before the versions in `server/libs/parsers/src/versions.ts` dropped
+tool output, thinking text, redacted and encrypted reasoning, images and
+documents, and the system, compaction and summary records around them. The
+raw bytes hold all of it, so a re-parse with the current parsers recovers it.
+
+Each session records the parser that wrote it in its native provenance entry,
+as `<source>:<format>:<semver>`. `--stale-parser` selects the `parsed`
+artifacts whose sessions carry an older semver for their source, or `pending`,
+or none. Of those it takes only the newest capture of each session, because an
+older capture of a file that has grown since is parsed and then discarded by
+the pipeline. With `--machine` it takes only sessions that machine captured,
+since a re-parse files its sessions under the machine the run acts for.
+
+Block ids of message content do not change, so redaction masks a person placed
+stay anchored. Blocks that are new (tool output that was empty, Claude Code
+system and attachment lines) get ids in a range of their own.
+
+1. Deploy an image with these parsers to the api and the worker. If the
+   artifact cleanup in `docs/artifact-cleanup.md` is due, run it first: its
+   re-parses then already use the new parsers and drop out of this selection.
+2. List the tenants, owners and machines behind the sessions, with the parser
+   that wrote them. Read-only:
+
+   ```sql
+   SELECT s."tenantId", s.visibility->>'ownerId' AS "userId", s.source->>'machineId' AS machine,
+          p->>'parserVersion' AS parser, count(*)
+     FROM sessions s, jsonb_array_elements(s.provenance) p
+    WHERE p->>'kind' = 'native'
+    GROUP BY 1, 2, 3, 4
+    ORDER BY 1, 3, 4;
+   ```
+
+3. For each tenant, user and machine in that list, a dry run, then the run:
+
+   ```sh
+   NS=memoar-dev
+   kubectl -n $NS exec deploy/dev-worker -- node dist/reprocess.js \
+     --tenant <tenantId> --user <userId> --machine <machineId> --stale-parser --dry-run \
+     | jq '{selected, bySource}'
+   kubectl -n $NS exec deploy/dev-worker -- node dist/reprocess.js \
+     --tenant <tenantId> --user <userId> --machine <machineId> --stale-parser \
+     > reprocess-<machineId>.json
+   jq '[.results[] | .status] | group_by(.) | map({(.[0]): length}) | add' reprocess-<machineId>.json
+   ```
+
+   Sessions from uploads (ChatGPT and CASS exports, and anything an earlier
+   reprocess filed without a machine) carry the upload placeholder machine,
+   `uuidV5("<tenantId>:uploads")`. Run those with `--no-machine`. With
+   `--stale-parser` that selects only sessions already under the placeholder,
+   so it never moves a real machine's session onto it.
+
+4. Run the query in step 2 again. Every row should carry the current version
+   for its source. A second `--stale-parser --dry-run` selects nothing, except
+   sessions whose newest capture failed to parse, which `--status failed`
+   lists.
+5. Check that the content is back. On dev, 2026-11-25, before the re-parse:
+
+   ```sql
+   SELECT kind, count(*), count(*) FILTER (WHERE coalesce(text, '') <> '' OR data IS NOT NULL) AS with_content
+     FROM content_blocks WHERE kind IN ('tool_result', 'thinking', 'attachment') GROUP BY 1;
+   ```
+
+   | Kind | Rows | With text, before |
+   | --- | ---: | ---: |
+   | `tool_result` | 45,703 | 7,274 |
+   | `thinking` | 20,209 | 1,043 |
+   | `attachment` | 374 | 0 |
+
+   After the run nearly every row should have content. What stays empty is a
+   tool result that was empty in the transcript.

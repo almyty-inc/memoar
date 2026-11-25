@@ -1,7 +1,9 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
 import { readArchiveEntry } from "./archive.js";
+import { contentBlocks } from "./chatgpt-content.js";
 import { incrementUuid, isRecord, mapParent, stringValue, turnId, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 /** ChatGPT exports arrive as a ZIP whose payload is this file. */
 const CONVERSATIONS_ENTRY = "conversations.json";
@@ -100,13 +102,7 @@ function blocks(message: Record<string, unknown>, mint: () => string): ContentBl
     return produced;
   }
 
-  const kind = contentType === "thoughts" || contentType === "reasoning_recap" ? "thinking" : "text";
-  const parts = Array.isArray(content.parts) ? content.parts : [];
-  for (const part of parts) {
-    const text = typeof part === "string" ? part : isRecord(part) ? stringValue(part, "text") : null;
-    if (text === null || text.length === 0) continue;
-    produced.push({ id: mint(), kind, text });
-  }
+  produced.push(...contentBlocks(contentType, content, mint));
   return produced;
 }
 
@@ -134,7 +130,7 @@ export class ChatgptExportParser implements VersionedParser {
       if (sessions.length === 0) {
         return { kind: "unknown", diagnostic: "chatgpt-export contained no conversations with messages", raw: request.raw };
       }
-      return { kind: "parsed", parser: "chatgpt-export:2026-08:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions };
     } catch (error) {
       return {
         kind: "unknown",

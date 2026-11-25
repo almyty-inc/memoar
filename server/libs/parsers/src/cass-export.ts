@@ -2,6 +2,7 @@ import type { Session, Turn } from "../../canonical/src/generated.js";
 import { incrementUuid, isRecord, stringValue } from "./common.js";
 import { turnFromRow } from "./sqlite-rows.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 export class CassExportParser implements VersionedParser {
   readonly source = "cass-export";
@@ -32,10 +33,11 @@ export class CassExportParser implements VersionedParser {
           id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
           source: { ...request.seed.source, nativeSessionId },
           ...(title ? { title } : {}),
+          ...(stringValue(entry, "workspace") ? { workspace: { ...request.seed.workspace, path: stringValue(entry, "workspace")! } } : {}),
           turns,
         };
       });
-      return { kind: "parsed", parser: "cass-export:2026-08:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions };
     } catch (error) {
       return { kind: "unknown", diagnostic: `cass-export decode failed: ${error instanceof Error ? error.message : String(error)}`, raw: request.raw };
     }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ContentBlock, ContentBlockKind, Turn } from "../../canonical/src/generated.js";
+import type { Turn } from "../../canonical/src/generated.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -204,63 +204,6 @@ const FALLBACK_BASE = 0x1000000;
  */
 export function derivedBlockId(_turnId: string, index: number, seedId: string, ordinal: number): string {
   return incrementUuid(seedId, FALLBACK_BASE + ordinal * FALLBACK_STRIDE + index);
-}
-
-/**
- * Vendor names for block kinds that mean something the canonical model already
- * has. Without these, a Claude Code transcript stored every one of its tool
- * calls as text carrying an ext.nativeKind note — 1,480 of them in a single
- * real session — so the archive rendered tool use as prose.
- */
-const KIND_ALIASES: Readonly<Record<string, ContentBlockKind>> = {
-  tool_use: "tool_call",
-  toolRequest: "tool_call",
-  toolResponse: "tool_result",
-  tool_request: "tool_call",
-  tool_response: "tool_result",
-  toolu: "tool_call",
-  function_call: "tool_call",
-  tool_output: "tool_result",
-  function_call_output: "tool_result",
-  image: "attachment",
-  input_text: "text",
-  output_text: "text",
-  thought: "thinking",
-  reasoning: "thinking",
-};
-
-const kinds = new Set<ContentBlockKind>(["text", "thinking", "tool_call", "tool_result", "diff", "artifact", "attachment", "system", "error"]);
-
-export function parseBlock(value: unknown, fallbackId: string): ContentBlock | null {
-  if (typeof value === "string") return { id: fallbackId, kind: "text", text: value };
-  if (!isRecord(value)) return null;
-  const kindValue = stringValue(value, "kind") ?? stringValue(value, "type") ?? "text";
-  const aliased = KIND_ALIASES[kindValue] ?? kindValue;
-  const kind = kinds.has(aliased as ContentBlockKind) ? aliased as ContentBlockKind : "text";
-  // On a tool call, `id` is the id of the call, not of the block: Anthropic
-  // writes {type:"tool_use", id:"toolu_..."} and that value belongs in callId.
-  // Taking it as the block id put "toolu_..." and "fixture-call-18" where a
-  // UUID belongs. A block that names its call separately is stating its own id.
-  const namesItsCall = typeof value.callId === "string" || typeof value.tool_use_id === "string";
-  const ownId = aliased === "tool_call" && !namesItsCall ? null : stringValue(value, "id");
-  // And only if it is one. Block ids are a uuid column, so a source that
-  // numbers its blocks any other way had its whole session refused by the
-  // database after parsing perfectly. The minted fallback is derived from the
-  // session and the block's position, so it is stable across re-captures.
-  const id = ownId !== null && isUuid(ownId) ? ownId : fallbackId;
-  const block: ContentBlock = {
-    id,
-    kind,
-    ...(typeof value.text === "string" ? { text: value.text } : {}),
-    ...(typeof value.name === "string" ? { name: value.name } : {}),
-    ...(typeof value.callId === "string" ? { callId: value.callId } : typeof value.tool_use_id === "string" ? { callId: value.tool_use_id } : typeof value.id === "string" && aliased === "tool_call" ? { callId: value.id } : {}),
-    ...(typeof value.language === "string" ? { language: value.language } : {}),
-    ...(typeof value.mimeType === "string" ? { mimeType: value.mimeType } : {}),
-    ...(typeof value.artifactRef === "string" ? { artifactRef: value.artifactRef } : {}),
-    ...(isRecord(value.data) ? { data: value.data } : isRecord(value.input) ? { data: value.input } : {}),
-  };
-  if (!kinds.has(aliased as ContentBlockKind)) block.ext = { nativeKind: kindValue, native: value };
-  return block;
 }
 
 export function withModelAndTokens(turn: Turn, model: string | undefined, input: number, output: number): Turn {

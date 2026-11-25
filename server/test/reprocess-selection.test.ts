@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RawArtifactRecord } from "../src/archive-store.js";
+import { isStaleParserVersion, parserVersion } from "../libs/parsers/src/versions.js";
 import { mergedSessionIds, selectForReprocess } from "../src/reprocess-selection.js";
 
 /*
@@ -41,5 +42,38 @@ describe("choosing what to reprocess", () => {
     expect(selectForReprocess(all, { status: "stored" })).toEqual([waiting]);
     expect(selectForReprocess(all, { sha256: subagent.sha256 })).toEqual([subagent]);
     expect(selectForReprocess(all, {}), "no filter is everything").toHaveLength(all.length);
+  });
+});
+
+describe("choosing what an older parser wrote", () => {
+  const machine = "0191cafe-0000-7000-8000-00000000aaaa";
+  const other = "0191cafe-0000-7000-8000-00000000bbbb";
+  const sessions = new Map([
+    ["merged", { parserVersion: "claude-code:v1:0.4.0", machineId: machine }],
+    ["alone", { parserVersion: "claude-code:v1:0.5.0", machineId: machine }],
+    ["upload", { parserVersion: "claude-code:v1:0.3.0", machineId: other }],
+  ]);
+
+  it("selects the newest parsed capture of each session an older parser wrote, on this machine only", () => {
+    const selected = selectForReprocess(all, { staleParser: { sessions, machineId: machine } });
+    // parentV2 is the newest capture behind "merged". "alone" is current, the
+    // upload belongs to another machine, and `waiting` was never parsed.
+    expect(selected.map((record) => record.sha256)).toEqual([parentV2.sha256]);
+  });
+
+  it("selects across machines only when the run names none", () => {
+    const selected = selectForReprocess(all, { staleParser: { sessions, machineId: null } });
+    expect(selected.map((record) => record.sha256).sort()).toEqual([parentV2.sha256, upload.sha256].sort());
+  });
+
+  it("compares versions within a parser, and counts pending and unknown stamps as stale", () => {
+    expect(isStaleParserVersion("claude-code:v1:0.4.0", "claude-code")).toBe(true);
+    expect(isStaleParserVersion("claude-code:v1:0.5.0", "claude-code")).toBe(false);
+    expect(isStaleParserVersion("claude-code:v1:0.10.0", "claude-code"), "numbers, not strings").toBe(false);
+    expect(isStaleParserVersion("codex:rollout-v1:0.3.0", "codex"), "#26's line-by-line parse").toBe(true);
+    expect(isStaleParserVersion("pending", "claude-code")).toBe(true);
+    expect(isStaleParserVersion(null, "claude-code")).toBe(true);
+    expect(isStaleParserVersion("canonical-bundle:v1:0.4.0", "canonical-bundle"), "a bundle is canonical already").toBe(false);
+    expect(isStaleParserVersion(parserVersion("zed"), "zed")).toBe(false);
   });
 });

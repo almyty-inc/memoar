@@ -184,6 +184,102 @@
       "input": "contracts/fixtures/claude-code/v1/subagent-1/input/session.jsonl",
       "inputSha256": "2533151766d76b40cb909eb0847bcf91bf55dc4603bbce83db07b0dc6ba8e007",
       "expected": "contracts/fixtures/claude-code/v1/subagent-1/expected.canonical.json"
+    },
+    {
+      "source": "claude-code",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/claude-code/v1/rich-1/input/session.jsonl",
+      "inputSha256": "4f03dec98cb6db135825e174889c27b89351e59f924462d745c0a9233fcf3334",
+      "expected": "contracts/fixtures/claude-code/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "codex",
+      "version": "rollout-v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/codex/rollout-v1/rich-1/input/session.jsonl",
+      "inputSha256": "6aa89d0db9f93b3c8063cf93f8d06b94d162f3e9510db2f538468a81f9b31ddc",
+      "expected": "contracts/fixtures/codex/rollout-v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "antigravity-cli",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/antigravity-cli/v1/rich-1/input/transcript.jsonl",
+      "inputSha256": "0d218dea42e9813462d466b1a94df90b66a62288be0229a897d89248fc6419c7",
+      "expected": "contracts/fixtures/antigravity-cli/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "roo",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/roo/v1/rich-1/input/task.json",
+      "inputSha256": "8b160f509b9ede636bbefa5e54fd03f8b3dc45efd613ecc6e10634548546c235",
+      "expected": "contracts/fixtures/roo/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "kilo",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/kilo/v1/rich-1/input/task.json",
+      "inputSha256": "8b160f509b9ede636bbefa5e54fd03f8b3dc45efd613ecc6e10634548546c235",
+      "expected": "contracts/fixtures/kilo/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "chatgpt-export",
+      "version": "2026-08",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/chatgpt-export/2026-08/rich-1/input/export.zip",
+      "inputSha256": "b24a3f04c211a9d1f0b4dca7e41da1f292cae3c27edb0b238cebfa5fa33d6a7f",
+      "expected": "contracts/fixtures/chatgpt-export/2026-08/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "copilot",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/copilot/v1/rich-1/input/session.json",
+      "inputSha256": "16d82101570f0b9da6033bb162b056225e1a66a0ca5c4550a8c66a2967f6c1ae",
+      "expected": "contracts/fixtures/copilot/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "zed",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/zed/v1/rich-1/input/native.sqlite3",
+      "inputSha256": "1334800313ca9c6d528de4b1bec138075a8a94f24ca994ce5e83742a2af43ad4",
+      "expected": "contracts/fixtures/zed/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "opencode",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/opencode/v1/rich-1/input/native.sqlite3",
+      "inputSha256": "2a4b597fde24845dc13641e2633e82598745b0487e7093611055eb4044853987",
+      "expected": "contracts/fixtures/opencode/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "goose",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/goose/v1/rich-1/input/native.sqlite3",
+      "inputSha256": "0e81fbcde1f64ef949c1c1866d4cdfd4194a6c8076c6bd47895904c4881adfdd",
+      "expected": "contracts/fixtures/goose/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "crush",
+      "version": "v1",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/crush/v1/rich-1/input/native.sqlite3",
+      "inputSha256": "b52997b2d14bd7514e27e342e4b2a838e1c8ffd24d9dd94573015e1a2cd067f8",
+      "expected": "contracts/fixtures/crush/v1/rich-1/expected.canonical.json"
+    },
+    {
+      "source": "cursor",
+      "version": "v3",
+      "fixture": "rich-1",
+      "input": "contracts/fixtures/cursor/v3/rich-1/input/native.sqlite3",
+      "inputSha256": "af5fc5ff7d84d92ddbc1c808559b2d1deab041c2c770c23fb1a08072f4cb6c0f",
+      "expected": "contracts/fixtures/cursor/v3/rich-1/expected.canonical.json"
     }
   ]
 }
