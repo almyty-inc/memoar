@@ -244,7 +244,8 @@ fn pump(
             if let Some(words) = &last_words
                 && let Ok(mut words) = words.lock()
             {
-                words.push(line);
+                // Windows ends each line with `\r` as well.
+                words.push(line.trim_end().to_owned());
                 let excess = words.len().saturating_sub(2);
                 words.drain(..excess);
             }

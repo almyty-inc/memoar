@@ -4,18 +4,39 @@ use crate::config::RuntimePaths;
 use crate::service::spec::{ServiceSpec, program_note, validate_name};
 use crate::service::{launchd, schtasks, systemd};
 
+/// Built by hand, with Unix paths whatever the host, so the definitions read
+/// the same on every runner. `ServiceSpec::new` is tested on its own below.
 fn spec(program: &str, root: &str) -> ServiceSpec {
-    let paths = RuntimePaths {
-        config_dir: PathBuf::from(format!("{root}/config dir")),
-        data_dir: PathBuf::from(format!("{root}/data")),
-        home: PathBuf::from(format!("{root}/home")),
-    };
-    ServiceSpec::new("test-1", Path::new(program), &paths).unwrap()
+    let directory = |leaf: &str| format!("{root}/{leaf}");
+    ServiceSpec {
+        name: "test-1".to_owned(),
+        program: PathBuf::from(program),
+        arguments: vec![
+            "service".to_owned(),
+            "run".to_owned(),
+            "--name".to_owned(),
+            "test-1".to_owned(),
+            "--config-dir".to_owned(),
+            directory("config dir"),
+            "--data-dir".to_owned(),
+            directory("data"),
+            "--capture-home".to_owned(),
+            directory("home"),
+        ],
+        data_dir: PathBuf::from(directory("data")),
+        log_dir: PathBuf::from(directory("data/logs")),
+    }
 }
 
+#[cfg(unix)]
 #[test]
 fn the_service_runs_the_supervisor_with_absolute_directories() {
-    let spec = spec("/usr/local/bin/memoar", "/tmp/scratch");
+    let paths = RuntimePaths {
+        config_dir: PathBuf::from("/tmp/scratch/config dir"),
+        data_dir: PathBuf::from("/tmp/scratch/data"),
+        home: PathBuf::from("/tmp/scratch/home"),
+    };
+    let spec = ServiceSpec::new("test-1", Path::new("/usr/local/bin/memoar"), &paths).unwrap();
     assert_eq!(
         spec.arguments,
         [
@@ -90,6 +111,12 @@ fn the_systemd_unit_restarts_on_failure_and_never_on_a_refusal() {
     assert!(unit.contains("WantedBy=default.target\n"));
     assert!(unit.contains("WorkingDirectory=/tmp/100%%/data\n"));
     assert_eq!(systemd::quote("a\"b\\c$d"), "\"a\\\"b\\\\c$$d\"");
+}
+
+/// Unix only: `/xdg` is not an absolute path on Windows.
+#[cfg(unix)]
+#[test]
+fn the_unit_goes_where_xdg_says_when_it_says_it_absolutely() {
     assert_eq!(
         systemd::unit_dir(Path::new("/home/x"), Some("/xdg".into())),
         PathBuf::from("/xdg/systemd/user")

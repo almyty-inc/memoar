@@ -161,7 +161,11 @@ memoar view "$session_id" | jq -e '.ok == true' >/dev/null
 memoar pack memoar-compose-agent-e2e-marker --max-tokens 1200 | jq -e '.ok == true' >/dev/null
 memoar convert "$session_id" --target claude-code --fallback fail --here --wait-seconds 30 \
   | jq -e '.ok == true and (.data.written | length) >= 1' >/dev/null
-memoar doctor | jq -e '.ok == true and .data.ok == true' >/dev/null
+# Every check passes except background capture: this flow syncs once and runs
+# no watch or service, and `doctor` is right to say nothing keeps capturing.
+memoar doctor | jq -e '.ok == true
+  and ([.data.checks[] | select(.name != "background_capture") | .ok] | all)
+  and .data.backgroundCapture.state == "not_running"' >/dev/null
 
 # --- Porting the standing instructions between dialects ----------------------
 #
