@@ -5,10 +5,11 @@ import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
 import { withoutNulBytes } from "../nul-bytes.js";
-import { scopeCollidingIds } from "../turn-identity.js";
+import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
 import { assembleSession } from "./assemble.js";
 import { rowIdsHeldElsewhere, rowIdsStoredHere } from "./row-ids.js";
 import { boundedSearchDocument } from "./search-document.js";
+import { insertSessionRows } from "./session-rows.js";
 import { decodeCursor, encodeCursor, TenantRunner, TenantScope } from "./runner.js";
 
 export class PostgresSessionStore implements SessionStore {
@@ -56,7 +57,7 @@ export class PostgresSessionStore implements SessionStore {
       // lookup cannot be an ordinary query.
       const elsewhere = await rowIdsHeldElsewhere(manager, context.tenantId, cleaned);
       const here = await rowIdsStoredHere(manager, context.tenantId, cleaned.id);
-      const session = scopeCollidingIds(cleaned, elsewhere, here);
+      const session = separateRepeatedIds(scopeCollidingIds(cleaned, elsewhere, here));
       await blockRepository.delete({ tenantId: context.tenantId, sessionId: session.id });
       await turnRepository.delete({ tenantId: context.tenantId, sessionId: session.id });
       const searchDocument = boundedSearchDocument(session);
@@ -78,37 +79,7 @@ export class PostgresSessionStore implements SessionStore {
         embedding: null,
         ext: session.ext ?? null,
       }));
-      for (const turn of session.turns) {
-        await turnRepository.save(turnRepository.create({
-          id: turn.id,
-          tenantId: context.tenantId,
-          sessionId: session.id,
-          ordinal: turn.ordinal,
-          parentId: turn.parentId,
-          role: turn.role,
-          capturedAt: new Date(turn.createdAt),
-          model: turn.model ?? null,
-          tokens: turn.tokens ?? null,
-          ext: turn.ext ?? null,
-        }));
-        const blocks = turn.blocks.map((block, ordinal) => blockRepository.create({
-          id: block.id,
-          tenantId: context.tenantId,
-          sessionId: session.id,
-          turnId: turn.id,
-          ordinal,
-          kind: block.kind,
-          text: block.text ?? null,
-          name: block.name ?? null,
-          callId: block.callId ?? null,
-          language: block.language ?? null,
-          mimeType: block.mimeType ?? null,
-          artifactRef: block.artifactRef ?? null,
-          data: block.data ?? null,
-          ext: block.ext ?? null,
-        }));
-        if (blocks.length) await blockRepository.save(blocks);
-      }
+      await insertSessionRows(manager, context.tenantId, session);
     });
   }
 

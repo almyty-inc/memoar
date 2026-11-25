@@ -3,7 +3,7 @@ import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
 import { withoutNulBytes } from "../nul-bytes.js";
-import { scopeCollidingIds } from "../turn-identity.js";
+import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
 import { copy, key, type MemoryTables } from "./tables.js";
 
 export class MemorySessionStore implements SessionStore {
@@ -27,7 +27,7 @@ export class MemorySessionStore implements SessionStore {
         for (const block of turn.blocks) target.blocks.add(block.id);
       }
     }
-    this.tables.sessions.set(ownKey, copy(scopeCollidingIds(cleaned, elsewhere, here)));
+    this.tables.sessions.set(ownKey, copy(separateRepeatedIds(scopeCollidingIds(cleaned, elsewhere, here))));
   }
 
   async resolveSessionIdentity(
