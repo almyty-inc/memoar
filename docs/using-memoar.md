@@ -90,6 +90,36 @@ Same raw-first path as the agent.
 
 ## Things worth knowing
 
+### Capture runs only while something runs it
+
+Nothing reaches the archive unless a sync runs on the machine. A
+`memoar sync --watch` started in a terminal stops when the terminal closes, so
+run it as a service:
+
+```sh
+memoar service install
+```
+
+It starts at login, restarts after a crash or a lost network, and stops for
+good only when retrying cannot help: the machine was removed from the archive,
+its key was revoked, or you signed out. [install.md](install.md#keep-capture-running-in-the-background)
+has the details for each platform.
+
+`memoar status` and `memoar doctor` lead with `backgroundCapture`, which is one
+of these:
+
+| State | Meaning |
+|---|---|
+| `running` | A watch holds the queue, or the service is up. |
+| `retrying` | Running, and waiting out an error such as a lost network. |
+| `stale` | Artifacts have waited more than 24 hours and nothing has uploaded in that time. |
+| `stopped` | The service is installed and not running, or the last watch ended on a refusal. The reason is in `summary`. |
+| `not_running` | No service is installed and no sync is running. |
+
+The last three are not `ok`. In a terminal, `status` and `doctor` also print
+`background capture stopped:` and the reason as the last lines on stderr.
+`memoar service logs` shows what the service last did.
+
 ### Sharing is gated on a review
 
 A session cannot leave the archive until a redaction review is complete. The
