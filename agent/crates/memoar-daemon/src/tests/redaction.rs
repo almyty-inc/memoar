@@ -29,7 +29,7 @@ fn client_redaction_happens_before_hashing_and_snapshot() {
             },
         )
         .unwrap();
-    let bytes = fs::read(&artifact.local_path).unwrap();
+    let bytes = fs::read(artifact.content_path()).unwrap();
     let content = String::from_utf8(bytes).unwrap();
     assert!(artifact.redacted);
     assert!(artifact.redaction_count >= 3);
@@ -63,7 +63,7 @@ fn zip_redaction_repacks_entries_with_limits() {
             },
         )
         .unwrap();
-    let bytes = fs::read(artifact.local_path).unwrap();
+    let bytes = fs::read(artifact.content_path()).unwrap();
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
     let mut content = String::new();
     archive
@@ -169,7 +169,7 @@ fn reports_redaction_only_when_something_was_replaced() {
         .unwrap();
     assert!(artifact.redacted);
     assert!(artifact.redaction_count > 0);
-    let stored = fs::read_to_string(&artifact.local_path).unwrap();
+    let stored = fs::read_to_string(artifact.content_path()).unwrap();
     assert!(
         !stored.contains(&token_fixture()),
         "the secret reached the queue"

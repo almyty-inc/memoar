@@ -62,7 +62,7 @@ fn artifact() -> QueuedArtifact {
         size: 11,
         source: "claude-code".to_owned(),
         source_path: "/home/me/.claude/projects/p/s.jsonl".to_owned(),
-        local_path: "unused".into(),
+        local_path: None,
         modified_at: "2026-11-24T00:00:00Z".to_owned(),
         status: QueueStatus::Pending,
         attempts: 0,

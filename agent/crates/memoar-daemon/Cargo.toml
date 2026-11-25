@@ -19,5 +19,13 @@ thiserror.workspace = true
 uuid.workspace = true
 zip.workspace = true
 
+# Free space on the volume that holds the queue, for the disk guard. Safe
+# `statvfs` on Unix; Windows has no safe wrapper, see `space.rs`.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 tempfile.workspace = true

@@ -1,9 +1,12 @@
 mod activity;
 mod capture;
 mod fake;
+mod legacy;
 mod outage;
+mod policy;
 mod ratelimit;
 mod redaction;
+mod scale;
 mod secret_catalogue;
 mod sync;
 mod transport;

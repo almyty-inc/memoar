@@ -2,11 +2,10 @@
 
 use chrono::{DateTime, Utc};
 use rusqlite::{OptionalExtension, params};
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::error::DaemonError;
-use crate::queue::{OfflineQueue, QueueCounts, QueueStatus, QueuedArtifact};
+use crate::queue::{OfflineQueue, QueueCounts, QueueStatus, QueuedArtifact, blob_path};
 
 /// How many times one artifact is offered to the server before the queue stops
 /// offering it.
@@ -76,7 +75,8 @@ impl OfflineQueue {
     /// Artifacts that have used up every attempt they are going to get.
     pub fn abandoned(&self) -> Result<u64, DaemonError> {
         let value: i64 = self.connection.query_row(
-            "SELECT COUNT(*) FROM artifacts WHERE status != 'synced' AND attempts >= ?1",
+            "SELECT COUNT(*) FROM artifacts
+             WHERE status IN ('pending', 'retry') AND attempts >= ?1",
             [MAX_ATTEMPTS],
             |row| row.get(0),
         )?;
@@ -99,6 +99,7 @@ impl OfflineQueue {
             pending: count("pending")?,
             retry: count("retry")?,
             synced: count("synced")?,
+            held: count("held")?,
         })
     }
 
@@ -216,7 +217,7 @@ fn row_to_artifact(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedArtifact> 
         size: row.get::<_, i64>(1)?.max(0) as u64,
         source: row.get(2)?,
         source_path: row.get(3)?,
-        local_path: PathBuf::from(row.get::<_, String>(4)?),
+        local_path: blob_path(row.get::<_, String>(4)?),
         modified_at: row.get(5)?,
         status: QueueStatus::parse(&status),
         attempts: row.get(7)?,

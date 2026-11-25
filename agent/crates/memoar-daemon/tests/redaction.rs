@@ -19,7 +19,7 @@ fn captured(queue: &OfflineQueue, dir: &Path, name: &str, body: &str) -> (String
     let artifact = queue
         .enqueue_with_redaction("fixture", &source, secrets())
         .unwrap_or_else(|error| panic!("{name} should have been capturable: {error}"));
-    let stored = fs::read_to_string(&artifact.local_path).unwrap();
+    let stored = fs::read_to_string(artifact.content_path()).unwrap();
     assert_eq!(
         artifact.redacted,
         artifact.redaction_count > 0,
