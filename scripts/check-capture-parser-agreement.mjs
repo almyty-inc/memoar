@@ -27,6 +27,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deniedPathFailures, denyTables } from './capture-deny-check.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONNECTOR_SRC = resolve(root, 'agent/crates/memoar-connectors/src');
@@ -109,7 +110,7 @@ async function connectorSources() {
  * went red saying only "have its guards changed?", which is a true statement
  * that tells you nothing about what to do.
  */
-const JSON_LINE_READERS = /\b(?:parse|read)JsonLines\(/u;
+const JSON_LINE_READERS = /\b(?:parse|read|mostly)JsonLines\(/u;
 const WHOLE_JSON_READER = /JSON\.parse\(Buffer\.from\(request\.raw\)/u;
 
 function acceptedShapes(text) {
@@ -154,9 +155,13 @@ function shapeOf(pattern) {
 
 const sources = await connectorSources();
 const shapes = await parserShapes();
+const tables = await denyTables(root);
 const found = [];
 
 for (const { id, patterns } of sources) {
+  // A key or a repository's internals is unreadable to every parser, whatever
+  // its extension says. See scripts/capture-deny-check.mjs.
+  failures.push(...deniedPathFailures(tables, id, patterns));
   const accepted = shapes.get(id);
   if (!accepted) {
     failures.push(`${id}: the agent captures it and no parser declares it`);
