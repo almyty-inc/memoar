@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use crate::deny::is_denied;
 use crate::glob::{expand_pattern, path_matches_pattern, pattern_root};
 use crate::sources::SOURCES;
 use crate::spec::{OperatingSystem, SourceSpec, Stability};
@@ -118,6 +119,14 @@ where
             candidates
                 .iter()
                 .any(|pattern| path_matches_pattern(pattern, path))
+        })
+        // And never a key, a credential store or a repository's internals,
+        // whatever matched it. Judged below the root the pattern starts from.
+        .filter(|path| {
+            !roots
+                .iter()
+                .filter_map(|root| path.strip_prefix(root).ok())
+                .any(is_denied)
         })
         .collect();
     files.sort();

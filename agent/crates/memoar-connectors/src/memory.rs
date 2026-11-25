@@ -72,7 +72,14 @@ pub fn memory_files(home: &Path, workspaces: &[PathBuf]) -> Vec<DiscoveredMemory
                 .collect(),
         };
         for (root, workspace) in roots {
-            for path in expand(root, &spec.pattern.split('/').collect::<Vec<_>>()) {
+            let paths = expand(root, &spec.pattern.split('/').collect::<Vec<_>>());
+            // The same deny list a session store is held to. `.roo/rules/**`
+            // walks a directory somebody else fills, and a rules folder that
+            // is itself a git checkout keeps markdown under `.git` too.
+            for path in paths
+                .into_iter()
+                .filter(|path| !path.strip_prefix(root).is_ok_and(crate::deny::is_denied))
+            {
                 let entry = found.entry(path.clone()).or_insert(DiscoveredMemory {
                     path,
                     scope: spec.scope,

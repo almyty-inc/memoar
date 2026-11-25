@@ -109,14 +109,20 @@ fn a_source_reads_only_the_records_its_pattern_names() {
             OperatingSystem::Linux,
             ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/task-1",
             "api_conversation_history.json",
-            &["checkpoint.bin", "screenshot.png"],
+            // The parser reads the message history and nothing beside it.
+            &[
+                "checkpoint.bin",
+                "screenshot.png",
+                "ui_messages.json",
+                "task_metadata.json",
+            ],
         ),
         (
             "kilo",
             OperatingSystem::Linux,
             ".config/Code/User/globalStorage/kilocode.kilo-code/tasks/task-1",
-            "ui_messages.json",
-            &["thumbnail.jpg"],
+            "api_conversation_history.json",
+            &["thumbnail.jpg", "ui_messages.json", "task_metadata.json"],
         ),
         (
             // The real layout on a machine that runs Zed: the agent threads

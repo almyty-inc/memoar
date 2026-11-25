@@ -48,10 +48,30 @@ look, not a verdict.
 | --- | --- | --- |
 | `claude-code` | `~/.claude/projects/**/*.jsonl` | 2026-09-08 |
 | `codex` | `~/.codex/sessions/**/*.jsonl` | 2026-09-08 |
-| `antigravity-cli` | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | 2026-09-08 |
+| `antigravity-cli` | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | 2026-11-25 |
 | `crush` | `<project>/.crush/crush.db` | 2026-09-08 |
 | `opencode` | `~/.local/share/opencode/opencode.db` | 2026-09-08 |
 | `zed` | `~/Library/Application Support/Zed/threads/threads.db` | 2026-09-17 |
+
+Verifying the parser was not enough for `antigravity-cli`. The check above names
+the version itself, and the capture agent never does: it sends the bare tool
+name, and the server's detector recognised Antigravity by a `"parts"` field the
+CLI has never written. All 655 transcripts on dev were refused as
+`antigravity-cli@unknown` for as long as both checks passed. On 2026-11-25 the
+same 655 transcripts on this machine went through detection with the bare name
+and then the parser, and all 655 parsed: 514 are a single `USER_INPUT` step,
+which is kept as a one-turn session, and the 343 `GENERIC` steps holding tool
+output are now read as tool results. `server/test/format-detection.test.ts` puts
+every fixture through that same path.
+
+Ten `codex` rollouts on dev were refused too, and they are two cases. Eight,
+captured 2026-09-17 and up to 48 MB, hold `session_meta` and thousands of
+`response_item` lines, but 1 to 22 lines each were broken by the capture agent's
+redaction before commit 57fc824 and the parser read all-or-nothing. It reads
+line by line now and all eight parse. The other two are guardian subagent
+threads holding `session_meta`, one `compaction` item that is only
+`encrypted_content`, and a settings event. They contain nothing readable and
+stay refused, correctly.
 
 `copilot` is deliberately not in that table, and it is the one source where the
 two halves of "verified" have to be said separately, because it has two stores.
@@ -123,6 +143,19 @@ moves the mistake.
 | `claude-code` | `.claude/history.jsonl`, which is the prompt history the CLI's up-arrow reads, not a conversation: 10,619 lines on this machine, every one valid JSON, every one `{display, pastedContents, timestamp, project, sessionId}`, not one carrying `uuid` or `message`. Named `.jsonl`, so the agreement check — which compares extensions — never saw it, and 2.8 MB of every prompt ever typed went up on every sync and came back `unknown_format` | nothing: the conversation it indexes is the transcript named by its own `sessionId`, which `.claude/projects/*/*.jsonl` already takes |
 | `copilot` | VS Code `chatSessions/*.json` and nothing else, on all three platforms. VS Code has written that envelope under two extensions: `<id>.json` is one whole envelope, and `<id>.jsonl` is a `{kind:0, v:<envelope>}` snapshot followed by `{kind:1, k:[path], v:value}` writes against it, which is what it writes now. Of the 23 files under `chatSessions` on this machine, **18 are `.jsonl` and 5 are `.json`, and every `.jsonl` is newer than every `.json`** — the `.json` panels were created between 2025-05-02 and 2025-12-12, the `.jsonl` ones between 2026-02-20 and 2026-06-29, with no overlap. So the pattern named the layout the editor has stopped writing, and would have collected less of Copilot Chat every month | both, which is what it names now |
 | `copilot` | the four `.copilot/{session-state,history-session-state}/**.json` patterns. Checked against GitHub Copilot CLI 1.0.59 with a recorded session: `session-state/<id>/` holds `workspace.yaml`, `checkpoints/index.md` and two empty directories, with no `.json` at any depth, and `history-session-state/` does not exist. The only JSON under `~/.copilot` is `config.json` and `command-history-state.json`, which are settings and which those patterns never named | `session-store.db`, which is what the parser opens |
+| `claude-code` | Before commit 31897b4 a pattern's fixed prefix was walked and the pattern never applied, and the Claude Desktop entries were bare directories. The first real sync, 2026-09-17 15:29 to 16:32 UTC, left 1,354 `unknown_format` artifacts on dev: 516 markdown files, 13 `.audit-key`, 13 `.claude/.claude.json` and 3 of its backups, `.git/index`, `.git/logs/HEAD` and `.git/packed-refs` from a plugin marketplace checkout, 14 `.DS_Store`, task lists, debug logs, and the PDFs, images and `node_modules` a session wrote into `outputs/` | only transcripts, and a deny list after every pattern that refuses key files, credential stores, `.git` and its peers, and `.DS_Store` whatever a pattern says |
+| `kilo`, `roo` | `tasks/*/*.json`, which also took `ui_messages.json` and `task_metadata.json` from each task directory. The parser reads one file, `api_conversation_history.json` | `tasks/*/api_conversation_history.json` |
+
+Claude Desktop's local agent mode does keep transcripts on this side of its VM,
+which the `claude-code` row above once said it did not. Each session has its
+own Claude Code home at `local_<session>/.claude`, and its
+`projects/<project>/*.jsonl` and `subagents/*.jsonl` are the JSONL the CLI
+writes, `parentUuid` and all. On the machine checked on 2026-11-25 that was 22
+sessions and 27 subagent transcripts, one of them under `agent/local_ditto_*`,
+and all 49 parsed through format detection and the Claude Code parser. Capture
+names those depths and nothing else in the tree. `audit.jsonl` beside them is
+an HMAC-signed stream of the same conversation and is left out, because taking
+it would archive every session twice.
 
 `claude-code/v1/subagent-1` is synthetic and holds no captured text. Its shape
 was checked against the real store on 2026-11-25, reading only key names and
@@ -146,6 +179,12 @@ parser refuses — is now a build failure. `scripts/check-capture-parser-agreeme
 reads the Rust connector table and the parsers' own guards and compares the
 extension a pattern names against the bytes the parser will accept. It runs in
 `npm test`.
+
+It also fills every wildcard of every pattern with sample key, credential and
+version-control names (`.audit-key`, `.claude.json`, `.git/…`, `*.pem` and
+more, listed in `scripts/capture-deny-check.mjs`) and fails if the deny list in
+`agent/crates/memoar-connectors/src/deny.rs` would let the result through, or if
+a pattern uses `**`.
 
 It cannot tell a transcript from a settings file: `local_*.json` and a real
 JSONL transcript are both "JSON-ish" to a machine, and only a person looking at
@@ -174,11 +213,11 @@ branch is set out under "Verified against real data" above.
 | --- | --- | --- | --- |
 | `goose` | `sessions/*.jsonl`, common and Windows | native SQLite only | The source calls itself "SQLite or legacy JSONL" and the parser implements only the SQLite half. Whether anything still writes `.jsonl` — and if so what shape it is — is a question for a machine with goose on it; nothing here can answer it. Asked again on 2026-09-23: `goose` is not on `PATH`, and `~/.local/share/goose`, `~/.config/goose` and `~/Library/Application Support/Block` all do not exist, so there is no store to look in and nothing to read the shape off. Guessing the record shape from block/goose's source would produce a parser whose only evidence is a fixture written to agree with it, which is the defect this file opens with. |
 
-`kilo` and `roo` are not on that list, because `tasks/*/*.json` and a parser
-that reads JSON agree about shape. They disagree about *which* JSON: the parser
-wants `api_conversation_history.json`, and the pattern also takes
-`ui_messages.json` and `task_metadata.json` from the same directory. No
-mechanical check can see that, and nobody here runs either tool.
+`kilo` and `roo` were never on that list, because `tasks/*/*.json` and a parser
+that reads JSON agree about shape. They disagreed about which JSON, and the
+pattern now names `api_conversation_history.json`, the file name Roo Code's own
+source gives that history. Nobody here runs either tool, so that name is
+checked against the source and not against a store.
 
 ## Written from the format, not from a capture
 

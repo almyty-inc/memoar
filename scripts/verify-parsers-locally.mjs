@@ -139,7 +139,7 @@ const SOURCES = [
     // The parser reads the Anthropic message array, which is this file and not
     // the `ui_messages.json` beside it.
     pick: (dir) => newestUnder(dir, (path) => path.endsWith("api_conversation_history.json"), 2),
-    todo: "Install Roo Code in VS Code, run one task, and re-run this. Also list one tasks/<id> directory: the pattern takes every *.json in it, and the parser reads only api_conversation_history.json.",
+    todo: "Install Roo Code in VS Code, run one task, and re-run this. Also list one tasks/<id> directory and confirm the history is still written as api_conversation_history.json, the only file the pattern takes.",
   },
   {
     source: "kilo",
@@ -150,7 +150,7 @@ const SOURCES = [
       "AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/tasks",
     ],
     pick: (dir) => newestUnder(dir, (path) => path.endsWith("api_conversation_history.json"), 2),
-    todo: "Install Kilo Code in VS Code, run one task, and re-run this. Same question about the other *.json in tasks/<id> as for Roo.",
+    todo: "Install Kilo Code in VS Code, run one task, and re-run this. Same question about the file name in tasks/<id> as for Roo.",
   },
 ];
 
