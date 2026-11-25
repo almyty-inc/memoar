@@ -8,6 +8,7 @@ mod capture;
 mod enqueue;
 mod error;
 mod manifest;
+mod patient;
 mod queue;
 mod redaction;
 mod secret_catalogue;

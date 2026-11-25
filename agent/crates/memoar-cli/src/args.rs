@@ -30,18 +30,28 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Sign in, register this computer, and store a capture-scoped API key.
     Login(LoginArgs),
+    /// Sign this computer out: revoke its API key and delete the stored credential.
+    Logout(LogoutArgs),
+    /// Show this computer's configuration, queue, and detected sources. Offline.
     Status,
+    /// List the session stores this agent knows, and turn them on or off.
     Sources {
         #[command(subcommand)]
         command: SourcesCommand,
     },
+    /// Capture new sessions into the local queue and upload them.
     Sync(SyncArgs),
     /// Show or change what is masked before anything is hashed and uploaded.
     Redaction(RedactionArgs),
+    /// Search the archive.
     Search(SearchArgs),
+    /// Read one archived session, a chunk of turns at a time.
     View(ViewArgs),
+    /// Build an evidence pack for a question from the archive.
     Pack(PackArgs),
+    /// Convert an archived session for another agent, and optionally write it here.
     Convert(ConvertArgs),
     /// Work with the standing instructions the agents on this account read.
     Memory {
@@ -50,31 +60,64 @@ pub enum Command {
     },
     /// Subscribe to the server command channel and materialize conversions on this machine.
     Listen(ListenArgs),
+    /// Check the configuration, queue, credentials, and archive connection.
     Doctor,
+    /// Print what this client supports, as JSON.
     Capabilities,
+    /// Print the command surface and exit codes, as JSON.
     Introspect,
 }
 
 #[derive(Debug, Args)]
 pub struct LoginArgs {
+    /// The archive's API URL, ending in /v1.
     #[arg(long, default_value = "http://localhost:4000/v1")]
     pub endpoint: String,
     #[arg(long)]
     pub email: Option<String>,
-    #[arg(long)]
+    /// The account password. `-` reads it from standard input, which keeps it
+    /// out of shell history and the process list.
+    #[arg(long, env = "MEMOAR_PASSWORD", hide_env_values = true)]
     pub password: Option<String>,
-    /// Existing user/API credential. A machine is still registered or verified.
-    #[arg(long, env = "MEMOAR_TOKEN", conflicts_with_all = ["email", "password"])]
+    /// Existing user/API credential, used when --email is not given. A machine
+    /// is still registered or verified.
+    ///
+    /// No clap conflict with --email: with MEMOAR_TOKEN or MEMOAR_PASSWORD
+    /// exported, a conflict made the other way of signing in unusable.
+    #[arg(long, env = "MEMOAR_TOKEN", hide_env_values = true)]
     pub token: Option<String>,
+    /// Reuse this machine id instead of registering one. Needs --token.
     #[arg(long, requires = "token")]
     pub machine_id: Option<String>,
     /// Redact likely credentials before local snapshots are hashed and uploaded.
     #[arg(long)]
     pub redact_secrets: bool,
+    /// Redact email addresses before upload.
     #[arg(long)]
     pub redact_email_addresses: bool,
+    /// Redact home directory paths before upload.
     #[arg(long)]
     pub redact_home_paths: bool,
+}
+
+/// What `logout` needs. All optional: without an account credential the
+/// stored key is asked to revoke itself, which today's archive refuses, and
+/// the report says where to finish the job.
+#[derive(Debug, Args)]
+pub struct LogoutArgs {
+    /// Revoke the stored API key with this account's password. The key
+    /// cannot revoke itself, because it is scoped to capture.
+    #[arg(long)]
+    pub email: Option<String>,
+    /// The account password. `-` reads it from standard input.
+    #[arg(long, env = "MEMOAR_PASSWORD", hide_env_values = true)]
+    pub password: Option<String>,
+    /// An account credential allowed to revoke keys. Used when --email is not given.
+    #[arg(long)]
+    pub token: Option<String>,
+    /// Also deregister this machine, which revokes its machine tokens.
+    #[arg(long)]
+    pub deregister: bool,
 }
 
 #[derive(Debug, Args)]

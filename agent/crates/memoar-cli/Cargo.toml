@@ -2,7 +2,8 @@
 name = "memoar-cli"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# File::try_lock, which keeps two syncs off one queue, is 1.89.
+rust-version = "1.89"
 license.workspace = true
 
 [[bin]]

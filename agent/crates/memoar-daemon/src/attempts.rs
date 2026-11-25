@@ -151,6 +151,28 @@ impl OfflineQueue {
         Ok(())
     }
 
+    /// Records why these artifacts were not sent, without charging them for it.
+    ///
+    /// For a failure of the whole pass: the archive unreachable, refusing the
+    /// machine's credential, or overloaded. None of that is the artifact's
+    /// doing, and charging it an attempt is how a laptop offline for an
+    /// afternoon used to abandon everything it had captured that morning.
+    /// The artifact stays eligible for the very next pass.
+    pub(crate) fn mark_deferred(
+        &self,
+        artifacts: &[QueuedArtifact],
+        message: &str,
+    ) -> Result<(), DaemonError> {
+        for artifact in artifacts {
+            self.connection.execute(
+                "UPDATE artifacts SET status = 'retry', last_error = ?3
+                 WHERE sha256 = ?1 AND source_path = ?2 AND status <> 'synced'",
+                params![artifact.sha256, artifact.source_path, message],
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn mark_retry_all(
         &self,
         artifacts: &[QueuedArtifact],
