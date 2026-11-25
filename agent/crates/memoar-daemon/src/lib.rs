@@ -2,6 +2,7 @@
 
 pub mod memory;
 
+mod activity;
 mod artifact;
 mod attempts;
 mod capture;
@@ -21,6 +22,7 @@ mod watcher;
 mod tests;
 
 // `memory.rs` reaches for this at the crate root, where it used to live.
+pub use crate::activity::QueueActivity;
 pub(crate) use crate::artifact::redact_artifact;
 pub use crate::attempts::MAX_ATTEMPTS;
 pub use crate::capture::{CaptureSummary, capture_sources, capture_sources_with_redaction};
