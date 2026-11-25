@@ -6,9 +6,10 @@
 //! sitting in a file on a laptop that was handed back is the credential most
 //! worth revoking, and it was the one nothing touched.
 //!
-//! Revoking needs `keys:write`, which the capture key deliberately lacks, so
-//! this is done with whatever account credential is at hand: the password
-//! session `login` already opened, or one `logout` is given.
+//! Revoking another key needs `keys:write`, which the capture key deliberately
+//! lacks, so a replaced key is revoked with the password session `login`
+//! already opened, or one `logout` is given. A key may revoke itself without
+//! that scope, which is how `logout` signs out with nothing but the stored key.
 
 use serde_json::{Value, json};
 

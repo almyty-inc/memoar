@@ -166,21 +166,22 @@ one keeps its own.
 ## Signing a machine out
 
 ```sh
-npx memoar logout --email you@example.com --password -
+npx memoar logout
 ```
 
-This revokes the API key `login` stored on this computer, ends the browser
-session it opened to do so, and deletes `credentials.json`. `config.json` stays,
-so a later `login` is recognised as the same computer rather than registered as
-another. Add `--deregister` to remove the machine from the account as well,
-which also revokes its machine tokens.
+This revokes the API key `login` stored on this computer and deletes
+`credentials.json`. The key revokes itself, which the archive allows without any
+other scope. `config.json` stays, so a later `login` is recognised as the same
+computer rather than registered as another. Add `--deregister` to remove the
+machine from the account as well, which also revokes its machine tokens.
 
-The password is what revokes the key. The key itself is scoped to capture and
-cannot revoke itself, so `npx memoar logout` without a password still signs the
-computer out locally but reports that the key is live on the archive, with its
-name, for you to revoke in **Settings → API keys**. A key you created by hand
-and passed to `login --token` is never revoked by `logout`, because it may be in
-use elsewhere.
+Two cases still need your password, given as `--email you@example.com
+--password -`: a key stored by an agent older than the one that records the
+key's id, and an archive older than the release that lets a key revoke itself.
+Without the password, `logout` signs the computer out locally in both cases and
+reports that the key is live on the archive, with its name, for you to revoke in
+**Settings → API keys**. A key you created by hand and passed to `login --token`
+is never revoked by `logout`, because it may be in use elsewhere.
 
 A machine deregistered from the web app stops syncing at the next cycle:
 `sync --watch` exits with `MEMOAR_MACHINE_RETIRED` and says to run

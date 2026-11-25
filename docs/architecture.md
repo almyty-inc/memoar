@@ -39,6 +39,19 @@ only `SELECT/INSERT/UPDATE/DELETE`. Migrations use a separate owner connection
 (`MIGRATION_DATABASE_URL`) because DDL needs privileges the runtime must not
 have.
 
+The migration role owns the schema and needs `CREATEROLE`, because migrations
+create `memoar_app` and `memoar_row_id_probe`. It does not need to be a
+superuser or hold `BYPASSRLS`, and should not. The tables FORCE row-level
+security, so the policies filter the migration role too. A migration that has
+to read every tenant's rows lifts FORCE on its tables inside its own
+transaction and puts it back. The Postgres test suites run migrations as
+exactly this kind of role (`memoar_owner` in `server/test/helpers/postgres.ts`).
+
+`memoar_row_id_probe` cannot log in and nobody inherits it. It owns the two
+functions that tell a save whether a turn or block id is held in another
+account. It can read three columns of `turns` and `content_blocks` (id, tenant
+and session) through a policy that applies to it alone.
+
 Checking `relrowsecurity`/`relforcerowsecurity` proves the policy exists, not
 that it filters. The migrations prover and `server/test/rls.test.ts` both connect
 as `memoar_app` and assert observed behavior: a wrong tenant reads zero rows, an

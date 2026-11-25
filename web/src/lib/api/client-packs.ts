@@ -1,6 +1,7 @@
 import { SessionsApi } from './client-sessions';
 import type { ImportProgress, ImportSource, RawArtifactStatus } from './contracts';
 import { mapSession } from './mappers';
+import { encodeSourcePath } from './source-path';
 import type { ListResponse, WireSessionSummary } from './wire';
 import type { ConversionJob, PackResponse, SessionSummary, UnparsedSource } from '../types';
 
@@ -57,7 +58,7 @@ export class PacksApi extends SessionsApi {
           ...machineHeaders,
           'Content-Type': 'application/octet-stream',
           'x-memoar-source': source,
-          'x-memoar-source-path': file.name,
+          'x-memoar-source-path': encodeSourcePath(file.name),
         },
         body: new Blob([bytes], { type: 'application/octet-stream' }),
       });

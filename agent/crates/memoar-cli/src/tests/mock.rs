@@ -47,6 +47,9 @@ pub(crate) struct MockOptions {
     pub(crate) retired_machine: bool,
     /// How many ingest requests to refuse as if the machine token was revoked.
     pub(crate) revoked_machine_tokens: usize,
+    /// Answer a key revoking itself with 403, as an archive from before that
+    /// was allowed does.
+    pub(crate) refuse_self_revocation: bool,
 }
 
 pub(crate) fn spawn_mock_api(
@@ -97,6 +100,7 @@ pub(crate) fn spawn_mock(
         slow_by,
         retired_machine,
         revoked_machine_tokens,
+        refuse_self_revocation,
     } = options;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
@@ -151,16 +155,13 @@ pub(crate) fn spawn_mock(
 
             let (status, response) = match (method.as_str(), path.as_str()) {
                 ("POST", "/v1/auth/login") => (200, json!({"accessToken": "user-token"})),
-                // A capture key cannot revoke itself: it does not hold
-                // keys:write. The password session can.
+                // A capture key does not hold keys:write, so it may revoke
+                // itself and nothing else. The password session may revoke any.
                 ("DELETE", path)
                     if path.starts_with("/v1/auth/api-keys/")
                         && headers.contains("x-memoar-key") =>
                 {
-                    (
-                        403,
-                        json!({"title": "Forbidden", "detail": "Missing required scope: keys:write"}),
-                    )
+                    super::mock_keys::key_deleting(path, &headers, refuse_self_revocation)
                 }
                 ("DELETE", path) if path.starts_with("/v1/auth/api-keys/") => (200, json!({})),
                 ("GET", "/v1/auth/api-keys") => (

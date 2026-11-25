@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::error::DaemonError;
+use crate::header_path::encode_source_path;
 use crate::manifest::{IngestManifest, IngestReceipt, SyncTransport};
 use crate::patient::send_patiently;
 use crate::queue::QueuedArtifact;
@@ -213,7 +214,10 @@ impl SyncTransport for HttpTransport {
                 self.endpoint, artifact.sha256
             )))?
             .header("x-memoar-source", &artifact.source)
-            .header("x-memoar-source-path", &artifact.source_path)
+            .header(
+                "x-memoar-source-path",
+                encode_source_path(&artifact.source_path),
+            )
             .header("content-type", "application/octet-stream")
             .body(bytes);
         self.send(request).map(|_| ())

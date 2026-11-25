@@ -3,7 +3,7 @@ import type { Response } from "express";
 
 import type { TenantContext } from "../archive-store.js";
 
-import { Public, Tenant } from "./decorators.js";
+import { Public, RequireScopes, Tenant } from "./decorators.js";
 
 import { AuthService } from "./auth.service.js";
 import { ChangePasswordDto, CreateApiKeyDto, EmailLoginDto, EmailRegisterDto, IssueMachineTokenDto } from "./auth.dto.js";
@@ -138,8 +138,13 @@ export class AuthController {
 
   @Delete("api-keys/:keyId")
   @HttpCode(204)
+  // No scope at the guard: a key may always revoke itself, which is how a CLI
+  // signs out. Whether this caller may revoke this key is decided by the
+  // service, which needs the key id to answer.
+  @RequireScopes()
   async revokeApiKey(@Tenant() context: TenantContext, @Param("keyId", ParseUUIDPipe) keyId: string): Promise<void> {
-    // Idempotent for a key that exists; 404 only when the id is unknown.
+    // Idempotent for a key that exists. 404 when the id is unknown, and when the
+    // caller may not revoke it.
     if (!await this.auth.revokeApiKey(context, keyId)) throw new NotFoundException("API key not found");
   }
 }

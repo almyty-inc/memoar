@@ -55,14 +55,12 @@ pub(crate) fn logout(args: &LogoutArgs, paths: &RuntimePaths) -> Result<CommandO
                     result
                 })
             } else {
-                // The key revoking itself. The archive refuses that today,
-                // because a capture key does not hold `keys:write`, and says
-                // so with a 403 the report turns into the next step.
-                revoke_key(
-                    &ApiClient::new(&config.endpoint, Some(&stored)),
-                    secret,
-                    key_id.as_deref(),
-                )
+                // The key revoking itself, which the archive allows without
+                // `keys:write`. It needs the id `login` recorded: a key stored
+                // by an older agent has none and cannot list keys to find it,
+                // and an archive older than self-revocation answers 403. Both
+                // end in a report that names the next step.
+                revoke_own_key(&config.endpoint, &stored, secret, key_id.as_deref())
             };
             revocation_report(outcome)
         }
@@ -75,6 +73,22 @@ pub(crate) fn logout(args: &LogoutArgs, paths: &RuntimePaths) -> Result<CommandO
     };
     let removed = store.remove()?;
     Ok(signed_out(removed, key, machine))
+}
+
+/// Asks the stored key to revoke itself.
+///
+/// A 401 means the archive no longer accepts the key at all, which is the
+/// state `logout` wants, so it is reported as a key the archive no longer had.
+fn revoke_own_key(
+    endpoint: &str,
+    stored: &Credential,
+    secret: &str,
+    key_id: Option<&str>,
+) -> Result<Revocation, AppError> {
+    match revoke_key(&ApiClient::new(endpoint, Some(stored)), secret, key_id) {
+        Err(error) if error.http_status == Some(401) => Ok(Revocation::AlreadyGone),
+        other => other,
+    }
 }
 
 fn deregister(api: &ApiClient, config: &Config) -> Value {

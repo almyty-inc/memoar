@@ -117,6 +117,29 @@ describe("api keys", () => {
     expect((await api.request("DELETE", "/auth/api-keys/0191cafe-0000-7000-8000-00000000dead")).status).toBe(404);
   });
 
+  it("lets a key revoke itself without keys:write, and nothing else", async () => {
+    // How a signed-in CLI signs out. It holds one key and no keys:write, so the
+    // route used to refuse it and the key stayed live after `memoar logout`.
+    const mine = await api.request("POST", "/auth/api-keys", { body: { name: "cli", scopes: ["archive:read"] } });
+    const sibling = await api.request("POST", "/auth/api-keys", { body: { name: "cli elsewhere", scopes: ["archive:read"] } });
+    const headers = { "x-memoar-key": str(mine.body, "secret") };
+    const myId = str(mine.body.apiKey as Record<string, string>, "id");
+    const siblingId = str(sibling.body.apiKey as Record<string, string>, "id");
+
+    // Another key, or an id that does not exist, reads the same: not found.
+    expect((await api.request("DELETE", `/auth/api-keys/${siblingId}`, { token: null, headers })).status).toBe(404);
+    expect((await api.request("DELETE", "/auth/api-keys/0191cafe-0000-7000-8000-00000000dead", { token: null, headers })).status).toBe(404);
+    // Listing keys still needs the scope.
+    expect((await api.request("GET", "/auth/api-keys", { token: null, headers })).status).toBe(403);
+
+    expect((await api.request("DELETE", `/auth/api-keys/${myId}`, { token: null, headers })).status).toBe(204);
+    expect((await api.request("GET", "/sessions", { token: null, headers })).status).toBe(401);
+
+    const listed = arr((await api.request("GET", "/auth/api-keys")).body);
+    expect(typeof listed.find((item) => item.id === myId)?.revokedAt, "the list must mark the key revoked").toBe("string");
+    expect(listed.find((item) => item.id === siblingId)?.revokedAt).toBeNull();
+  });
+
   it("holds an api key to the scopes it was granted", async () => {
     const readOnly = await api.request("POST", "/auth/api-keys", { body: { name: "read-only", scopes: ["archive:read"] } });
     const secret = str(readOnly.body, "secret");
