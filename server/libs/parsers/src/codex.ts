@@ -134,9 +134,15 @@ export class CodexRolloutV1Parser implements VersionedParser {
       .filter((turn) => turn.blocks.length > 0)
       .map((turn, ordinal) => ({ ...turn, ordinal }));
 
-    // A rollout with nothing but an encrypted compaction and settings, like a
-    // guardian thread, holds no conversation, and is refused with its bytes.
     if (!withOrdinals.some((turn) => turn.role === "user" || turn.role === "assistant")) {
+      // A rollout with nothing but compactions and bookkeeping, like a guardian
+      // thread, holds no conversation by Codex's own structure: read in full,
+      // nothing to archive.
+      if (events.every(isConversationless)) {
+        return { kind: "empty", parser: parserVersion(this.source), diagnostic: "codex rollout-v1 holds only compactions and bookkeeping, no messages" };
+      }
+      // Items were there and none was a message anybody wrote, which is the
+      // shape of a format this parser does not know yet.
       return { kind: "unknown", diagnostic: "codex rollout-v1 stream contained no readable messages", raw: request.raw };
     }
     return {
@@ -149,4 +155,11 @@ export class CodexRolloutV1Parser implements VersionedParser {
       }],
     };
   }
+}
+
+/** A compaction, or an item Codex writes for itself, never a turn anybody took. */
+function isConversationless(record: Record<string, unknown>): boolean {
+  if (record.type === COMPACTED) return true;
+  const type = stringValue(record.payload as Record<string, unknown>, "type");
+  return type === "compaction" || (type !== null && CODEX_BOOKKEEPING_ITEMS.has(type));
 }

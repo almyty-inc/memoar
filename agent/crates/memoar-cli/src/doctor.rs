@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 use crate::CommandOutput;
 use crate::api::ApiClient;
 use crate::config::{RuntimePaths, load_config, load_credential};
+use crate::doctor_contract::contract_check;
 use crate::error::AppError;
 use crate::machine::{issue_machine_token, machine_exists, patch_machine_state};
 use crate::service::background;
@@ -64,15 +65,6 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let config = load_config(paths)?;
     let credential = load_credential(paths)?;
     let mut checks = vec![
-        check(
-            "contract_version",
-            Some(config.contract_version == memoar_canonical::CONTRACT_VERSION),
-            format!(
-                "config says {}, this client speaks {}",
-                config.contract_version,
-                memoar_canonical::CONTRACT_VERSION
-            ),
-        ),
         queue_check(paths),
         crate::capture_policy::disk_check(paths, &config),
         check(
@@ -111,6 +103,9 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     checks.extend(archive_checks(&api, &config.endpoint, &config.machine_id));
     checks.push(machine_state_check(&api, &config, paths));
     checks.push(unparsed_check(&api));
+    // Asked last so the other archive calls go first, listed first where the
+    // config comparison it replaces used to stand.
+    checks.insert(0, contract_check(&api, &config.endpoint));
 
     // Only a measured pass counts as a pass. `null` — could not be checked —
     // fails the total, because "I could not tell you" is not "you are fine",
@@ -241,6 +236,11 @@ fn machine_state_check(
 /// Keeping them is the right thing — a parser written later can still use them
 /// — but a tool that produces only these is capturing the wrong files, which is
 /// the one way capture fails without failing.
+///
+/// A file read in full and found to hold no conversation, such as a chat panel
+/// opened and never used, is not counted here. The archive records it as
+/// `parsed` with no session and an `empty:` diagnostic, so every artifact this
+/// check reports is one the archive could not read.
 ///
 /// An archive that cannot answer leaves this `null`. It used to leave it green,
 /// with the sentence "everything uploaded became a session" — a claim about

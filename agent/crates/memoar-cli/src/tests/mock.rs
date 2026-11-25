@@ -50,6 +50,8 @@ pub(crate) struct MockOptions {
     /// Answer a key revoking itself with 403, as an archive from before that
     /// was allowed does.
     pub(crate) refuse_self_revocation: bool,
+    /// The contract `/capabilities` claims. Empty means this client's own.
+    pub(crate) archive_contract: &'static str,
 }
 
 pub(crate) fn spawn_mock_api(
@@ -101,6 +103,7 @@ pub(crate) fn spawn_mock(
         retired_machine,
         revoked_machine_tokens,
         refuse_self_revocation,
+        archive_contract,
     } = options;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
@@ -238,6 +241,13 @@ pub(crate) fn spawn_mock(
                 // that never answered — `doctor` used to report the same
                 // green for both.
                 ("GET", "/v1/ingest/unparsed") => (200, json!({"items": []})),
+                ("GET", "/v1/capabilities") => (
+                    200,
+                    json!({"contractVersion": match archive_contract {
+                        "" => memoar_canonical::CONTRACT_VERSION,
+                        claimed => claimed,
+                    }}),
+                ),
                 ("POST", "/v1/pack") => (202, json!({"id": "pack-job"})),
                 ("POST", "/v1/convert") => (
                     202,

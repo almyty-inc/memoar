@@ -40,9 +40,9 @@ fn registrations(requests: &[super::mock::RecordedRequest]) -> Vec<&super::mock:
 /// is `x-memoar-key`, not the bearer.
 #[test]
 fn login_trades_the_hour_long_token_for_a_capture_key() {
-    // One more than `login` needs: `doctor` below now also asks the archive
-    // about unparsed artifacts instead of assuming the answer.
-    let (endpoint, requests, server) = spawn_mock_api(8, None);
+    // Two more than `login` needs: `doctor` below also asks the archive about
+    // unparsed artifacts and about its contract instead of assuming either.
+    let (endpoint, requests, server) = spawn_mock_api(9, None);
     let temp = tempfile::tempdir().unwrap();
     let paths = fixture_paths(&temp);
     fs::create_dir_all(&paths.home).unwrap();
