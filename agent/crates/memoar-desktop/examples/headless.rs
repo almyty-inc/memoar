@@ -1,10 +1,10 @@
-//! Drives the desktop app's capture without opening a window, so the code the
-//! window calls can be exercised against a real archive.
+//! Drives the desktop app's sign-in and capture without opening a window, so
+//! the code the window calls can be exercised against a real archive.
+//!
+//! cargo run --example headless -- <scratch-root> <endpoint> <email> <password>
 use std::path::PathBuf;
 
-#[path = "../src/capture.rs"]
-#[allow(dead_code, reason = "the window uses the rest of this module")]
-mod capture;
+use memoar_desktop::{Credentials, Paths, State, account, capture};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -13,19 +13,34 @@ fn main() {
     let email = args.next().expect("email");
     let password = args.next().expect("password");
 
-    let paths = capture::Paths {
+    let paths = Paths {
         config_dir: root.join("config"),
         data_dir: root.join("data"),
         home: root.join("home"),
     };
-    let state = capture::State::default();
+    let state = State::default();
+    let credentials = Credentials::Password { email, password };
 
     println!(
         "before: {}",
         serde_json::to_string(&capture::status(&paths, &state)).unwrap()
     );
-    let signed = capture::sign_in(&paths, &endpoint, &email, &password).expect("sign in");
-    println!("signed in: {}", serde_json::to_string(&signed).unwrap());
-    let synced = capture::sync_now(&paths, &state, "2026-09-04T10:00:00Z").expect("sync");
-    println!("after capture: {}", serde_json::to_string(&synced).unwrap());
+    match account::sign_in(&paths, &state, &endpoint, &credentials) {
+        Ok(signed) => println!("signed in: {}", serde_json::to_string(&signed).unwrap()),
+        Err(failure) => {
+            println!(
+                "sign-in failed: {}",
+                serde_json::to_string(&failure).unwrap()
+            );
+            return;
+        }
+    }
+    let synced = capture::sync_now(&paths, &state, &chrono::Utc::now().to_rfc3339());
+    match synced {
+        Ok(status) => println!("after capture: {}", serde_json::to_string(&status).unwrap()),
+        Err(failure) => println!(
+            "capture failed: {}",
+            serde_json::to_string(&failure).unwrap()
+        ),
+    }
 }

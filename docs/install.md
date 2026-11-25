@@ -245,24 +245,83 @@ that belongs to another configuration directory, unless you pass `--force`.
 
 ## The desktop application
 
-For a machine where nobody wants a command-line tool, `memoar-desktop` does the
-same capture in a window: sign in, and it registers the machine and captures
-every two minutes, showing what it has uploaded and any failure. It reads and
-writes the same configuration and offline queue as the CLI, so a machine set up
-with one is already set up for the other.
+For a machine where nobody wants a command-line tool, the Memoar desktop
+application does the same capture in a native window on macOS, Linux and
+Windows. Sign in with the archive's address and either an email and password
+or an API key, the same two ways `memoar login` accepts. The app registers the
+machine and captures every two minutes. Its window shows:
+
+- the archive and the machine's id
+- when it last captured, and how many sessions that capture uploaded
+- how many artifacts this machine has uploaded in total, and how many wait in the queue
+- which agents' session stores it found on this machine
+- the last failure, in a sentence, with what the archive said underneath
+
+From the window you can capture now, pause and resume the timer, open the web
+application, change what is masked before upload, and sign out. Signing out
+removes the machine's credential and keeps its configuration and queue, so
+signing in again reuses the same machine record and loses nothing captured.
+
+"Open web app" goes to the archive address without its `/v1`. When the web
+application is served from somewhere else, as in the Compose stack where the
+API is on port 4000 and the web app on 5173, give its address in the optional
+"Web app address" field at sign-in. The app keeps it on this machine.
+
+Failures are handled by kind. An archive that cannot be reached, or answers
+with a server error, is tried again on the next cycle. A wrong password is
+refused at sign-in with the archive's reason. When the archive stops accepting
+the machine's key, because it was revoked or the machine was removed, the app
+stops capturing and asks for a new sign-in instead of retrying every two
+minutes.
+
+The app runs the CLI's own code and reads and writes the same configuration
+and offline queue as `memoar` (see "Where the agent keeps its files"), so a
+machine set up with one is already set up for the other. It honours
+`MEMOAR_CONFIG_DIR`, `MEMOAR_DATA_DIR` and `MEMOAR_CAPTURE_HOME` as the CLI does.
+
+The window is drawn with [NSH](https://nsh.dev): AppKit on macOS 14 or later,
+GTK 4.14 or later on Linux, and Win32 on Windows 10 1809 or later. It lives in
+`agent/crates/memoar-desktop`, a Cargo workspace of its own. To build it you
+need Rust, the `nsh` CLI at the version the crate pins, and on Linux the GTK 4
+and WebKitGTK 6.0 development files (`libgtk-4-dev` and `libwebkitgtk-6.0-dev`
+on Ubuntu 24.04, which bring libsoup 3 and JavaScriptCore with them):
 
 ```sh
-cargo run --release -p memoar-desktop --manifest-path agent/Cargo.toml
+cargo install nsh-cli --version 0.2.0 --locked
+cd agent/crates/memoar-desktop
+nsh run                       # a development window on this machine
+cargo run --release           # the same window, without nsh
 ```
 
-The window shows capture state only. Reading the archive stays in the web
-application, which the window can open.
+Tests and packages:
 
-From a release that includes it, the desktop app comes as
-`memoar-desktop-<version>-macos-arm64.dmg`, `memoar-desktop-<version>-linux-x64.tar.gz`
-and `memoar-desktop-<version>-windows-x64.zip`. Releases built before the
-desktop app's packaging script landed do not include it. Packaging is
-described in [releasing.md](releasing.md).
+```sh
+agent/scripts/test-desktop.sh      # Rust tests, then the window headless (nsh test) against a stand-in archive
+agent/scripts/package-desktop.sh   # an installable archive for this machine, in agent/dist/desktop
+```
+
+`package-desktop.sh` builds on the operating system it runs on and writes
+`memoar-desktop-<version>-macos-<arch>.zip` (an ad hoc signed `Memoar.app`),
+`memoar-desktop-<version>-linux-<arch>.tar.gz` (the runner, its bundle and a
+`.desktop` file) or `memoar-desktop-<version>-windows-<arch>.zip`
+(`Memoar.exe` and its bundle). CI builds all three on every change to the agent
+and keeps them as workflow artifacts.
+
+A release ships the desktop app as `memoar-desktop-<version>-macos-arm64.dmg`,
+`memoar-desktop-<version>-linux-x64.tar.gz` and
+`memoar-desktop-<version>-windows-x64.zip`. The release workflow signs and
+notarizes the macOS app and signs the Windows one when the signing secrets are
+set, and marks them unsigned when they are not. Releases built before the
+desktop app's packaging script landed do not include it. Packaging and signing
+are described in [releasing.md](releasing.md).
+
+The Linux archive is not a distribution package and declares no dependencies.
+Install GTK 4 and WebKitGTK 6.0 before running it. On Ubuntu 24.04 and Debian
+13:
+
+```sh
+sudo apt-get install libgtk-4-1 libwebkitgtk-6.0-4
+```
 
 ## Materialize a conversion on this machine
 

@@ -1,21 +1,44 @@
 [package]
 name = "memoar-desktop"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
+version = "0.4.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
 description = "Desktop application: captures this machine's sessions and shows what the archive holds"
 
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
+# A workspace of its own, as NSH apps are: `nsh test` and `nsh package` write
+# runner crates under `.nsh/rust` that depend on this one by path, and the agent
+# workspace has no reason to resolve GTK, AppKit or Win32 for every CLI build.
+[workspace]
+
+[lib]
+name = "memoar_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "memoar-desktop"
+path = "src/main.rs"
 
 [dependencies]
 memoar-cli = { path = "../memoar-cli" }
-memoar-connectors = { path = "../memoar-connectors" }
-chrono.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-tauri = { version = "2", features = [] }
+chrono = { version = "0.4", features = ["clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+env_logger = "0.11"
+
+# Pinned to the `nsh` CLI that builds the runners. Keep these and the version
+# `agent/scripts/package-desktop.sh` installs the same when upgrading.
+nsh-core = "=0.2.0"
+nsh-base = "=0.2.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nsh-platform-linux = { version = "=0.2.0", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos = { version = "=0.2.0", default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+nsh-platform-windows = { version = "=0.2.0", default-features = false }
 
 [dev-dependencies]
-tempfile.workspace = true
+tempfile = "3"
