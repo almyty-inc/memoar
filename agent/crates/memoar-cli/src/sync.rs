@@ -13,7 +13,10 @@ use crate::args::SyncArgs;
 use crate::config::{Config, RuntimePaths, load_config, load_credential};
 use crate::credential::Credential;
 use crate::error::{AppError, map_capture_error, map_queue_error, map_sync_error};
-use crate::machine::{capture_transport, issue_machine_token, patch_machine_state};
+use crate::lock::acquire_sync_lock;
+use crate::machine::{
+    capture_transport, issue_machine_token, machine_refusal, patch_machine_state,
+};
 use crate::watch::watch;
 
 pub(crate) fn sync(
@@ -26,6 +29,8 @@ pub(crate) fn sync(
     }
     let config = load_config(paths)?;
     let credential = load_credential(paths)?;
+    // Held until this function returns, a watch included.
+    let _lock = acquire_sync_lock(paths)?;
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let enabled = enabled_sources(&config);
     let captured = capture_sources_with_redaction(
@@ -90,16 +95,18 @@ pub(crate) fn sync_pending(sweep: &mut Sweep, captured: CaptureSummary) -> Resul
         ..
     } = *sweep;
     let api = ApiClient::new(&config.endpoint, Some(credential));
-    patch_machine_state(&api, config, paths)?;
-    let (token, expires_at) = issue_machine_token(&api, &config.machine_id)?;
+    patch_machine_state(&api, config, paths)
+        .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
+    let (token, expires_at) = issue_machine_token(&api, &config.machine_id)
+        .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
     let report = SyncEngine::new(capture_transport(
         config,
         credential,
         &token,
         expires_at.as_deref(),
     ))
-    .sync(queue, &config.machine_id)
-    .map_err(map_sync_error)?;
+    .drain(queue, &config.machine_id)
+    .map_err(|error| machine_token_refusal(map_sync_error(error)))?;
     // The instruction files the agents on this machine read, for the projects
     // this account already has sessions in. They are not transcripts and do not
     // go through the queue: what matters is whether the text changed.
@@ -181,4 +188,28 @@ fn archived_workspaces(api: &ApiClient, home: &Path) -> Vec<PathBuf> {
         }
     }
     roots.into_iter().collect()
+}
+
+/// A refusal of the machine token, as opposed to the account credential.
+///
+/// The ingest requests are made with the short-lived machine token, and this
+/// cycle has just used the account key to update the machine and mint that
+/// token. So a 401 or 403 here is the token, revoked with `POST
+/// /machines/{id}/tokens/revoke` after it was minted, and the contract says
+/// the agent mints a new one at its next cycle. Reported as retryable, so a
+/// watch waits a cycle instead of stopping over a lever made to be recovered
+/// from. If the account itself was revoked, the next cycle fails before this
+/// point, on a request made with it, and that one stops the watch.
+fn machine_token_refusal(error: AppError) -> AppError {
+    if !matches!(error.http_status, Some(401 | 403)) {
+        return error;
+    }
+    AppError {
+        code: "MEMOAR_MACHINE_TOKEN_REFUSED".to_owned(),
+        kind: "network".to_owned(),
+        exit_code: crate::error::EXIT_NETWORK,
+        hint: "The machine token was revoked after it was issued. The next sync mints a new one, so run it again.".to_owned(),
+        retryable: true,
+        ..error
+    }
 }

@@ -1,0 +1,324 @@
+{
+  "description": "What both scanners must mask, and what they must leave alone. Every token is fake and is split into parts, so this file holds no string shaped like a credential. A case's text is its parts joined, where a {repeat, times} part is that string repeated. 'masked' is the expected output with every redaction marker written as [REDACTED]. A case without 'masked' must come out unchanged. 'count' is how many secrets were masked or found. 'json' means the input and the output must both parse as JSON.",
+  "budgetMs": 4000,
+  "cases": [
+    {
+      "name": "AWS access key id",
+      "parts": ["export KEY_ID=", "AKIA", "FAKEEXAMPLE0000Z", " # rotate"],
+      "masked": "export KEY_ID=[REDACTED] # rotate",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "AWS temporary key id in a credentials file",
+      "parts": ["aws_access_key_id = ", "ASIA", "FAKEEXAMPLE1111Y"],
+      "masked": "aws_access_key_id = [REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "AWS access key id next to a non-ASCII letter",
+      "parts": ["é", "AKIA", "FAKEEXAMPLE0000Z", "ü"],
+      "masked": "é[REDACTED]ü",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "AWS secret access key in context",
+      "parts": ["aws_secret_access_key = ", "fakeFAKEfake", "FAKEfakeFAKEfake", "0000000000/+"],
+      "masked": "aws_secret_access_key = [REDACTED]",
+      "count": 1,
+      "kinds": ["credential"]
+    },
+    {
+      "name": "AWS secret access key in STS JSON",
+      "parts": ["{\"SecretAccessKey\": \"", "fakeFAKEfake", "FAKEfakeFAKEfake", "0000000000/+", "\"}"],
+      "masked": "{\"SecretAccessKey\": \"[REDACTED]\"}",
+      "count": 1,
+      "kinds": ["credential"],
+      "json": true
+    },
+    {
+      "name": "Google API key",
+      "parts": ["const key = \"", "AIza", "FAKEfakeFAKEfakeFAKEfakeFAKEfake_-0", "\";"],
+      "masked": "const key = \"[REDACTED]\";",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Google OAuth client secret",
+      "parts": ["client: ", "GOCSPX", "-FAKEfakeFAKEfakeFAKEfakeFAKE"],
+      "masked": "client: [REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "GCP service account key file",
+      "parts": ["{\"type\": \"service_account\", \"private_key_id\": \"", "0123456789abcdef", "0123456789abcdef01234567", "\", \"private_key\": \"-----BEGIN ", "PRIVATE KEY-----\\nMIIEfakeFAKEfake\\nFAKEfakeFAKE\\n-----END PRIVATE KEY-----\\n\"}"],
+      "masked": "{\"type\": \"service_account\", \"private_key_id\": \"[REDACTED]\", \"private_key\": \"[REDACTED]\\n\"}",
+      "count": 2,
+      "kinds": ["credential", "private_key"],
+      "json": true
+    },
+    {
+      "name": "Azure storage connection string",
+      "parts": ["DefaultEndpointsProtocol=https;AccountName=fakeacct;AccountKey=", {"repeat": "FAKE", "times": 21}, "00==", ";EndpointSuffix=core.windows.net"],
+      "masked": "DefaultEndpointsProtocol=https;AccountName=fakeacct;AccountKey=[REDACTED];EndpointSuffix=core.windows.net",
+      "count": 1,
+      "kinds": ["connection_string"]
+    },
+    {
+      "name": "Azure SAS signature",
+      "parts": ["https://fakeacct.blob.core.windows.net/c/b?sv=2022-11-02&sig=", "FAKEfakeFAKEfake%2Bfake%3D", "&se=2030-01-01"],
+      "masked": "https://fakeacct.blob.core.windows.net/c/b?sv=2022-11-02&sig=[REDACTED]&se=2030-01-01",
+      "count": 1,
+      "kinds": ["connection_string"]
+    },
+    {
+      "name": "Azure AD client secret",
+      "parts": ["AZURE_CLIENT_SECRET=", "abc8Q", "~FAKEfakeFAKEfakeFAKEfakeFAKEfake00"],
+      "masked": "AZURE_CLIENT_SECRET=[REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "GitHub tokens of every prefix",
+      "parts": ["tokens: ", "ghp", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake0000 ", "gho", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake0000 ", "ghu", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake0000 ", "ghs", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake0000 ", "ghr", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake0000"],
+      "masked": "tokens: [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED]",
+      "count": 5,
+      "kinds": ["api_key", "api_key", "api_key", "api_key", "api_key"]
+    },
+    {
+      "name": "GitHub fine-grained token",
+      "parts": ["use ", "github_pat", "_", {"repeat": "FAKEfake", "times": 10}, "_00", " for the bot"],
+      "masked": "use [REDACTED] for the bot",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "GitLab token in a clone URL",
+      "parts": ["git clone https://oauth2:", "glpat", "-FAKEfakeFAKEfake0000", "@gitlab.example.com/group/repo.git"],
+      "masked": "git clone https://oauth2:[REDACTED]@gitlab.example.com/group/repo.git",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Slack tokens of every prefix",
+      "parts": ["xox", "b-0000000000-FAKEfakeFAKE ", "xox", "p-0000000000-FAKEfakeFAKE ", "xox", "a-0000000000-FAKEfakeFAKE ", "xox", "o-0000000000-FAKEfakeFAKE ", "xox", "s-0000000000-FAKEfakeFAKE ", "xox", "r-0000000000-FAKEfakeFAKE ", "xox", "e.xoxp-0000000000-FAKEfakeFAKE ", "xox", "e-0000000000-FAKEfakeFAKE ", "xapp", "-1-FAKE0000-FAKEfakeFAKE"],
+      "masked": "[REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED]",
+      "count": 9,
+      "kinds": ["api_key", "api_key", "api_key", "api_key", "api_key", "api_key", "api_key", "api_key", "api_key"]
+    },
+    {
+      "name": "Slack webhook URL",
+      "parts": ["curl -X POST https://hooks.slack.com/services/", "TFAKE0000/BFAKE0000/fakeFAKEfakeFAKEfake0000", " -d @msg.json"],
+      "masked": "curl -X POST https://hooks.slack.com/services/[REDACTED] -d @msg.json",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Stripe secret, restricted and webhook keys",
+      "parts": ["sk", "_live_FAKEfakeFAKEfake0000 ", "rk", "_live_FAKEfakeFAKEfake0000 ", "whsec", "_FAKEfakeFAKEfakeFAKEfake0000"],
+      "masked": "[REDACTED] [REDACTED] [REDACTED]",
+      "count": 3,
+      "kinds": ["api_key", "api_key", "api_key"]
+    },
+    {
+      "name": "npm token in .npmrc",
+      "parts": ["//registry.npmjs.org/:_authToken=", "npm", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake0000"],
+      "masked": "//registry.npmjs.org/:_authToken=[REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "PyPI token in .pypirc",
+      "parts": ["username = __token__\npassword = ", "pypi", "-AgEIcHlwaS5vcmc", {"repeat": "FAKEfake", "times": 8}],
+      "masked": "username = __token__\npassword = [REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "OpenAI project key",
+      "parts": ["OPENAI_API_KEY=", "sk", "-proj-FAKEfakeFAKEfakeFAKEfake0000"],
+      "masked": "OPENAI_API_KEY=[REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Anthropic key",
+      "parts": ["export ANTHROPIC_API_KEY=\"", "sk", "-ant-api03-FAKEfakeFAKEfakeFAKEfake0000", "\""],
+      "masked": "export ANTHROPIC_API_KEY=\"[REDACTED]\"",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Legacy sk- key",
+      "parts": ["the old key was ", "sk", "-FAKEfakeFAKEfake0000", " and it is gone"],
+      "masked": "the old key was [REDACTED] and it is gone",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Hugging Face token",
+      "parts": ["huggingface-cli login --token ", "hf", "_FAKEfakeFAKEfakeFAKEfakeFAKEfake00"],
+      "masked": "huggingface-cli login --token [REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "Twilio API key and auth token",
+      "parts": ["TWILIO_API_KEY=", "SK", "0123456789abcdef0123456789abcdef", "\nTWILIO_AUTH_TOKEN=", "fedcba9876543210", "fedcba9876543210"],
+      "masked": "TWILIO_API_KEY=[REDACTED]\nTWILIO_AUTH_TOKEN=[REDACTED]",
+      "count": 2,
+      "kinds": ["api_key", "credential"]
+    },
+    {
+      "name": "SendGrid key",
+      "parts": ["SENDGRID=", "SG", ".FAKEfakeFAKEfakeFAKE00.", "FAKEfakeFAKEfakeFAKEfakeFAKEfakeFAKEfake000"],
+      "masked": "SENDGRID=[REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "memoar token",
+      "parts": ["memoar", "_", {"repeat": "fAkE", "times": 10}, "000"],
+      "masked": "[REDACTED]",
+      "count": 1,
+      "kinds": ["api_key"]
+    },
+    {
+      "name": "JWT",
+      "parts": ["cookie: session=", "eyJ", "hbGciOiJIUzI1NiJ9.", "eyJzdWIiOiJmYWtlIn0.", "ZmFrZS1zaWduYXR1cmUtZmFrZQ"],
+      "masked": "cookie: session=[REDACTED]",
+      "count": 1,
+      "kinds": ["jwt"]
+    },
+    {
+      "name": "PEM private keys of several kinds",
+      "parts": ["-----BEGIN RSA ", "PRIVATE KEY-----\nMIIfake\nFAKE\n-----END RSA PRIVATE KEY-----\nand\n-----BEGIN OPENSSH ", "PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAfake\n-----END OPENSSH PRIVATE KEY-----\nand\n-----BEGIN ENCRYPTED ", "PRIVATE KEY-----\nMIIfake\n-----END ENCRYPTED PRIVATE KEY-----"],
+      "masked": "[REDACTED]\nand\n[REDACTED]\nand\n[REDACTED]",
+      "count": 3,
+      "kinds": ["private_key", "private_key", "private_key"]
+    },
+    {
+      "name": "Bearer header in a curl command",
+      "parts": ["curl -H \"Authorization: Bearer ", "fakeFAKEfake0000", "\" https://api.example.com"],
+      "masked": "curl -H \"Authorization: Bearer [REDACTED]\" https://api.example.com",
+      "count": 1,
+      "kinds": ["credential"]
+    },
+    {
+      "name": "Bearer header carrying a JWT",
+      "parts": ["{\"authorization\":\"Bearer ", "eyJ", "hbGciOiJIUzI1NiJ9.", "eyJzdWIiOiJmYWtlIn0.", "ZmFrZS1zaWduYXR1cmUtZmFrZQ", "\"}"],
+      "masked": "{\"authorization\":\"Bearer [REDACTED]\"}",
+      "count": 1,
+      "kinds": ["credential"],
+      "json": true
+    },
+    {
+      "name": "Passwords and secrets as people write them",
+      "parts": ["password=hunter2hunter2\nDB_PASSWORD: \"fake-pass\"\n{\"client_secret\": \"fakeFAKE\", \"apiKey\":\"fake123\"}\nGITHUB_TOKEN=", "not-a-real-token"],
+      "masked": "password=[REDACTED]\nDB_PASSWORD: \"[REDACTED]\"\n{\"client_secret\": \"[REDACTED]\", \"apiKey\":\"[REDACTED]\"}\nGITHUB_TOKEN=[REDACTED]",
+      "count": 5,
+      "kinds": ["credential", "credential", "credential", "credential", "credential"]
+    },
+    {
+      "name": "Database URLs with credentials",
+      "parts": ["DATABASE_URL=postgres://app:", "fakepass", "@db.internal:5432/app\nmongodb+srv://u:", "p4ss", "@cluster0.example.net/db\nredis://:", "fakepass", "@cache:6379/0"],
+      "masked": "DATABASE_URL=postgres://app:[REDACTED]@db.internal:5432/app\nmongodb+srv://u:[REDACTED]@cluster0.example.net/db\nredis://:[REDACTED]@cache:6379/0",
+      "count": 3,
+      "kinds": ["connection_string", "connection_string", "connection_string"]
+    },
+    {
+      "name": "A shell command inside a JSON line stays JSON",
+      "parts": ["{\"type\":\"user\",\"message\":{\"content\":\"export API_KEY=", "sk", "-proj-FAKEfakeFAKEfakeFAKEfake0000 && echo \\\"done\\\" && curl -u admin:", "fakepw", " http://a:b@c\"}}"],
+      "masked": "{\"type\":\"user\",\"message\":{\"content\":\"export API_KEY=[REDACTED] && echo \\\"done\\\" && curl -u admin:fakepw http://a:[REDACTED]@c\"}}",
+      "count": 2,
+      "kinds": ["api_key", "connection_string"],
+      "json": true
+    },
+    {
+      "name": "A private key indented inside YAML",
+      "parts": ["tls:\n  key: |\n    -----BEGIN EC ", "PRIVATE KEY-----\n    MHcCAQEEIfakeFAKEfake\n    AwEHoUQDQgAEfake==\n    -----END EC PRIVATE KEY-----\n  cert: none"],
+      "masked": "tls:\n  key: |\n    [REDACTED]\n  cert: none",
+      "count": 1,
+      "kinds": ["private_key"]
+    },
+    {
+      "name": "Legacy encrypted and PGP private keys with header lines",
+      "parts": ["-----BEGIN RSA ", "PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,0000FAKE0000FAKE\n\nMIIfakeFAKE\n-----END RSA PRIVATE KEY-----\n-----BEGIN PGP ", "PRIVATE KEY BLOCK-----\nVersion: Fake 1.0\n\nlQOYBFakeFAKE\n=fake\n-----END PGP PRIVATE KEY BLOCK-----"],
+      "masked": "[REDACTED]\n[REDACTED]",
+      "count": 2,
+      "kinds": ["private_key", "private_key"]
+    },
+    {
+      "name": "A private key body past the old 8000-character bound",
+      "parts": ["-----BEGIN ", "PRIVATE KEY-----\n", {"repeat": "MIIEowIBAAKCAQEAfakeFAKEfakeFAKEfakeFAKEfakeFAKEfakeFAKEfakeFAKE\n", "times": 200}, "-----END PRIVATE KEY-----"],
+      "masked": "[REDACTED]",
+      "count": 1,
+      "kinds": ["private_key"]
+    },
+    {
+      "name": "git SHAs are not keys",
+      "parts": ["commit 3f786850e387550fdab836ed7e6dc881de23001b merged into 9c1185a5c5e9fc54612808977ee8f548b2258d31"],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "UUIDs are not keys",
+      "parts": ["{\"uuid\":\"0191cafe-0000-7000-8000-00000000000a\",\"parentUuid\":\"9b2f6c1e-3d4a-4f5b-8c7d-1e2f3a4b5c6d\"}"],
+      "count": 0,
+      "kinds": [],
+      "json": true
+    },
+    {
+      "name": "An image as base64 is not a key",
+      "parts": ["{\"type\":\"image\",\"data\":\"", {"repeat": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg", "times": 2000}, "==\"}"],
+      "count": 0,
+      "kinds": [],
+      "json": true
+    },
+    {
+      "name": "Ordinary prose and accounting",
+      "parts": ["the secret to good tests is determinism. {\"max_tokens\": 4096, \"input_tokens\": 12}. ask-me-about-the-migration-later-today. the bearer instrument matured. sk_short. the authorization flow uses PKCE. postgres://localhost:5432/app and https://example.com:8443/path. AKIA", "FAKEEXAMPLE0000ZX is too long."],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "Adversarial: a key word repeated without a separator",
+      "parts": [{"repeat": "password", "times": 200000}],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "Adversarial: private key headers with no END line",
+      "parts": [{"repeat": "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n", "times": 20000}],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "Adversarial: JWT headers that never finish",
+      "parts": [{"repeat": "eyJhbGciOiJIUzI1NiJ9.eyJabc. ", "times": 50000}, {"repeat": "eyJabc", "times": 300000}],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "Adversarial: URLs that never reach an @",
+      "parts": [{"repeat": "postgres://user:passwordpassword/", "times": 50000}],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "Adversarial: one long word",
+      "parts": [{"repeat": "a", "times": 2000000}],
+      "count": 0,
+      "kinds": []
+    },
+    {
+      "name": "Adversarial: a large base64 blob",
+      "parts": [{"repeat": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg", "times": 40000}],
+      "count": 0,
+      "kinds": []
+    }
+  ]
+}

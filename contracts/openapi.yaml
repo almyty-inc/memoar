@@ -304,6 +304,13 @@ paths:
     delete:
       tags: [Auth]
       operationId: revokeApiKey
+      description: >-
+        Revokes an API key. A caller holding keys:write may revoke any key on the
+        account. Any API key may revoke itself without that scope, which is how a
+        signed-in CLI signs out. Revoking a key that is already revoked succeeds
+        and keeps the first revocation time. The answer is 404 for an unknown id,
+        and also for a key the caller may not revoke, so a narrow key cannot
+        learn which ids exist.
       parameters:
         - $ref: '#/components/parameters/KeyId'
       responses:
@@ -332,7 +339,22 @@ paths:
       parameters:
         - { name: sha256, in: path, required: true, schema: { type: string, pattern: '^[a-f0-9]{64}$' } }
         - { name: x-memoar-source, in: header, required: true, schema: { type: string } }
-        - { name: x-memoar-source-path, in: header, required: true, schema: { type: string } }
+        - name: x-memoar-source-path
+          in: header
+          required: true
+          description: >-
+            The path the artifact was captured from, as percent-encoded UTF-8: every
+            byte outside the RFC 3986 unreserved set (A-Z a-z 0-9 - . _ ~) is written
+            as %XX, path separators included. Header values are not UTF-8 on the wire,
+            and a server reading one as latin1 turned every non-ASCII path into
+            mojibake. The server decodes a value only when it consists of unreserved
+            characters and %XX escapes alone with at least one escape, and the escapes
+            decode as UTF-8. Any other value is an older client sending the raw path,
+            and is taken as it is, after undoing a latin1 reading of UTF-8 bytes. A
+            raw path always contains a separator, so it is never mistaken for an
+            encoded one.
+          schema: { type: string }
+          example: '%2FUsers%2F%C3%BCn%C3%AF%20%E6%97%A5%E6%9C%AC%2Fsession.jsonl'
       requestBody:
         required: true
         content:
@@ -1734,6 +1756,10 @@ components:
         scopes: { type: array, items: { type: string } }
         createdAt: { type: string, format: date-time }
         lastUsedAt: { type: [string, 'null'], format: date-time }
+        revokedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the key was revoked, or null while it still authenticates. Revoked keys stay in the list so a client can see that a sign-out took effect.
     IngestManifest:
       type: object
       required: [machineId, batchId, artifacts]

@@ -1,6 +1,7 @@
 use clap::Parser;
 use clap::error::ErrorKind;
-use memoar_cli::{AppError, Cli, RuntimePaths, error_envelope, execute, success_envelope};
+use memoar_cli::{AppError, Cli, Command, RuntimePaths, error_envelope, execute, success_envelope};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -32,6 +33,15 @@ fn main() -> ExitCode {
     };
     let paths = match RuntimePaths::resolve(&cli) {
         Ok(paths) => paths,
+        // These two touch no disk, and a probe asking what this binary
+        // supports must not fail for want of a home directory.
+        Err(_) if matches!(cli.command, Command::Capabilities | Command::Introspect) => {
+            RuntimePaths {
+                config_dir: PathBuf::new(),
+                data_dir: PathBuf::new(),
+                home: PathBuf::new(),
+            }
+        }
         Err(error) => return render_error(cli.json, error),
     };
     match execute(&cli, &paths) {

@@ -87,25 +87,44 @@ export class CredentialsService {
     return { apiKey: { id, name, prefix, scopes, createdAt, lastUsedAt: null }, secret };
   }
 
+  /**
+   * Every key on the account, revoked ones included and marked by `revokedAt`.
+   *
+   * The list showed a revoked key exactly as it showed a live one, so a person
+   * who had signed a laptop out could not tell from it whether that laptop's
+   * key still worked.
+   */
   async listApiKeys(context: TenantContext): Promise<{ items: Record<string, unknown>[] }> {
     if (this.dataSource) {
       const rows = await this.inTenant(context, (manager) => manager.getRepository(ApiKeyEntity).findBy({ tenantId: context.tenantId }));
       return { items: rows.map((row) => ({
         id: row.id, name: row.name, prefix: row.prefix, scopes: row.scopes,
         createdAt: row.createdAt.toISOString(), lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+        revokedAt: row.revokedAt?.toISOString() ?? null,
       })) };
     }
     return { items: [...this.devApiKeys.values()].filter((key) => key.tenantId === context.tenantId).map((key) => ({
       id: key.id, name: key.name, prefix: key.prefix, scopes: key.scopes, createdAt: key.createdAt, lastUsedAt: null,
+      revokedAt: key.revokedAt,
     })) };
   }
 
+  /**
+   * Revokes a key, keeping the moment of the first revocation if it is revoked twice.
+   *
+   * Any key on the account with keys:write. Without it, only the key making the
+   * request: a signed-in CLI holds one key and must be able to sign itself out
+   * without being able to revoke its siblings. Anything else answers as if the
+   * key did not exist, so a narrow key cannot probe which ids are real.
+   */
   async revokeApiKey(context: TenantContext, keyId: string): Promise<boolean> {
+    const mayRevokeAny = context.scopes.includes("*") || context.scopes.includes("keys:write");
+    if (!mayRevokeAny && !await this.isCallingApiKey(context, keyId)) return false;
     if (this.dataSource) {
       return this.inTenant(context, async (manager) => {
         const row = await manager.getRepository(ApiKeyEntity).findOneBy({ id: keyId, tenantId: context.tenantId });
         if (!row) return false;
-        const revokedAt = new Date();
+        const revokedAt = row.revokedAt ?? new Date();
         await manager.getRepository(ApiKeyEntity).update({ id: keyId, tenantId: context.tenantId }, { revokedAt });
         await manager.getRepository(AuthIdentityEntity).update({ kind: "api_key", lookupKey: row.prefix, tenantId: context.tenantId }, { revokedAt });
         return true;
@@ -113,8 +132,28 @@ export class CredentialsService {
     }
     const key = [...this.devApiKeys.values()].find((candidate) => candidate.id === keyId && candidate.tenantId === context.tenantId);
     if (!key) return false;
-    key.revokedAt = new Date().toISOString();
+    key.revokedAt ??= new Date().toISOString();
     return true;
+  }
+
+  /**
+   * Whether `keyId` names the API key this request authenticated with.
+   *
+   * The context carries the id of the identity row the key resolved to, not
+   * the id `POST /auth/api-keys` returned, so the two are joined on the key's
+   * prefix. Without a database they are one record and the ids are equal.
+   */
+  async isCallingApiKey(context: TenantContext, keyId: string): Promise<boolean> {
+    if (context.authType !== "api_key" || !context.credentialId) return false;
+    if (!this.dataSource) return context.credentialId === keyId;
+    const credentialId = context.credentialId;
+    return this.inTenant(context, async (manager) => {
+      const row = await manager.getRepository(ApiKeyEntity).findOneBy({ id: keyId, tenantId: context.tenantId });
+      if (!row) return false;
+      return manager.getRepository(AuthIdentityEntity).existsBy({
+        id: credentialId, kind: "api_key", lookupKey: row.prefix, tenantId: context.tenantId,
+      });
+    });
   }
 
   /**

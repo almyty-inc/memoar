@@ -17,6 +17,9 @@ struct Credentials {
     /// no longer what `login` writes.
     #[serde(default)]
     access_token: String,
+    /// The archive's id for `api_key`, which is what revoking it takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    api_key_id: Option<String>,
 }
 
 /// How the agent proves who it is.
@@ -107,12 +110,8 @@ impl CredentialStore for FileCredentialStore {
         let bytes = fs::read(&self.path).map_err(|error| {
             AppError::internal(format!("could not read {}: {error}", self.path.display()))
         })?;
-        let credentials: Credentials = serde_json::from_slice(&bytes).map_err(|error| {
-            AppError::internal(format!(
-                "invalid credentials {}: {error}",
-                self.path.display()
-            ))
-        })?;
+        let credentials: Credentials = serde_json::from_slice(&bytes)
+            .map_err(|error| AppError::damaged(&self.path, &error.to_string()))?;
         if let Some(key) = credentials.api_key.filter(|key| !key.is_empty()) {
             return Ok(Some(Credential::ApiKey(key)));
         }
@@ -126,17 +125,65 @@ impl CredentialStore for FileCredentialStore {
         if credential.secret().is_empty() {
             return Err(AppError::usage("credential cannot be empty"));
         }
-        let credentials = match credential {
+        self.write(&match credential {
             Credential::ApiKey(secret) => Credentials {
                 api_key: Some(secret.clone()),
+                api_key_id: None,
                 access_token: String::new(),
             },
             Credential::Bearer(secret) => Credentials {
                 api_key: None,
+                api_key_id: None,
                 access_token: secret.clone(),
             },
-        };
-        let bytes = serde_json::to_vec(&credentials)
+        })
+    }
+}
+
+impl FileCredentialStore {
+    /// Stores the key `login` minted, with the id the archive gave it.
+    ///
+    /// The id is what lets this machine revoke its own key later. Without it
+    /// the key could only be found by its prefix in the account's key list,
+    /// and every `login` left the previous key live on the server: one laptop
+    /// signing in five times held five working keys.
+    pub(crate) fn store_minted(&self, secret: &str, key_id: Option<&str>) -> Result<(), AppError> {
+        if secret.is_empty() {
+            return Err(AppError::usage("credential cannot be empty"));
+        }
+        self.write(&Credentials {
+            api_key: Some(secret.to_owned()),
+            api_key_id: key_id.map(str::to_owned),
+            access_token: String::new(),
+        })
+    }
+
+    /// The archive's id for the stored key, when `login` recorded one.
+    ///
+    /// Best effort by design: a file this cannot read is reported by `load`,
+    /// and `logout` has to be able to clear a damaged file regardless.
+    pub(crate) fn key_id(&self) -> Option<String> {
+        let bytes = fs::read(&self.path).ok()?;
+        serde_json::from_slice::<Credentials>(&bytes)
+            .ok()?
+            .api_key_id
+            .filter(|id| !id.is_empty())
+    }
+
+    /// Deletes the stored credential. False when there was none.
+    pub(crate) fn remove(&self) -> Result<bool, AppError> {
+        match fs::remove_file(&self.path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(AppError::internal(format!(
+                "could not remove {}: {error}",
+                self.path.display()
+            ))),
+        }
+    }
+
+    fn write(&self, credentials: &Credentials) -> Result<(), AppError> {
+        let bytes = serde_json::to_vec(credentials)
             .map_err(|error| AppError::internal(error.to_string()))?;
         atomic_replace(&self.path, &bytes, 0o600)
     }

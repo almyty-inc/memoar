@@ -5,6 +5,7 @@ import type { TenantContext } from "../archive-store.js";
 import { Tenant } from "../auth.js";
 import { DeltaDto, ManifestDto } from "./ingest.dto.js";
 import { IngestService } from "./ingest.service.js";
+import { decodeSourcePathHeader } from "./source-path.js";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 
@@ -23,7 +24,10 @@ function ingestHeaders(source: string | undefined, sourcePath: string | undefine
   if (!source || !SOURCE_HEADER.test(source)) {
     throw new BadRequestException("x-memoar-source must name a capture source, optionally as source@version");
   }
-  const path = sourcePath ?? "";
+  // Percent-encoded UTF-8 from a current agent, raw from an older one. See
+  // `decodeSourcePathHeader`. Checked after decoding, because an escape can
+  // spell a control character as easily as the raw byte can.
+  const path = decodeSourcePathHeader(sourcePath ?? "");
   if (path.length > SOURCE_PATH_MAX || /[\u0000-\u001f]/u.test(path)) {
     throw new BadRequestException(`x-memoar-source-path must be at most ${SOURCE_PATH_MAX} characters and carry no control characters`);
   }

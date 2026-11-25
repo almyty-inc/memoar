@@ -98,8 +98,12 @@ no sharing, no minting further credentials, no MCP. It is written to
 it does not expire, so `sync --watch` keeps running rather than dying with a
 browser token after an hour. Revoke it per computer in **Settings → API keys**.
 
-If you would rather not put a password in your shell history, pass `--token`
-with an API key created in **Settings → API keys**.
+To keep the password out of your shell history and the process list, pass
+`--password -` and pipe it in, or set `MEMOAR_PASSWORD`. Or pass `--token` with
+an API key created in **Settings → API keys**.
+
+Signing in again on the same computer revokes the key the previous `login`
+stored, so each computer holds one live key.
 
 ## 4. See what is on this machine
 
@@ -158,6 +162,31 @@ raw-first path as the agent — the bytes are preserved and then parsed.
 Run `npx memoar login` there against the same archive, then `npx memoar sync`. The archive is
 shared through the service. Do not copy the local queue between machines; each
 one keeps its own.
+
+## Signing a machine out
+
+```sh
+npx memoar logout
+```
+
+This revokes the API key `login` stored on this computer and deletes
+`credentials.json`. The key revokes itself, which the archive allows without any
+other scope. `config.json` stays, so a later `login` is recognised as the same
+computer rather than registered as another. Add `--deregister` to remove the
+machine from the account as well, which also revokes its machine tokens.
+
+Two cases still need your password, given as `--email you@example.com
+--password -`: a key stored by an agent older than the one that records the
+key's id, and an archive older than the release that lets a key revoke itself.
+Without the password, `logout` signs the computer out locally in both cases and
+reports that the key is live on the archive, with its name, for you to revoke in
+**Settings → API keys**. A key you created by hand and passed to `login --token`
+is never revoked by `logout`, because it may be in use elsewhere.
+
+A machine deregistered from the web app stops syncing at the next cycle:
+`sync --watch` exits with `MEMOAR_MACHINE_RETIRED` and says to run
+`memoar login`, which registers the computer again. What was queued locally is
+kept and uploads after that.
 
 ## What next
 

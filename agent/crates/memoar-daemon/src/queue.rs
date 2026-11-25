@@ -61,15 +61,13 @@ pub struct OfflineQueue {
 impl OfflineQueue {
     pub fn open(path: &Path) -> Result<Self, DaemonError> {
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        fs::create_dir_all(parent).map_err(|source| DaemonError::Io {
-            path: parent.to_path_buf(),
-            source,
-        })?;
+        create_private_dir(parent)?;
         let blob_dir = parent.join("blobs");
-        fs::create_dir_all(&blob_dir).map_err(|source| DaemonError::Io {
-            path: blob_dir.clone(),
-            source,
-        })?;
+        create_private_dir(&blob_dir)?;
+        // The blobs are the captured transcripts themselves, and the queue
+        // used to keep them in a directory every user on the machine could
+        // list and read. A directory made by an older agent is tightened.
+        restrict_to_owner(&blob_dir)?;
         let connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch(
@@ -122,6 +120,45 @@ impl OfflineQueue {
             blob_dir,
         })
     }
+}
+
+/// Creates a directory, and any parent it needs, readable by its owner only.
+///
+/// On Windows a new directory inherits the ACL of the profile it sits in,
+/// which already admits only the user, so there is nothing to add.
+fn create_private_dir(path: &Path) -> Result<(), DaemonError> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path).map_err(|source| DaemonError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+#[cfg(unix)]
+fn restrict_to_owner(path: &Path) -> Result<(), DaemonError> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(path).map_err(|source| DaemonError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if metadata.permissions().mode() & 0o077 == 0 {
+        return Ok(());
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|source| DaemonError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+#[cfg(not(unix))]
+fn restrict_to_owner(_path: &Path) -> Result<(), DaemonError> {
+    Ok(())
 }
 
 fn ensure_column(

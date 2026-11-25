@@ -39,6 +39,12 @@ export function dockerAvailable(): boolean {
  * Starts a throwaway pgvector container and applies every migration, so the
  * Postgres store is exercised against the same schema production runs. Never
  * touches the long-lived e2e volume.
+ *
+ * The migrations run as the cluster's migration role (see
+ * `prepareMigrationRole`), not as the container's superuser. Run as the
+ * superuser, they passed while doing nothing under row-level security in the
+ * deployment. The DataSource returned is still the superuser's, for seeding
+ * and for inspecting every tenant's rows.
  */
 export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE): Promise<DataSource> {
   try { docker("rm", "-f", fixture.container); } catch { /* not running */ }
@@ -47,13 +53,22 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
     "-e", "POSTGRES_DB=memoar", "-e", "POSTGRES_USER=memoar", "-e", "POSTGRES_PASSWORD=contract",
     "-p", `${fixture.port}:5432`, "pgvector/pgvector:pg16",
   );
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      docker("exec", fixture.container, "pg_isready", "-U", "memoar");
-      break;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+  // pg_isready passes while the image's entrypoint still has Postgres up for
+  // initialization, and the server is restarted immediately afterwards. A
+  // connection opened in that window is reset, which showed up as suites that
+  // passed alone and failed when several containers started at once. Readiness
+  // is therefore a connection that survives, not a single probe.
+  await waitForStablePostgres(`postgres://memoar:contract@127.0.0.1:${fixture.port}/memoar`);
+  prepareMigrationRole(fixture.container);
+  const migrator = new DataSource({
+    type: "postgres", url: migrationRoleUrl(fixture), entities: [...ENTITIES],
+    migrations: MIGRATIONS, synchronize: false, migrationsRun: false,
+  });
+  await connectWithRetry(migrator, fixture);
+  try {
+    await migrator.runMigrations({ transaction: "all" });
+  } finally {
+    await migrator.destroy();
   }
   const dataSource = new DataSource({
     type: "postgres",
@@ -63,14 +78,35 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
     synchronize: false,
     migrationsRun: false,
   });
-  // pg_isready passes while the image's entrypoint still has Postgres up for
-  // initialization, and the server is restarted immediately afterwards. A
-  // connection opened in that window is reset, which showed up as suites that
-  // passed alone and failed when several containers started at once. Readiness
-  // is therefore a connection that survives, not a single probe.
   await connectWithRetry(dataSource, fixture);
-  await dataSource.runMigrations({ transaction: "all" });
   return dataSource;
+}
+
+/** The role migrations run as in the cluster. */
+export const MIGRATION_ROLE = { name: "memoar_owner", password: "migration-role" };
+
+export function migrationRoleUrl(fixture: PostgresFixture): string {
+  return `postgres://${MIGRATION_ROLE.name}:${MIGRATION_ROLE.password}@127.0.0.1:${fixture.port}/memoar`;
+}
+
+/**
+ * Sets a fresh container up the way the cluster is.
+ *
+ * The superuser creates the extensions, as deploy/init.sql and the infra
+ * ConfigMap do, and a migration role that owns the database and its schema,
+ * may create roles (the AppRole migration creates memoar_app), and is neither a
+ * superuser nor BYPASSRLS. Every table FORCEs row-level security, so this role
+ * is filtered by the tenant policies like any other.
+ */
+export function prepareMigrationRole(container: string): void {
+  docker("exec", container, "psql", "-v", "ON_ERROR_STOP=1", "-U", "memoar", "-d", "memoar", "-c", `
+    CREATE EXTENSION IF NOT EXISTS vector;
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE ROLE ${MIGRATION_ROLE.name} LOGIN PASSWORD '${MIGRATION_ROLE.password}' NOSUPERUSER NOBYPASSRLS CREATEROLE;
+    ALTER DATABASE memoar OWNER TO ${MIGRATION_ROLE.name};
+    ALTER SCHEMA public OWNER TO ${MIGRATION_ROLE.name};
+  `);
 }
 
 /**

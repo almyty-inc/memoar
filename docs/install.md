@@ -45,6 +45,92 @@ it is in your archive.
 
 ## Install the capture agent
 
+The capture agent is one binary, `memoar`. Every
+[GitHub Release](https://github.com/almyty-inc/memoar/releases) carries it for
+macOS (Apple silicon and Intel), Linux (x86-64 and arm64, glibc and musl) and
+Windows (x64 and ARM64), each with a `.sha256` file beside it, a `SHA256SUMS`
+file for the whole release, and a build provenance attestation. Every installer
+below refuses a binary whose SHA-256 does not match.
+
+### macOS and Linux
+
+```sh
+curl -fsSL https://github.com/almyty-inc/memoar/releases/latest/download/install.sh | sh
+```
+
+The script picks the binary for your OS and CPU, and on Linux for your C
+library: Alpine and other musl systems get a static build, everything else the
+glibc build, which needs glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04).
+It installs to `~/.local/bin` and tells you how to add that to `PATH` when it
+is not there already.
+
+| Variable | Effect |
+| --- | --- |
+| `MEMOAR_VERSION=0.4.0` | Install that release instead of the latest |
+| `MEMOAR_INSTALL_DIR=/usr/local/bin` | Install somewhere else |
+| `MEMOAR_LIBC=musl` | Override the C library detection on Linux |
+| `MEMOAR_DOWNLOAD_BASE=<url>` | Install from a mirror laid out as `<url>/v<version>/<asset>` (needs `MEMOAR_VERSION`) |
+
+To read the script before running it, download it first:
+
+```sh
+curl -fsSLO https://github.com/almyty-inc/memoar/releases/latest/download/install.sh
+less install.sh
+sh install.sh
+```
+
+### Windows
+
+In PowerShell (Windows PowerShell 5.1 or PowerShell 7):
+
+```powershell
+irm https://github.com/almyty-inc/memoar/releases/latest/download/install.ps1 | iex
+```
+
+It picks the x64 or ARM64 binary, installs `memoar.exe` to
+`%LOCALAPPDATA%\Programs\Memoar\bin`, and adds that directory to your user
+`PATH`. Open a new terminal afterwards. The same variables as above apply, set
+with `$env:MEMOAR_VERSION = '0.4.0'` before running it, plus
+`$env:MEMOAR_NO_MODIFY_PATH = '1'` to leave `PATH` alone.
+
+### Node.js
+
+With Node.js 18 or newer nothing has to be installed. The `memoar` npm package
+downloads the binary for your platform on first use, verifies it and caches it:
+
+```sh
+npx memoar sources list
+```
+
+### Homebrew
+
+Each release attaches a formula, `memoar.rb`. Until there is a tap for it,
+install it through a local one:
+
+```sh
+brew tap-new --no-git local/memoar
+curl -fsSL -o "$(brew --repository local/memoar)/Formula/memoar.rb" \
+  https://github.com/almyty-inc/memoar/releases/latest/download/memoar.rb
+brew install local/memoar/memoar
+```
+
+### Check what you downloaded
+
+The installers verify the SHA-256 for you. To check a file by hand, and to check
+that it was built by this repository's release workflow:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing      # shasum -a 256 -c on macOS
+gh attestation verify memoar-x86_64-unknown-linux-gnu --repo almyty-inc/memoar
+```
+
+Whether the macOS and Windows binaries of a release are code-signed is stated
+in its release notes. When they are not, macOS does not quarantine a binary
+fetched by `curl` or the npm launcher, and Windows SmartScreen may ask once
+before the first run.
+
+### From source
+
 During repository development:
 
 ```sh
@@ -57,6 +143,15 @@ memoar doctor
 
 Every command accepts `--config-dir`, `--data-dir`, and `--capture-home` so a machine can be
 exercised against a scratch location without touching your real agent stores.
+
+The npm launcher runs a local build without downloading anything:
+
+```sh
+cargo build --release --manifest-path agent/Cargo.toml
+MEMOAR_BINARY="$PWD/agent/target/release/memoar" \
+MEMOAR_NO_DOWNLOAD=1 \
+node packages/npx/bin/memoar.js doctor
+```
 
 ## The desktop application
 
@@ -90,8 +185,8 @@ stops capturing and asks for a new sign-in instead of retrying every two
 minutes.
 
 The app runs the CLI's own code and reads and writes the same configuration
-(`~/.config/memoar`) and offline queue (`~/.local/share/memoar`) as `memoar`,
-so a machine set up with one is already set up for the other. It honours
+and offline queue as `memoar` (see "Where the agent keeps its files"), so a
+machine set up with one is already set up for the other. It honours
 `MEMOAR_CONFIG_DIR`, `MEMOAR_DATA_DIR` and `MEMOAR_CAPTURE_HOME` as the CLI does.
 
 The window is drawn with [NSH](https://nsh.dev): AppKit on macOS 14 or later,
@@ -120,8 +215,15 @@ agent/scripts/package-desktop.sh   # an installable archive for this machine, in
 `memoar-desktop-<version>-linux-<arch>.tar.gz` (the runner, its bundle and a
 `.desktop` file) or `memoar-desktop-<version>-windows-<arch>.zip`
 (`Memoar.exe` and its bundle). CI builds all three on every change to the agent
-and keeps them as workflow artifacts. Developer ID signing, notarization and
-Windows code signing wait on the same release-channel decision as the CLI.
+and keeps them as workflow artifacts.
+
+A release ships the desktop app as `memoar-desktop-<version>-macos-arm64.dmg`,
+`memoar-desktop-<version>-linux-x64.tar.gz` and
+`memoar-desktop-<version>-windows-x64.zip`. The release workflow signs and
+notarizes the macOS app and signs the Windows one when the signing secrets are
+set, and marks them unsigned when they are not. Releases built before the
+desktop app's packaging script landed do not include it. Packaging and signing
+are described in [releasing.md](releasing.md).
 
 The Linux archive is not a distribution package and declares no dependencies.
 Install GTK 4 and WebKitGTK 6.0 before running it. On Ubuntu 24.04 and Debian
@@ -145,25 +247,53 @@ Each command is acknowledged only after its bundle is written, so an interrupted
 replayed on the next connection rather than lost. Bundles are fetched through a pre-signed URL
 carried in the command, so the machine credential never needs archive access.
 
-The POSIX release installer selects the OS/architecture asset, downloads its `.sha256` sidecar with `curl`, verifies it, and atomically installs the binary. Until a release channel is approved, point it at an explicit release fixture or approved base URL:
+## Where the agent keeps its files
 
-```sh
-MEMOAR_VERSION=0.2.0 \
-MEMOAR_DOWNLOAD_BASE=https://downloads.example.invalid/memoar \
-MEMOAR_INSTALL_DIR="$PWD/.memoar-bin" \
-sh packages/npx/install.sh
-```
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Config and credential | `~/.config/memoar` | `$XDG_CONFIG_HOME/memoar`, else `~/.config/memoar` | `%APPDATA%\memoar` |
+| Offline queue | `~/.local/share/memoar` | `$XDG_DATA_HOME/memoar`, else `~/.local/share/memoar` | `%LOCALAPPDATA%\memoar` |
 
-The unpublished Node launcher can be exercised without any download by using a local build:
+An install that already has `~/.config/memoar/config.json` keeps using
+`~/.config/memoar` and `~/.local/share/memoar` on every platform, so upgrading
+never moves a credential. `--config-dir`, `--data-dir` and `--capture-home`
+override all of this, and a run that names all three needs no home directory.
 
-```sh
-cargo build --release --manifest-path agent/Cargo.toml
-MEMOAR_BINARY="$PWD/agent/target/release/memoar" \
-MEMOAR_NO_DOWNLOAD=1 \
-node packages/npx/bin/memoar.js doctor
-```
+`credentials.json` holds the API key, apart from `config.json`, and is written
+with mode `0600` on Unix. The config directory, the data directory and the
+`blobs` directory inside it, which holds the captured transcripts, are created
+owner-only (`0700`). On Windows these files sit in the user's profile, whose
+access list admits only that user, and the agent adds nothing to it. No
+keychain integration exists today.
 
-The credential-store adapter writes the access token separately from `config.json` to `credentials.json` with mode `0600` on Unix. This file is an explicit seam for a future operating-system keychain adapter, and no keychain integration exists today. The offline SQLite queue stores immutable content-addressed snapshots and resumable upload state. Optional client redaction is applied before snapshots are hashed. Native session content remains in its original location until upload.
+The offline SQLite queue stores immutable content-addressed snapshots and
+resumable upload state. Optional client redaction is applied before snapshots
+are hashed. Native session content remains in its original location until
+upload. One `memoar sync` runs per data directory at a time: a second one exits
+with `MEMOAR_LOCKED` and names the process that holds the queue. The lock is
+released when that process ends, however it ends.
+
+A sync that loses the archive part way stops at the first upload that cannot
+connect, and nothing it did not send is counted against it. Run it again, or
+let `sync --watch` retry, and it resumes. When the archive rate-limits uploads,
+the agent waits the time the archive asks for and carries on.
+
+## Exit codes and the JSON envelope
+
+With `--json`, every command prints one envelope on stdout. Success is
+`{"ok": true, "version": "1", "command": ..., "data": ...}` and failure is
+`{"ok": false, "version": "1", "error": {"code", "kind", "message", "hint",
+"retryable"}}`.
+
+| Exit | Meaning | Retry? |
+|---|---|---|
+| 0 | Done | |
+| 2 | Usage error, or a local file named on the command line is wrong | No |
+| 3 | Not signed in, or the config or credential file is damaged. Run `memoar login` | No |
+| 4 | The archive could not be reached, is overloaded or rate limiting, or a wait ran out | Yes |
+| 5 | The archive answered and refused: a revoked key, a deregistered machine, a missing session | No |
+| 7 | Another process holds the queue | Yes, once it finishes |
+| 9 | Anything else, including a damaged queue file | No |
 
 ## Add another machine
 

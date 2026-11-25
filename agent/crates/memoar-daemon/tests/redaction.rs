@@ -206,3 +206,38 @@ fn a_zip_member_of_harmless_bytes_is_still_captured() {
         .expect("bytes with nothing to hide are still capturable");
     assert!(!artifact.redacted);
 }
+
+/// The vendor tokens QA found going up whole under `--redact-secrets`.
+///
+/// Each is a bare token with no key name beside it, so only a rule that knows
+/// the vendor's shape can catch it. The client knew `sk`, `ghp`, `github_pat`,
+/// `xoxb` and `memoar`, and nothing else. The bodies are assembled here so this
+/// file spells out no string shaped like a credential.
+#[test]
+fn catches_vendor_tokens_written_without_a_key_name() {
+    let temp = tempfile::tempdir().unwrap();
+    let queue = OfflineQueue::open(&temp.path().join("queue.sqlite3")).unwrap();
+    let body = "FAKEfakeFAKEfakeFAKEfakeFAKEfake0000";
+    let tokens = [
+        ["AKIA", "FAKEEXAMPLE0000Z"].concat(),
+        ["ASIA", "FAKEEXAMPLE1111Y"].concat(),
+        ["AIza", &body[..35]].concat(),
+        ["xoxp", "-0000000000-", &body[..12]].concat(),
+        ["xoxa", "-0000000000-", &body[..12]].concat(),
+        ["xoxr", "-0000000000-", &body[..12]].concat(),
+        ["glpat", "-", &body[..20]].concat(),
+        ["npm", "_", body].concat(),
+    ];
+    for (index, token) in tokens.iter().enumerate() {
+        let name = format!("vendor-{index}.jsonl");
+        let line = format!(r#"{{"role":"user","content":"deploy with {token} today"}}"#);
+        let (stored, count) = captured(&queue, temp.path(), &name, &line);
+        assert!(
+            !stored.contains(token.as_str()),
+            "{name}: the token reached the queue: {stored}"
+        );
+        assert_eq!(count, 1, "{name}: one token, one replacement");
+        serde_json::from_str::<serde_json::Value>(&stored)
+            .unwrap_or_else(|error| panic!("{name}: redaction broke the JSON: {error}"));
+    }
+}

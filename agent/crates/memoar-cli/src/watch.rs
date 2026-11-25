@@ -103,16 +103,12 @@ fn retry_or_give_up(error: &AppError, backoff: &mut Duration) -> Result<(), AppE
 
 /// Which failures a watch cannot outlive.
 ///
-/// Retryable is the error's own word for it — a network error or a queue
-/// another process is holding will plausibly work on the next pass — with one
-/// exception that word gets wrong. A 401 or 403 is delivered as a network
-/// error, but the credential `login` stores does not expire: the archive is
-/// saying revoked or not permitted, and asking again every five minutes until
-/// somebody notices is worse than stopping and saying so.
+/// Retryable is the error's own word for it, and it is decided by status where
+/// the archive answered: a revoked key (401), a deregistered machine, or any
+/// other refusal is not retryable, and asking again every five minutes until
+/// somebody notices is worse than stopping and saying so. A revoked machine
+/// token is the exception the sync marks retryable itself, because the next
+/// cycle mints a new one.
 pub(crate) fn fatal_for_watch(error: &AppError) -> bool {
-    !error.retryable || refused_credentials(&error.message)
-}
-
-fn refused_credentials(message: &str) -> bool {
-    message.ends_with("(HTTP 401)") || message.ends_with("(HTTP 403)")
+    !error.retryable
 }

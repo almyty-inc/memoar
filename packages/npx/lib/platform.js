@@ -38,14 +38,49 @@ const TARGETS = Object.freeze({
   "darwin-x64": "x86_64-apple-darwin",
   "linux-arm64": "aarch64-unknown-linux-gnu",
   "linux-x64": "x86_64-unknown-linux-gnu",
+  // Static binaries for Linux distributions without glibc, such as Alpine.
+  // The glibc ones above need glibc 2.28 or newer and do not run there.
+  "linux-arm64-musl": "aarch64-unknown-linux-musl",
+  "linux-x64-musl": "x86_64-unknown-linux-musl",
   "win32-arm64": "aarch64-pc-windows-msvc",
   "win32-x64": "x86_64-pc-windows-msvc"
 });
 
-function targetFor(platform = process.platform, architecture = process.arch) {
-  const target = TARGETS[`${platform}-${architecture}`];
+let hostLibc;
+
+/**
+ * Which C library a Linux binary has to link against: "gnu" or "musl".
+ *
+ * Only this machine can be inspected, so asking about Linux from another
+ * platform answers "gnu", the default. MEMOAR_LIBC overrides detection for a
+ * glibc compatibility layer on a musl system or the other way round.
+ */
+function detectLibc(platform = process.platform) {
+  if (platform !== "linux") {
+    return null;
+  }
+  if (process.env.MEMOAR_LIBC === "gnu" || process.env.MEMOAR_LIBC === "musl") {
+    return process.env.MEMOAR_LIBC;
+  }
+  if (process.platform !== "linux") {
+    return "gnu";
+  }
+  if (hostLibc === undefined) {
+    try {
+      // Node reports the glibc it runs on and leaves the field out under musl.
+      hostLibc = process.report.getReport().header.glibcVersionRuntime ? "gnu" : "musl";
+    } catch {
+      hostLibc = "gnu";
+    }
+  }
+  return hostLibc;
+}
+
+function targetFor(platform = process.platform, architecture = process.arch, libc = detectLibc(platform)) {
+  const key = platform === "linux" && libc === "musl" ? `${platform}-${architecture}-musl` : `${platform}-${architecture}`;
+  const target = TARGETS[key];
   if (!target) {
-    throw new Error(`Memoar does not publish a binary for ${platform}-${architecture}`);
+    throw new Error(`Memoar does not publish a binary for ${key}`);
   }
   return target;
 }
@@ -54,8 +89,8 @@ function executableName(platform = process.platform) {
   return platform === "win32" ? "memoar.exe" : "memoar";
 }
 
-function assetName(platform = process.platform, architecture = process.arch) {
-  return `memoar-${targetFor(platform, architecture)}${platform === "win32" ? ".exe" : ""}`;
+function assetName(platform = process.platform, architecture = process.arch, libc = detectLibc(platform)) {
+  return `memoar-${targetFor(platform, architecture, libc)}${platform === "win32" ? ".exe" : ""}`;
 }
 
 function cachePath(options = {}) {
@@ -63,7 +98,7 @@ function cachePath(options = {}) {
   const platform = options.platform || process.platform;
   const architecture = options.architecture || process.arch;
   const root = options.cacheRoot || process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(root, "memoar", version, assetName(platform, architecture));
+  return path.join(root, "memoar", version, assetName(platform, architecture, options.libc));
 }
 
 function checksumPath(binary) {
@@ -84,7 +119,7 @@ function downloadBase(options = {}) {
  */
 function downloadUrl(options = {}) {
   const version = options.version || AGENT_VERSION;
-  const asset = assetName(options.platform || process.platform, options.architecture || process.arch);
+  const asset = assetName(options.platform || process.platform, options.architecture || process.arch, options.libc);
   return `${downloadBase(options)}/v${version}/${asset}`;
 }
 
@@ -140,7 +175,7 @@ function localCandidates(options = {}) {
   const binary = executableName(platform);
   const packageRoot = path.resolve(__dirname, "..");
   const candidates = [
-    path.join(packageRoot, "vendor", targetFor(platform, options.architecture), binary),
+    path.join(packageRoot, "vendor", targetFor(platform, options.architecture || process.arch, options.libc), binary),
     path.resolve(packageRoot, "../../agent/target/release", binary),
     path.resolve(packageRoot, "../../agent/target/debug", binary)
   ];
@@ -209,7 +244,7 @@ async function downloadBinary(options = {}) {
   const version = options.version || AGENT_VERSION;
   const platform = options.platform || process.platform;
   const architecture = options.architecture || process.arch;
-  const asset = assetName(platform, architecture);
+  const asset = assetName(platform, architecture, options.libc);
   const url = downloadUrl({ ...options, version, platform, architecture });
   const destination = cachePath({ ...options, version, platform, architecture });
   fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -370,6 +405,7 @@ module.exports = {
   executableName,
   localCandidate,
   parseChecksum,
+  detectLibc,
   targetFor,
   verifySha256
 };

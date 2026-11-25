@@ -12,6 +12,7 @@ const {
   cachePath,
   cachedCandidate,
   downloadBinary,
+  detectLibc,
   AGENT_VERSION,
   downloadUrl,
   ensureBinary,
@@ -29,6 +30,40 @@ test("maps every supported Node platform and architecture", () => {
   assert.equal(targetFor("win32", "x64"), "x86_64-pc-windows-msvc");
   assert.throws(() => targetFor("freebsd", "x64"), /does not publish/);
   assert.equal(assetName("win32", "x64"), "memoar-x86_64-pc-windows-msvc.exe");
+});
+
+test("serves static musl binaries to Linux systems without glibc", () => {
+  // The glibc binaries need glibc 2.28 or newer, and Alpine has none at all.
+  assert.equal(targetFor("linux", "x64", "musl"), "x86_64-unknown-linux-musl");
+  assert.equal(targetFor("linux", "arm64", "musl"), "aarch64-unknown-linux-musl");
+  assert.equal(assetName("linux", "x64", "musl"), "memoar-x86_64-unknown-linux-musl");
+  assert.equal(assetName("linux", "arm64", "gnu"), "memoar-aarch64-unknown-linux-gnu");
+  // libc only means something on Linux.
+  assert.equal(assetName("darwin", "arm64", "musl"), "memoar-aarch64-apple-darwin");
+  assert.equal(detectLibc("darwin"), null);
+  assert.equal(detectLibc("win32"), null);
+  assert.ok(["gnu", "musl"].includes(detectLibc("linux")));
+  assert.equal(
+    downloadUrl({ downloadBase: "https://downloads.example", platform: "linux", architecture: "arm64", libc: "musl", version: "1.2.3" }),
+    "https://downloads.example/v1.2.3/memoar-aarch64-unknown-linux-musl"
+  );
+});
+
+test("MEMOAR_LIBC overrides libc detection", () => {
+  const previous = process.env.MEMOAR_LIBC;
+  try {
+    process.env.MEMOAR_LIBC = "musl";
+    assert.equal(detectLibc("linux"), "musl");
+    assert.equal(assetName("linux", "x64"), "memoar-x86_64-unknown-linux-musl");
+    process.env.MEMOAR_LIBC = "gnu";
+    assert.equal(assetName("linux", "x64"), "memoar-x86_64-unknown-linux-gnu");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.MEMOAR_LIBC;
+    } else {
+      process.env.MEMOAR_LIBC = previous;
+    }
+  }
 });
 
 test("has a release channel to download from without being told one", () => {

@@ -43,6 +43,13 @@ pub(crate) struct MockOptions {
     /// test can find out which timeout a request was given.
     pub(crate) slow_path: &'static str,
     pub(crate) slow_by: Duration,
+    /// The machine in the config was deregistered with `DELETE /machines/{id}`.
+    pub(crate) retired_machine: bool,
+    /// How many ingest requests to refuse as if the machine token was revoked.
+    pub(crate) revoked_machine_tokens: usize,
+    /// Answer a key revoking itself with 403, as an archive from before that
+    /// was allowed does.
+    pub(crate) refuse_self_revocation: bool,
 }
 
 pub(crate) fn spawn_mock_api(
@@ -91,12 +98,16 @@ pub(crate) fn spawn_mock(
         dropped_connections,
         slow_path,
         slow_by,
+        retired_machine,
+        revoked_machine_tokens,
+        refuse_self_revocation,
     } = options;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
     let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let recorded = requests.clone();
     let handle = std::thread::spawn(move || {
+        let mut revoked_tokens = revoked_machine_tokens;
         // Accepted and hung up on: the client sees a transport failure with
         // no HTTP status to interpret, which is the case the watcher used to
         // die on.
@@ -144,7 +155,32 @@ pub(crate) fn spawn_mock(
 
             let (status, response) = match (method.as_str(), path.as_str()) {
                 ("POST", "/v1/auth/login") => (200, json!({"accessToken": "user-token"})),
+                // A capture key does not hold keys:write, so it may revoke
+                // itself and nothing else. The password session may revoke any.
+                ("DELETE", path)
+                    if path.starts_with("/v1/auth/api-keys/")
+                        && headers.contains("x-memoar-key") =>
+                {
+                    super::mock_keys::key_deleting(path, &headers, refuse_self_revocation)
+                }
+                ("DELETE", path) if path.starts_with("/v1/auth/api-keys/") => (200, json!({})),
+                ("GET", "/v1/auth/api-keys") => (
+                    200,
+                    json!({"items": [
+                        {"id": "key-by-hand", "name": "ci script", "prefix": "memoar_by-hand"},
+                        {"id": "key-old", "name": "memoar agent · laptop", "prefix": "memoar_old-key"}
+                    ]}),
+                ),
+                ("DELETE", path) if path.starts_with("/v1/machines/") => (200, json!({})),
+                ("POST", "/v1/auth/logout") => (200, json!({})),
                 ("POST", "/v1/machines") => (201, json!({"id": MACHINE_ID})),
+                // A deregistered machine: the archive answers an update with
+                // 404 and leaves it out of the machine list.
+                ("PATCH", path) if path.starts_with("/v1/machines/") && retired_machine => (
+                    404,
+                    json!({"title": "Not Found", "status": 404, "detail": "Machine not found"}),
+                ),
+                ("GET", "/v1/machines") if retired_machine => (200, json!({"items": []})),
                 ("PATCH", path) if path.starts_with("/v1/machines/") => (200, json!({})),
                 ("GET", "/v1/machines") => (200, json!({"items": [{"id": MACHINE_ID}]})),
                 ("POST", "/v1/auth/api-keys") => (
@@ -155,6 +191,15 @@ pub(crate) fn spawn_mock(
                     201,
                     json!({"token": "machine-token", "expiresAt": "2099-01-01T00:00:00Z"}),
                 ),
+                // A machine token revoked with POST /machines/{id}/tokens/revoke
+                // is refused on its next request, once.
+                ("POST", "/v1/ingest/delta") if revoked_tokens > 0 => {
+                    revoked_tokens -= 1;
+                    (
+                        401,
+                        json!({"title": "Unauthorized", "detail": "Valid bearer, machine, or API-key credentials are required"}),
+                    )
+                }
                 ("POST", "/v1/ingest/delta") => {
                     let request: Value = serde_json::from_slice(&body).unwrap();
                     (200, json!({"missing": request["hashes"]}))

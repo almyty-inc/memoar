@@ -25,7 +25,25 @@ export class AppRole1700000010000 implements MigrationInterface {
       END
       $$;
     `);
-    await queryRunner.query(`ALTER ROLE memoar_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`);
+    // Only when the role holds one of these. Postgres 16 lets nobody but a
+    // superuser name SUPERUSER, and nobody without BYPASSRLS or CREATEDB name
+    // those, even to switch them off. So run unconditionally, this statement
+    // made a superuser the only role that could ever apply this migration,
+    // while the migration role is meant to be an owner that is not one. A role
+    // that does hold one of them still gets the statement, and a migration role
+    // that may not strip it fails loudly here.
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_roles
+           WHERE rolname = 'memoar_app' AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole)
+        ) THEN
+          ALTER ROLE memoar_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        END IF;
+      END
+      $$;
+    `);
     await queryRunner.query(`GRANT CONNECT ON DATABASE "${database}" TO memoar_app`);
     await queryRunner.query(`GRANT USAGE ON SCHEMA public TO memoar_app`);
     await queryRunner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO memoar_app`);
