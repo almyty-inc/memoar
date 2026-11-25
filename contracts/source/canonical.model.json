@@ -1,5 +1,5 @@
 {
-  "contractVersion": "0.4.0",
+  "contractVersion": "0.4.1",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://memoar.dev/contracts/canonical/0.1.1/session.schema.json",
