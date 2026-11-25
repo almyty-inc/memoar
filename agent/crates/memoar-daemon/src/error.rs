@@ -42,7 +42,8 @@ pub enum DaemonError {
     },
     /// Writing would take the volume below the free-space floor.
     #[error(
-        "{path} is on a volume with {available} bytes free, and capture keeps at least {floor} free (this write needs {needed})"
+        "{path} is on a volume with {available} bytes free, and capture keeps at least {floor} bytes free{}",
+        if *needed > 0 { format!(" (this write needs {needed} more)") } else { String::new() }
     )]
     DiskLow {
         path: PathBuf,

@@ -78,10 +78,13 @@ fn backfill_hint(summary: &CaptureSummary, policy: &CapturePolicy) -> Option<Str
         .since
         .map(|since| since.format("%Y-%m-%d").to_string())
         .unwrap_or_default();
+    let held = match summary.policy.held {
+        0 => String::new(),
+        held => format!(" {held} sessions already queued are held back too."),
+    };
     Some(format!(
-        "{} sessions ({}) last changed before {since} were left out, and {} already queued are held back. Run memoar sync --plan to see them by project, memoar sync --since all to take them once, or memoar policy --since all to keep taking them.",
+        "{} sessions ({}) last changed before {since} were left out.{held} Run memoar sync --plan to see them by project, memoar sync --since all to take them once, or memoar policy --since all to keep taking them.",
         older.files,
         human_bytes(older.bytes),
-        summary.policy.held
     ))
 }

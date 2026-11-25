@@ -58,8 +58,10 @@ pub(crate) fn sync(
     let (policy, origin) = effective_policy(&config, Some(&queue), args.since.as_deref())?;
     let captured = capture_step(&queue, paths, &config, &enabled, &policy)?;
     let mode = ProgressMode::for_command(json_mode);
+    // A one-off sync reports it as its error at the end. A watch keeps going,
+    // so it says so now.
     if let Some(refused) = &captured.refused
-        && mode != ProgressMode::Silent
+        && args.watch
     {
         eprintln!("memoar: {}", refused.message);
     }
