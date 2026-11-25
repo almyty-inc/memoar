@@ -509,6 +509,30 @@ for (const implementation of implementations) {
       expect(text.includes(nul), "and the NUL itself is gone").toBe(false);
     });
 
+    it("keeps every turn of a session that repeats a turn or block id", async () => {
+      // Written with save(), the repeat became an UPDATE of the first row and
+      // a turn vanished. Written as inserts, it would fail the whole save.
+      const store = implementation.create();
+      const session = structuredClone(TEST_SESSION);
+      session.id = "0191cafe-0000-7000-8000-0000000c00bb";
+      const repeatedTurn = "0191cafe-0000-7000-8000-0000000c0bb1";
+      const repeatedBlock = "0191cafe-0000-7000-8000-0000000c0bb2";
+      session.turns = session.turns.map((turn, index) => ({
+        ...turn,
+        id: repeatedTurn,
+        parentId: index === 0 ? null : repeatedTurn,
+        blocks: turn.blocks.map((block) => ({ ...block, id: repeatedBlock, text: `turn ${index}` })),
+      }));
+
+      await store.saveSession(alice, session);
+      await store.saveSession(alice, session);
+      const read = await store.getSession(alice, session.id);
+      expect(read?.turns.map((turn) => turn.blocks[0]?.text)).toEqual(session.turns.map((_, index) => `turn ${index}`));
+      expect(read?.turns[0]?.id, "the first occurrence keeps its id").toBe(repeatedTurn);
+      expect(new Set(read?.turns.map((turn) => turn.id)).size).toBe(session.turns.length);
+      expect(read?.turns.slice(1).every((turn) => turn.parentId === repeatedTurn), "parent links still name the original").toBe(true);
+    });
+
     it("writes more findings than one statement can carry", async () => {
       const store = implementation.create();
       await store.saveSession(alice, TEST_SESSION);
