@@ -42,6 +42,12 @@ pub struct Status {
     pub last_memory_recorded: Option<u64>,
     /// What is masked before anything is hashed and uploaded.
     pub redaction: Option<Redaction>,
+    /// Set when the data directory's volume is at the free-space floor, so
+    /// capture reads nothing new: the CLI's own sentence about it.
+    pub disk_low: Option<String>,
+    /// Queued sessions the capture policy holds back: older than the backfill
+    /// window, or in an excluded project.
+    pub held: Option<u64>,
 }
 
 /// The three masks, as the window renders them.
@@ -134,6 +140,9 @@ pub fn status(paths: &Paths, state: &State) -> Status {
             last_uploaded: last.uploaded,
             last_memory_recorded: last.memory_recorded,
             redaction: redaction_of(&output.data),
+            disk_low: (flag(&output.data, &["disk", "ok"]) == Some(false))
+                .then(|| text(&output.data, &["disk", "detail"]).unwrap_or_default()),
+            held: number(&output.data, &["queue", "held"]),
         },
         // `status` fails when there is no configuration or credential, which
         // is the ordinary state of a machine nobody has connected: not an
@@ -187,11 +196,11 @@ pub fn set_redaction(
 /// When the capture fails. The failure is also kept in `state`, so the window
 /// can show it rather than a spinner that stops.
 pub fn sync_now(paths: &Paths, state: &State, now: &str) -> Result<Status, Failure> {
+    // The CLI's defaults otherwise: the same backfill window, project rules,
+    // disk floor and upload pacing as `memoar sync`.
     let command = Command::Sync(SyncArgs {
-        watch: false,
         interval_seconds: 60,
-        debounce_seconds: 2,
-        max_cycles: 0,
+        ..SyncArgs::default()
     });
     let outcome = memoar_cli::execute(&base_cli(command), &paths.runtime());
     let endpoint = configured_endpoint(paths).unwrap_or_default();

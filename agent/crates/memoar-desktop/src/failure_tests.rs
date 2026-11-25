@@ -37,6 +37,15 @@ fn an_archive_that_does_not_answer_says_where_it_looked() {
 }
 
 #[test]
+fn a_full_disk_pauses_capture_and_is_retried() {
+    let failure = classify_capture(&AppError::disk_low("1 byte free"), ENDPOINT);
+
+    assert_eq!(failure.kind, FailureKind::Temporary);
+    assert!(failure.message.contains("disk space"));
+    assert!(!failure.stops_capture());
+}
+
+#[test]
 fn a_revoked_key_stops_capture() {
     for status in [401, 403, 404] {
         let failure = classify_capture(&answered(status), ENDPOINT);
