@@ -5,6 +5,7 @@ mod convert;
 mod credentials;
 mod dirs;
 mod doctor;
+mod doctor_contract;
 mod download;
 mod files;
 mod health;

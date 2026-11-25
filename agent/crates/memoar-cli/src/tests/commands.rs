@@ -71,9 +71,9 @@ fn redaction_is_changeable_after_login() {
 #[test]
 fn status_and_doctor_name_a_source_behind_a_symlink() {
     let temp = tempfile::tempdir().unwrap();
-    // Four: `doctor` asks about unparsed artifacts too, so the only red in
-    // this report is the symlink the test is about.
-    let (endpoint, _requests, server) = spawn_mock_api(4, None);
+    // Five: `doctor` asks about unparsed artifacts and the archive's contract
+    // too, so the only red in this report is the symlink the test is about.
+    let (endpoint, _requests, server) = spawn_mock_api(5, None);
     let paths = configured_paths(&temp, &endpoint);
     let external = temp.path().join("external-volume/projects");
     fs::create_dir_all(external.join("a-project")).unwrap();

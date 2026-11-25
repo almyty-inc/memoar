@@ -10,6 +10,7 @@ mod convert;
 mod credential;
 mod dirs;
 mod doctor;
+mod doctor_contract;
 mod envelope;
 mod error;
 mod health;

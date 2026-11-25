@@ -15,6 +15,17 @@ use crate::error::AppError;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Config {
+    /// The contract of the client that last wrote this file. A record, not a
+    /// setting: `save_config` stamps the running client's contract on every
+    /// write, and nothing decides anything by it.
+    ///
+    /// `doctor` used to compare it with the client's own contract. Nothing
+    /// rewrote it on upgrade, so every upgraded install failed that check for
+    /// good, while the comparison that matters, this client against the
+    /// archive it downloads bundles from, went unchecked. It is still written
+    /// so an older client can read a config a newer one saved, and read
+    /// leniently so a file without it still loads.
+    #[serde(default)]
     pub(crate) contract_version: String,
     pub(crate) endpoint: String,
     pub(crate) machine_id: String,
@@ -143,8 +154,13 @@ pub(crate) fn load_config_optional(paths: &RuntimePaths) -> Result<Option<Config
 }
 
 pub(crate) fn save_config(paths: &RuntimePaths, config: &Config) -> Result<(), AppError> {
-    let bytes =
-        serde_json::to_vec_pretty(config).map_err(|error| AppError::internal(error.to_string()))?;
+    // Whatever the caller loaded, the file is now written by this client.
+    let stamped = Config {
+        contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
+        ..config.clone()
+    };
+    let bytes = serde_json::to_vec_pretty(&stamped)
+        .map_err(|error| AppError::internal(error.to_string()))?;
     atomic_replace(&paths.config_file(), &bytes, 0o600)
 }
 

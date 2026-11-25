@@ -83,8 +83,12 @@ fn an_unreachable_archive_still_produces_the_local_checks() {
 
     assert_eq!(named(&report, "queue_integrity")["ok"], json!(true));
     assert_eq!(named(&report, "credentials")["ok"], json!(true));
-    assert_eq!(named(&report, "contract_version")["ok"], json!(true));
     assert_eq!(named(&report, "source_symlinks")["ok"], json!(true));
+    assert_eq!(
+        named(&report, "contract_version")["ok"],
+        Value::Null,
+        "the archive's contract was not asked, so this is unknown"
+    );
 
     let reachable = named(&report, "api_reachable");
     assert_eq!(
