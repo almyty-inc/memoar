@@ -3,6 +3,7 @@
 mod antigravity;
 mod bundle;
 mod claude;
+mod claude_blocks;
 mod codex;
 mod commit;
 mod entry;
