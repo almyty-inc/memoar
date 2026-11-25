@@ -3,11 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ArchivedSession } from "../src/archive-store.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
-import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-save-concurrency-test", port: 55989 };
+const FIXTURE = new PostgresFixture("memoar-save-concurrency-test");
 
 /** WORKER_CONCURRENCY in production, which is what makes this reachable. */
 const WORKERS = 4;

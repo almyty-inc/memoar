@@ -6,7 +6,7 @@ import { BrowserSessionService } from "../src/auth/browser-sessions.js";
 import { CredentialsService } from "../src/auth/credentials.service.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { AuthIdentityEntity, UserEntity } from "../src/entities.js";
-import { dockerAvailable, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 /**
  * Registration against a real database.
@@ -18,7 +18,7 @@ import { dockerAvailable, startPostgres, stopPostgres } from "./helpers/postgres
  */
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-registration-test", port: 55987 };
+const FIXTURE = new PostgresFixture("memoar-registration-test");
 
 let dataSource: DataSource | null = null;
 let auth: AuthService;
