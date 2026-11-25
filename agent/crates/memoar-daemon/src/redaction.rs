@@ -3,6 +3,8 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::secret_catalogue::COMPILED_CATALOGUE;
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedactionConfig {
@@ -54,6 +56,12 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
         };
     };
     let mut replacements = 0_u32;
+    if config.secrets {
+        // The catalogue is shared with the archive's scanner and held to the
+        // same fixture, so the two halves agree on what a credential looks
+        // like. See secret_catalogue.rs.
+        replacements = mask_secrets(&mut text);
+    }
     let mut apply = |pattern: &str, replacement: &str| {
         let regex = Regex::new(pattern).expect("static redaction pattern must compile");
         let matches = regex.find_iter(&text).count() as u32;
@@ -62,81 +70,6 @@ pub(crate) fn redact_bytes(bytes: &[u8], config: RedactionConfig) -> RedactedByt
             replacements = replacements.saturating_add(matches);
         }
     };
-    if config.secrets {
-        // The body is bounded, matching the archive's copy of this rule.
-        //
-        // An unmatched header is the common case: a transcript that merely
-        // mentions `-----BEGIN RSA PRIVATE KEY-----` has no closing line, so an
-        // unbounded `.*?` scans to the end of the file. This engine is
-        // linear-time and will not blow up over it the way the archive's did —
-        // one 30 MB artifact there carried the header twice, the END line zero
-        // times, and threw — but the two halves should describe a private key
-        // the same way, and neither needs to walk a whole transcript to decide
-        // there is not one. 8000 is far past a 4096-bit key's ~3.2 kB body.
-        apply(
-            r"(?is)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.{1,8000}?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
-            "[REDACTED_PRIVATE_KEY]",
-        );
-        apply(
-            r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
-            "[REDACTED_JWT]",
-        );
-        // The key/value shape as people actually write it, rather than as it
-        // appears in a shell one-liner.
-        //
-        // The old pattern anchored the key name with `\b` and excluded quotes
-        // from the value, so it caught `api_key=abc` and almost nothing else on
-        // a real machine: `"api_key": "sk-live-..."` never matched, because the
-        // value group could not start on a quote; `export OPENAI_API_KEY="..."`
-        // and `AWS_SECRET_ACCESS_KEY=...` never matched, because `\b` does not
-        // fire between `_` and a letter. JSONL is the primary format of several
-        // capture sources, so the quoted form is the ordinary one — and the
-        // artifact was then filed as `redacted: false, redaction_count: 0`,
-        // which is the worst available outcome: a secret uploaded under a
-        // receipt saying there was nothing to find.
-        //
-        // So the key name may carry a prefix and a suffix, and the separator
-        // may carry the quote on either side. The value stops before the
-        // closing quote, which is left where it was, so `"k": "v"` comes out as
-        // well-formed JSON.
-        //
-        // The value class excludes the backslash as well as the quote, and that
-        // is not decoration. A capture is JSON lines, and a line holds a shell
-        // command as a JSON-encoded string, so the quote ending that command is
-        // stored as `\"`. Without the backslash excluded, the match ran on
-        // through it and the replacement dropped it, leaving a bare `"` that
-        // closed the JSON string early — the line stopped being JSON. Sixteen
-        // lines mangled this way out of 26,462 were enough for the archive to
-        // refuse a 71 MB transcript whole and lose 14,042 turns, and 33
-        // artifacts holding 257 MB were refused for exactly this.
-        apply(
-            r#"(?i)([A-Za-z0-9_.-]{0,40}(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret)[A-Za-z0-9_.-]{0,40})(["']?[ \t]*[:=][ \t]*["']?)([^\s"',;{}\[\]\\]+)"#,
-            "${1}${2}[REDACTED]",
-        );
-        // `Authorization: Bearer abcdef123456`, and the header's JSON form.
-        //
-        // Anchored on the header name rather than on the word `Bearer`: a bare
-        // scheme word is ordinary English, and redacting whatever follows
-        // "bearer" or "basic" would eat its way through prose. Anchored the
-        // other way round, the scheme word has to be stepped over explicitly or
-        // the credential survives with only `Bearer` removed.
-        apply(
-            r#"(?i)((?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)((?:bearer|basic|token)[ \t]+)?([^\s"',;{}\[\]\\]+)"#,
-            "${1}${2}[REDACTED]",
-        );
-        // The separator is `[_-]`, and the vendor list is the server's.
-        //
-        // This required an underscore, which only GitHub uses: OpenAI writes
-        // `sk-proj-…`, Anthropic `sk-ant-api03-…`, Slack `xoxb-…`. It also named
-        // a different set of vendors than the server's scanner did — so the two
-        // halves of the same product disagreed about what a key looks like, and
-        // each missed things the other would have caught. A test holds them to
-        // one list now.
-        apply(
-            r"\b(?:sk|ghp|github_pat|xoxb|memoar)[_-][A-Za-z0-9_-]{16,}\b",
-            "[REDACTED_TOKEN]",
-        );
-    }
     if config.email_addresses {
         apply(
             r"\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
@@ -188,12 +121,14 @@ pub(crate) fn contains_secret_lossy(bytes: &[u8], config: RedactionConfig) -> bo
 pub(crate) fn contains_secret_utf16(bytes: &[u8], config: RedactionConfig) -> bool {
     [true, false].into_iter().any(|little_endian| {
         let decoded: String = bytes
-            .chunks_exact(2)
-            .map(|pair| {
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&pair| {
                 let unit = if little_endian {
-                    u16::from_le_bytes([pair[0], pair[1]])
+                    u16::from_le_bytes(pair)
                 } else {
-                    u16::from_be_bytes([pair[0], pair[1]])
+                    u16::from_be_bytes(pair)
                 };
                 if unit < 128 { unit as u8 as char } else { ' ' }
             })
@@ -216,4 +151,32 @@ pub(crate) fn looks_like_utf16(bytes: &[u8]) -> bool {
     }
     let nuls = sample.iter().filter(|byte| **byte == 0).count();
     nuls * 4 >= sample.len()
+}
+
+/// Masks every rule's matches in order, and returns how many were masked.
+///
+/// A rule with a group named `secret` masks only that group and leaves the rest
+/// of its match, such as the key in `password=…`, in place.
+pub(crate) fn mask_secrets(text: &mut String) -> u32 {
+    let mut replacements = 0_u32;
+    for compiled in COMPILED_CATALOGUE.iter() {
+        let mut output = String::with_capacity(text.len());
+        let mut last = 0;
+        let mut found = 0_u32;
+        for captures in compiled.regex.captures_iter(text) {
+            let whole = captures.get(0).expect("group 0 always participates");
+            let secret = captures.name("secret").unwrap_or(whole);
+            output.push_str(&text[last..secret.start()]);
+            output.push_str(compiled.rule.kind.marker());
+            output.push_str(&text[secret.end()..whole.end()]);
+            last = whole.end();
+            found = found.saturating_add(1);
+        }
+        if found > 0 {
+            output.push_str(&text[last..]);
+            *text = output;
+            replacements = replacements.saturating_add(found);
+        }
+    }
+    replacements
 }

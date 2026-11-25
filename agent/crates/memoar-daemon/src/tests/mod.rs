@@ -3,5 +3,6 @@ mod fake;
 mod outage;
 mod ratelimit;
 mod redaction;
+mod secret_catalogue;
 mod sync;
 mod transport;
