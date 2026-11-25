@@ -93,11 +93,12 @@ describe("the subagent-1 contract fixture", () => {
     // both, so on its own it cannot tell a parser that reads them from one
     // that passes them through.
     const { raw, expected } = await load();
-    const seed = {
-      ...Object.fromEntries(Object.entries(expected).filter(([key]) => key !== "turns")),
+    const base = Object.fromEntries(Object.entries(expected).filter(([key]) => key !== "turns")) as SessionSeed;
+    const seed: SessionSeed = {
+      ...base,
       source: { ...expected.source, nativeSessionId: "seed-native-id" },
       ext: { fixtureSource: "claude-code" },
-    } as SessionSeed;
+    };
     const result = new ParserRegistry().parse({ source: "claude-code", version: "v1", raw, seed });
     if (result.kind !== "parsed") throw new Error("the fixture did not parse");
     expect(result.sessions[0]!.source.nativeSessionId).toBe(expected.source.nativeSessionId);
