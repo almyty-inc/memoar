@@ -74,3 +74,38 @@ export function scopeCollidingIds(session: ArchivedSession, heldElsewhere: RowId
     })),
   };
 }
+
+/**
+ * Gives a turn or block id that repeats within one session a distinct id for
+ * each later occurrence.
+ *
+ * The Postgres store wrote rows one `save()` at a time, and a repeated id
+ * turned the later row into an UPDATE of the earlier one, so a turn silently
+ * replaced another. It now writes them as plain inserts, where a repeat fails
+ * the whole save on the primary key. The first lost a turn and the second
+ * would lose the session, so the repeat is kept as a row of its own. The first occurrence keeps its id, so a parent link
+ * naming it still means the original, as the Claude Code parser already does
+ * for the turns it reads. The derived ids depend only on the session and the
+ * occurrence, so a re-capture gives them again.
+ */
+export function separateRepeatedIds(session: ArchivedSession): ArchivedSession {
+  const turnsSeen = new Map<string, number>();
+  const blocksSeen = new Map<string, number>();
+  const next = (seen: Map<string, number>, id: string, space: string): string => {
+    const repeats = seen.get(id);
+    seen.set(id, (repeats ?? -1) + 1);
+    return repeats === undefined ? id : derivedUuid(`${session.id}:${space}:${id}:repeat:${repeats + 1}`);
+  };
+  let changed = false;
+  const turns = session.turns.map((turn) => {
+    const id = next(turnsSeen, turn.id, "turn");
+    const blocks = turn.blocks.map((block) => {
+      const blockId = next(blocksSeen, block.id, "block");
+      return blockId === block.id ? block : { ...block, id: blockId };
+    });
+    if (id === turn.id && blocks.every((block, index) => block === turn.blocks[index])) return turn;
+    changed = true;
+    return { ...turn, id, blocks };
+  });
+  return changed ? { ...session, turns } : session;
+}
