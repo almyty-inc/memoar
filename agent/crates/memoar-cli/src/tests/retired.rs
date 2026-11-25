@@ -20,6 +20,7 @@ fn a_watch_on_a_deregistered_machine_stops_and_says_how_to_re_register() {
     });
     let temp = tempfile::tempdir().unwrap();
     let paths = configured_paths(&temp, &endpoint);
+    let recorded = paths.clone();
     let (done, outcome) = mpsc::channel();
     std::thread::spawn(move || {
         let result = sync(
@@ -42,6 +43,11 @@ fn a_watch_on_a_deregistered_machine_stops_and_says_how_to_re_register() {
     assert_eq!(error.exit_code, EXIT_REFUSED);
     assert!(!error.retryable);
     assert!(error.hint.contains("memoar login"), "{}", error.hint);
+    // And it says so where `status` looks, after the terminal is gone.
+    let stopped = crate::capture_state::load(&recorded)
+        .and_then(|state| state.stopped)
+        .expect("the watch recorded why it stopped");
+    assert_eq!(stopped.code, "MEMOAR_MACHINE_RETIRED");
     let asked: Vec<_> = requests
         .lock()
         .unwrap()

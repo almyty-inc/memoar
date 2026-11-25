@@ -153,6 +153,13 @@ impl AppError {
             http_status: None,
         }
     }
+    /// The same error with a different next step.
+    #[must_use]
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = hint.into();
+        self
+    }
+
     #[must_use]
     pub fn locked(message: impl Into<String>) -> Self {
         Self {

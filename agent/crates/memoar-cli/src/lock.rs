@@ -62,3 +62,25 @@ pub(crate) fn acquire_sync_lock(paths: &RuntimePaths) -> Result<SyncLock, AppErr
     let _ = std::fs::write(&holder_path, std::process::id().to_string());
     Ok(SyncLock { _file: file })
 }
+
+/// Whether some process holds the sync lock now, and its process id when it
+/// wrote one. This is how `status` knows a watch is alive without trusting a
+/// file that a killed process could not clean up.
+///
+/// The probe takes the lock for as long as one system call, and lets go.
+pub(crate) fn sync_holder(paths: &RuntimePaths) -> Option<Option<u32>> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(paths.data_dir.join("sync.lock"))
+        .ok()?;
+    match file.try_lock() {
+        Ok(()) => None,
+        Err(TryLockError::WouldBlock) => Some(
+            std::fs::read_to_string(paths.data_dir.join("sync.pid"))
+                .ok()
+                .and_then(|text| text.trim().parse().ok()),
+        ),
+        Err(TryLockError::Error(_)) => None,
+    }
+}

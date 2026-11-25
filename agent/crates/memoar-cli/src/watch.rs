@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::CommandOutput;
 use crate::args::SyncArgs;
+use crate::capture_state::StateRecorder;
 use crate::error::{AppError, map_capture_error};
 use crate::sync::{Sweep, sync_pending};
 
@@ -39,6 +40,7 @@ pub(crate) fn watch(
     let mut captured = first;
     let mut completed = 0_usize;
     let mut last = json!({});
+    let mut recorder = StateRecorder::start(sweep.paths);
     loop {
         match sync_pending(sweep, captured) {
             Ok(report) => {
@@ -48,6 +50,7 @@ pub(crate) fn watch(
                 );
                 last = report;
                 backoff = interval;
+                recorder.succeeded();
                 completed += 1;
                 if args.max_cycles > 0 && completed >= args.max_cycles {
                     return Ok(CommandOutput {
@@ -58,7 +61,7 @@ pub(crate) fn watch(
                 thread::sleep(interval);
             }
             Err(error) => {
-                retry_or_give_up(&error, &mut backoff)?;
+                retry_or_give_up(&error, &mut backoff, &mut recorder)?;
             }
         }
         captured = match watcher.scan(
@@ -74,7 +77,7 @@ pub(crate) fn watch(
                 skipped: Vec::new(),
             },
             Err(error) => {
-                retry_or_give_up(&map_capture_error(error), &mut backoff)?;
+                retry_or_give_up(&map_capture_error(error), &mut backoff, &mut recorder)?;
                 CaptureSummary {
                     captured: 0,
                     skipped: Vec::new(),
@@ -87,10 +90,19 @@ pub(crate) fn watch(
 /// Waits out a failure a watch expects to outlive, or hands back the one it
 /// does not. Sleeping here — rather than at the top of the loop — is what keeps
 /// an unreachable archive from being asked again immediately, forever.
-fn retry_or_give_up(error: &AppError, backoff: &mut Duration) -> Result<(), AppError> {
+///
+/// Either way the outcome is written down for `status`, because the terminal
+/// this prints to may be gone by the time anybody asks.
+fn retry_or_give_up(
+    error: &AppError,
+    backoff: &mut Duration,
+    recorder: &mut StateRecorder,
+) -> Result<(), AppError> {
     if fatal_for_watch(error) {
+        recorder.stopped(error);
         return Err(error.clone());
     }
+    recorder.failed(error);
     eprintln!(
         "memoar: {} — retrying in {}s",
         error.message,

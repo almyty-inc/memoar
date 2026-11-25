@@ -29,6 +29,7 @@ fn password_logout(deregister: bool) -> LogoutArgs {
         password: Some("correct horse battery staple".to_owned()),
         token: None,
         deregister,
+        keep_service: false,
     }
 }
 
@@ -153,6 +154,7 @@ fn bare_logout() -> LogoutArgs {
         password: None,
         token: None,
         deregister: false,
+        keep_service: false,
     }
 }
 

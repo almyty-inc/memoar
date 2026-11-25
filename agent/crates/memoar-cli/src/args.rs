@@ -43,6 +43,11 @@ pub enum Command {
     },
     /// Capture new sessions into the local queue and upload them.
     Sync(SyncArgs),
+    /// Keep `sync --watch` running in the background as a per-user service.
+    Service {
+        #[command(subcommand)]
+        command: crate::service::args::ServiceCommand,
+    },
     /// Show or change what is masked before anything is hashed and uploaded.
     Redaction(RedactionArgs),
     /// Search the archive.
@@ -118,6 +123,10 @@ pub struct LogoutArgs {
     /// Also deregister this machine, which revokes its machine tokens.
     #[arg(long)]
     pub deregister: bool,
+    /// Leave the background service installed. By default it is removed, as
+    /// it cannot capture without the credential.
+    #[arg(long)]
+    pub keep_service: bool,
 }
 
 #[derive(Debug, Args)]

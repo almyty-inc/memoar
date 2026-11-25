@@ -7,16 +7,24 @@ use std::path::{Path, PathBuf};
 use crate::CommandOutput;
 use crate::config::{RuntimePaths, load_config, load_credential};
 use crate::error::{AppError, map_queue_error};
+use crate::service::background_with;
 
 pub(crate) fn status(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let config = load_config(paths)?;
     let credential = load_credential(paths)?;
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let counts = queue.counts().map_err(map_queue_error)?;
+    let activity = queue.activity().map_err(map_queue_error)?;
+    drop(queue);
+    let (health, service) = background_with(paths, &activity);
     let discovered = discover(&paths.home, OperatingSystem::current());
     Ok(CommandOutput {
         command: "status".to_owned(),
         data: json!({
+            // Whether anything is capturing, first in the report: a queue
+            // that looks ordinary says nothing about whether it still moves.
+            "backgroundCapture": health,
+            "service": service,
             "initialized": true,
             "credentialsConfigured": !credential.secret().is_empty(),
             "endpoint": config.endpoint,
