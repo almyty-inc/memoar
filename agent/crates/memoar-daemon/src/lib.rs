@@ -10,6 +10,7 @@ mod error;
 mod manifest;
 mod queue;
 mod redaction;
+mod secret_catalogue;
 mod sync;
 mod transport;
 mod watcher;

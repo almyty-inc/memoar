@@ -1,43 +1,25 @@
 import type { ArchivedSession } from "./archive-store.js";
+import { compileRule, SECRET_CATALOGUE, type SecretCatalogueKind } from "./secret-catalogue.js";
 import { DEFAULT_TENANT_SETTINGS, type RedactionSettingsRecord } from "./store/records.js";
 
-export type SecretKind = "api_key" | "jwt" | "env" | "private_key" | "email" | "path" | "custom";
+export type SecretKind = SecretCatalogueKind | "email" | "path" | "custom";
 
 export interface SecretPattern {
   kind: SecretKind;
   expression: RegExp;
 }
 
-export const SECRET_PATTERNS: readonly SecretPattern[] = [
-  // The separator is `[_-]`, not `_`.
-  //
-  // This required an underscore, which is the separator used by exactly one of
-  // the vendors named here: GitHub writes `ghp_…`, while OpenAI writes
-  // `sk-proj-…`, Anthropic `sk-ant-api03-…` and Slack `xoxb-…`. So the pattern
-  // matched the least common shape and missed the three a person is most likely
-  // to paste, in transcripts and in instruction files alike — including the
-  // literal `sk-…` in the note that asked for memory files to be scanned at all.
-  { kind: "api_key", expression: /\b(?:sk|ghp|github_pat|xoxb|memoar)[_-][A-Za-z0-9_-]{16,}\b/gu },
-  { kind: "jwt", expression: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gu },
-  { kind: "env", expression: /^(?:[A-Z][A-Z0-9_]{2,})\s*=\s*[^\s#]+$/gmu },
-  /*
-    The body is bounded, because an unmatched header is the common case.
-
-    `[\s\S]+?` walks to the end of the document looking for the closing line. A
-    transcript that merely *mentions* `-----BEGIN RSA PRIVATE KEY-----` — a
-    conversation about key handling, say — has no closing line at all, so the
-    scan drags across every remaining character. One real 30 MB artifact in the
-    archive carries that header twice and the END line zero times: 29 million
-    characters walked, twice, and the scanner threw
-    `RangeError: Maximum call stack size exceeded`, which failed the parse and
-    lost the whole session rather than one finding.
-
-    8000 is far past any real PEM body — a 4096-bit RSA key is about 3.2 kB
-    base64 — and turns an unbounded walk into a bounded one. Measured on that
-    artifact: 35ms unbounded, 14ms bounded, same zero matches.
-  */
-  { kind: "private_key", expression: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]{1,8000}?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gu },
-];
+/**
+ * The built-in secret patterns, which are the shared catalogue compiled for V8.
+ *
+ * These were four hand-written expressions, and an `env` rule that flagged any
+ * `UPPER_CASE=value` line. The capture agent held a different list. Neither
+ * knew an AWS, Google, GitLab or npm key. See secret-catalogue.ts.
+ */
+export const SECRET_PATTERNS: readonly SecretPattern[] = SECRET_CATALOGUE.map((rule) => ({
+  kind: rule.kind,
+  expression: compileRule(rule),
+}));
 
 /** An address, which is a person rather than a credential — hence its own switch. */
 const EMAIL_PATTERN: SecretPattern = {
@@ -80,10 +62,32 @@ export function redactionPatterns(settings: RedactionSettingsRecord = DEFAULT_TE
   return patterns;
 }
 
+/**
+ * The span a match asks to have masked: its `secret` group when the pattern
+ * names one, the whole match otherwise. A tenant's own patterns have no such
+ * group and mask what they match, as they always did.
+ */
+export function secretSpan(match: RegExpExecArray | RegExpMatchArray): [number, number] {
+  const group = match.indices?.groups?.secret;
+  if (group) return group;
+  const start = match.index ?? 0;
+  return [start, start + match[0].length];
+}
+
+/** Masks each pattern in order over what the one before it left, as the capture agent does. */
 export function maskLiterals(text: string, patterns: readonly SecretPattern[]): string {
   let masked = text;
   for (const { kind, expression } of patterns) {
-    masked = masked.replace(expression, `[REDACTED ${kind}]`);
+    const pieces: string[] = [];
+    let last = 0;
+    for (const match of masked.matchAll(expression)) {
+      const [start, end] = secretSpan(match);
+      pieces.push(masked.slice(last, start), `[REDACTED ${kind}]`);
+      last = end;
+    }
+    if (pieces.length === 0) continue;
+    pieces.push(masked.slice(last));
+    masked = pieces.join("");
   }
   return masked;
 }
@@ -136,7 +140,7 @@ function applyMasks(text: string, masks: readonly ReviewedMask[]): string {
 }
 
 export interface ProjectionOptions {
-  /** The tenant's patterns; the four built-in secret patterns when absent. */
+  /** The tenant's patterns; the built-in secret catalogue when absent. */
   patterns?: readonly SecretPattern[];
   /** What the person hid during the mandatory redaction review. */
   masks?: readonly ReviewedMask[];
