@@ -73,7 +73,9 @@ fn the_launch_agent_restarts_on_failure_only_and_is_throttled() {
         "<key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>"
     ));
     assert!(plist.contains("<key>ThrottleInterval</key>\n  <integer>30</integer>"));
-    assert!(plist.contains("<string>/tmp/a&amp;b/data/logs/launchd.log</string>"));
+    // Joined with the host's separator, which is `\` on a Windows runner.
+    let stdio = Path::new("/tmp/a&amp;b/data/logs").join("launchd.log");
+    assert!(plist.contains(&format!("<string>{}</string>", stdio.display())));
     assert_eq!(
         launchd::definition_path(Path::new("/Users/x"), "test-1"),
         PathBuf::from("/Users/x/Library/LaunchAgents/dev.memoar.test-1.plist")
