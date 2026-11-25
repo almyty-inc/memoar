@@ -1,5 +1,5 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, parseJsonLines, stringValue, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mostlyJsonLines, stringValue, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
 export class AntigravityCliV1Parser implements VersionedParser {
@@ -20,9 +20,9 @@ export class AntigravityCliV1Parser implements VersionedParser {
    * written in order, so they are sorted by step_index before being read.
    */
   private parseJsonl(request: ParseRequest): ParseResult {
-    const records = parseJsonLines(request.raw);
+    const records = mostlyJsonLines(request.raw);
     if (!records?.length) {
-      return { kind: "unknown", diagnostic: "antigravity-cli v1 requires a native SQLite trajectory database or a transcript log", raw: request.raw };
+      return { kind: "unknown", diagnostic: "antigravity-cli v1 requires a transcript log of JSON lines", raw: request.raw };
     }
 
     const steps = [...records]
@@ -87,13 +87,20 @@ export class AntigravityCliV1Parser implements VersionedParser {
 
       // Step types that report what a tool did. Their output belongs to the
       // assistant turn that asked for it.
-      if (type === "VIEW_FILE" || type === "RUN_COMMAND" || type === "EDIT_FILE" || type === "SEARCH") {
+      //
+      // The CLI on the machine this was checked on writes every tool's output
+      // as `GENERIC` with `source: "MODEL"`: 343 such steps across 655
+      // transcripts, and not one of the four named types below. Dropping them
+      // kept the model's tool calls and lost everything the tools answered.
+      const isToolOutput = type === "GENERIC" && stringValue(step, "source") === "MODEL";
+      if (isToolOutput || type === "VIEW_FILE" || type === "RUN_COMMAND" || type === "EDIT_FILE" || type === "SEARCH") {
         if (content === null || content.length === 0) continue;
         openAssistant(createdAt).blocks.push({ id: mint(), kind: "tool_result", text: content });
         continue;
       }
-      // CHECKPOINT and CONVERSATION_HISTORY are the CLI's own bookkeeping, and
-      // anything unrecognised is a step type added since this was written.
+      // CHECKPOINT, CONVERSATION_HISTORY, SYSTEM_MESSAGE and ERROR_MESSAGE are
+      // the CLI's own bookkeeping and retry notices, and anything unrecognised
+      // is a step type added since this was written.
     }
 
     const withOrdinals = turns
@@ -102,6 +109,6 @@ export class AntigravityCliV1Parser implements VersionedParser {
     if (withOrdinals.length === 0) {
       return { kind: "unknown", diagnostic: "antigravity-cli v1 transcript contained no readable steps", raw: request.raw };
     }
-    return { kind: "parsed", parser: "antigravity-cli:v1:0.2.0", sessions: [{ ...request.seed, turns: withOrdinals }] };
+    return { kind: "parsed", parser: "antigravity-cli:v1:0.3.0", sessions: [{ ...request.seed, turns: withOrdinals }] };
   }
 }

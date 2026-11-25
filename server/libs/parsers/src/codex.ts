@@ -1,5 +1,5 @@
 import type { ContentBlock, Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, parseJsonLines, stringValue, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mostlyJsonLines, stringValue, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, SessionSeed, VersionedParser } from "./types.js";
 
 /** Rollout lines that are not response items: turn context, UI events, meta. */
@@ -41,7 +41,8 @@ export class CodexRolloutV1Parser implements VersionedParser {
   readonly versions = ["rollout-v1"] as const;
 
   parse(request: ParseRequest): ParseResult {
-    const records = parseJsonLines(request.raw);
+    // Line by line: one line broken in transit is not a broken rollout.
+    const records = mostlyJsonLines(request.raw);
     const meta = records?.find((record) => record.type === "session_meta");
     const events = records?.filter((record) => record.type === RESPONSE_ITEM && isRecord(record.payload)) ?? [];
     if (!meta || !isRecord(meta.payload) || events.length === 0) {
@@ -144,7 +145,7 @@ export class CodexRolloutV1Parser implements VersionedParser {
     }
     return {
       kind: "parsed",
-      parser: "codex:rollout-v1:0.2.0",
+      parser: "codex:rollout-v1:0.3.0",
       sessions: [{
         ...(request.seed satisfies SessionSeed),
         ...(nativeSessionId ? { source: { ...request.seed.source, nativeSessionId } } : {}),

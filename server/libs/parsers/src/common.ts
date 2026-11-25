@@ -5,14 +5,6 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseJsonLines(raw: Uint8Array): Record<string, unknown>[] | null {
-  try {
-    return Buffer.from(raw).toString("utf8").split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line) as unknown).filter(isRecord);
-  } catch {
-    return null;
-  }
-}
-
 /** What a JSONL read actually saw, so a refusal can say more than "not JSONL". */
 export interface JsonLinesReport {
   /** The lines that were a JSON object, in file order. */
@@ -45,8 +37,8 @@ export function sampleOf(line: string): string {
  * Every JSON object the artifact holds, plus an account of what it could not
  * read.
  *
- * `parseJsonLines` above gives up on the whole artifact at the first line that
- * is not JSON. A 26,462-line transcript with 16 corrupt lines parsed as zero
+ * The `parseJsonLines` this replaced gave up on the whole artifact at the first
+ * line that was not JSON. A 26,462-line transcript with 16 corrupt lines parsed as zero
  * turns — 71 MB of session lost over 0.06% of its lines. Reading line by line
  * keeps the 26,445 that were fine and lets the caller judge the remainder.
  */
@@ -79,6 +71,32 @@ export function readJsonLines(raw: Uint8Array): JsonLinesReport {
     records.push(value);
   }
   return { records, total, invalid, firstInvalid, binary: buffer.includes(0) };
+}
+
+/**
+ * How much of an artifact has to be JSON before it counts as JSON lines.
+ *
+ * A transcript is a file of JSON lines, not a file that happens to contain one.
+ * Real transcripts miss by a hair: the worst Claude Code transcript seen had 16
+ * bad lines in 26,462, and the worst Codex rollout on the dev archive 22 in
+ * 2,444. A tool-result dump that quotes a transcript read 0 of 216. Nothing
+ * observed sits near a half, so the threshold does not need placing delicately.
+ */
+export const MIN_JSON_SHARE = 0.5;
+
+/**
+ * The records of an artifact that is mostly JSON lines, or null when it is not.
+ *
+ * For parsers that used the all-or-nothing `parseJsonLines` and so lost a
+ * whole session to one line. Eight Codex rollouts on the dev archive, up to 48 MB each, were refused
+ * as "requires session_meta followed by response_item events" while holding
+ * both: a redaction pass in the capture agent before 2026-09-19 had eaten the
+ * backslash off an escaped quote on 1 to 22 of their lines.
+ */
+export function mostlyJsonLines(raw: Uint8Array): Record<string, unknown>[] | null {
+  const read = readJsonLines(raw);
+  if (read.records.length === 0 || read.total - read.invalid < read.total * MIN_JSON_SHARE) return null;
+  return read.records;
 }
 
 export function stringValue(record: Record<string, unknown>, key: string): string | null {

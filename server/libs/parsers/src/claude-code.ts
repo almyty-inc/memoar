@@ -1,17 +1,6 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, mapParent, parseBlock, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
+import { incrementUuid, isRecord, mapParent, MIN_JSON_SHARE, parseBlock, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
-
-/**
- * How much of the artifact has to be JSON before it counts as JSON lines.
- *
- * A transcript is a file *of* JSON lines, not a file that happens to contain
- * one. Real transcripts miss by a hair — the worst observed was 16 bad lines in
- * 26,462 (0.06%), and a subagent transcript 1 in 58 (1.7%). A tool-result dump
- * that quotes a transcript read 0 of 216. Nothing observed sits near a half, so
- * the threshold does not have to be placed delicately.
- */
-const MIN_JSON_SHARE = 0.5;
 
 /** What the artifact turned out to be, in the words of what was actually read. */
 function describeRefusal(read: JsonLinesReport): string {
