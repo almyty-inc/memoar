@@ -54,10 +54,20 @@ pub static SOURCES: &[SourceSpec] = &[
         //
         // The conversation those files describe is the CLI transcript named by
         // their own `cliSessionId`, which `.claude/projects/*/*.jsonl` above
-        // already captures when it is on this host. For a local-agent-mode
-        // session it is not: that runs in a VM, and nothing on this side of it
-        // is a transcript.
-        macos_paths: NONE,
+        // already captures when it is on this host.
+        //
+        // A local-agent-mode session keeps its own Claude Code home on this
+        // side of the VM, and its transcripts are CLI JSONL: 22 sessions and
+        // 27 subagents on the machine checked. Only those are named. The rest
+        // of that tree (`.audit-key`, `.claude.json`, plugin `.git`, outputs)
+        // is what dev received in 2026-09, and `audit.jsonl` is a signed copy
+        // of the same conversation. See contracts/fixtures/PROVENANCE.md.
+        macos_paths: &[
+            "Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*/.claude/projects/*/*.jsonl",
+            "Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*/.claude/projects/*/*/subagents/*.jsonl",
+            "Library/Application Support/Claude/local-agent-mode-sessions/*/*/agent/local_*/.claude/projects/*/*.jsonl",
+            "Library/Application Support/Claude/local-agent-mode-sessions/*/*/agent/local_*/.claude/projects/*/*/subagents/*.jsonl",
+        ],
         windows_paths: NONE,
         environment_override: None,
         environment_roots: NONE,
@@ -232,14 +242,16 @@ pub static SOURCES: &[SourceSpec] = &[
         format: "task JSON",
         stability: Stability::Internal,
         common_paths: NONE,
-        // One directory per task, holding that task's JSON. The directory
-        // itself also accumulates whatever the extension caches there.
-        linux_paths: &[".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/*.json"],
+        // The one file per task the parser reads. `*.json` also took
+        // `ui_messages.json` and `task_metadata.json`, refused every time.
+        linux_paths: &[
+            ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json",
+        ],
         macos_paths: &[
-            "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/*.json",
+            "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json",
         ],
         windows_paths: &[
-            "AppData/Roaming/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/*.json",
+            "AppData/Roaming/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json",
         ],
         environment_override: None,
         environment_roots: NONE,
@@ -251,12 +263,15 @@ pub static SOURCES: &[SourceSpec] = &[
         format: "Cline-family task JSON",
         stability: Stability::Internal,
         common_paths: NONE,
-        linux_paths: &[".config/Code/User/globalStorage/kilocode.kilo-code/tasks/*/*.json"],
+        // The same single file as Roo, for the same reason.
+        linux_paths: &[
+            ".config/Code/User/globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json",
+        ],
         macos_paths: &[
-            "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks/*/*.json",
+            "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json",
         ],
         windows_paths: &[
-            "AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/tasks/*/*.json",
+            "AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json",
         ],
         environment_override: None,
         environment_roots: NONE,

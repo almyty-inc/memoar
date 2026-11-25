@@ -1,5 +1,6 @@
 //! Parse-free discovery of native coding-agent session stores.
 
+pub mod deny;
 pub mod memory;
 
 mod discovery;
