@@ -120,6 +120,27 @@ The last three are not `ok`. In a terminal, `status` and `doctor` also print
 `background capture stopped:` and the reason as the last lines on stderr.
 `memoar service logs` shows what the service last did.
 
+### A first sync takes the last 30 days
+
+A machine can hold years of sessions. The first sync captures the ones
+changed in the 30 days before it and reports how many older ones it left out,
+with their size. `memoar sync --plan` shows the same counts per source and per
+project before anything is uploaded. To take older sessions, run
+`memoar sync --since all` once, or `memoar policy --since all` to keep taking
+them. Throwaway workspaces can be left out by path:
+
+```sh
+memoar policy --exclude '/private/tmp/**' --exclude '**/.claude/worktrees/**'
+```
+
+Capture does not copy sessions into the data directory. It records where each
+one is and its hash, and reads it at upload. It also keeps free space on the
+data directory's volume and captures nothing new below that floor, while still
+uploading what is queued. `memoar status` reports the floor and the free space
+as `disk`, and the policy in force as `capturePolicy`. The desktop application
+shows both. [install.md](install.md#a-machine-with-a-large-session-store) has
+the settings and the exit code.
+
 ### Sharing is gated on a review
 
 A session cannot leave the archive until a redaction review is complete. The
