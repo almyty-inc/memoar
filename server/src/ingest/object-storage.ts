@@ -1,4 +1,4 @@
-import { CreateBucketCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 
@@ -9,10 +9,28 @@ export interface ObjectStorage {
   health(): Promise<void>;
 }
 
-export class MemoryObjectStorage implements ObjectStorage {
+/**
+ * Storage that can also remove an object. Kept off `ObjectStorage` because
+ * ingest never deletes: raw bytes are kept so a later parser can read them.
+ * Only the artifact cleanup removes bytes, and only ones that were never a
+ * session (server/src/cleanup). Deleting a key that is not there succeeds.
+ */
+export interface DeletableObjectStorage extends ObjectStorage {
+  delete(objectKey: string): Promise<void>;
+}
+
+export function isDeletable(storage: ObjectStorage): storage is DeletableObjectStorage {
+  return typeof (storage as Partial<DeletableObjectStorage>).delete === "function";
+}
+
+export class MemoryObjectStorage implements DeletableObjectStorage {
   private readonly objects = new Map<string, Uint8Array>();
   put(objectKey: string, bytes: Uint8Array): Promise<void> {
     this.objects.set(objectKey, Uint8Array.from(bytes));
+    return Promise.resolve();
+  }
+  delete(objectKey: string): Promise<void> {
+    this.objects.delete(objectKey);
     return Promise.resolve();
   }
   get(objectKey: string): Promise<Uint8Array> {
@@ -28,6 +46,7 @@ export interface S3ClientPort {
   getObject(input: { bucket: string; key: string }): Promise<Uint8Array>;
   signedGetUrl(input: { bucket: string; key: string; expiresSeconds: number }): Promise<string>;
   ensureBucket(bucket: string): Promise<void>;
+  deleteObject(input: { bucket: string; key: string }): Promise<void>;
 }
 
 export class AwsS3ClientPort implements S3ClientPort {
@@ -79,6 +98,10 @@ export class AwsS3ClientPort implements S3ClientPort {
     return getSignedUrl(this.publicSigner, new GetObjectCommand({ Bucket: input.bucket, Key: input.key }), { expiresIn: input.expiresSeconds });
   }
 
+  async deleteObject(input: { bucket: string; key: string }): Promise<void> {
+    await this.internal.send(new DeleteObjectCommand({ Bucket: input.bucket, Key: input.key }));
+  }
+
   async ensureBucket(bucket: string): Promise<void> {
     try {
       await this.internal.send(new HeadBucketCommand({ Bucket: bucket }));
@@ -91,7 +114,8 @@ export class AwsS3ClientPort implements S3ClientPort {
   }
 }
 
-export class S3ObjectStorage implements ObjectStorage {
+export class S3ObjectStorage implements DeletableObjectStorage {
+  delete(objectKey: string): Promise<void> { return this.client.deleteObject({ bucket: this.bucket, key: objectKey }); }
   constructor(private readonly client: S3ClientPort, private readonly bucket: string) {}
   put(objectKey: string, bytes: Uint8Array, contentType: string): Promise<void> {
     return this.client.putObject({ bucket: this.bucket, key: objectKey, body: bytes, contentType });
