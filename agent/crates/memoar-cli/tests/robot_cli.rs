@@ -112,3 +112,42 @@ fn a_real_usage_error_still_fails() {
         "an unknown subcommand must still be a usage failure"
     );
 }
+
+/// Without HOME or USERPROFILE (a service account, a scrubbed CI step) every
+/// command failed with "Memoar is not initialized", `capabilities` included,
+/// and naming all three directories did not help.
+#[test]
+fn no_home_directory_is_needed_when_none_is_used() {
+    let temp = tempfile::tempdir().unwrap();
+    let bare = |arguments: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_memoar"))
+            .args(arguments)
+            .env_remove("HOME")
+            .env_remove("USERPROFILE")
+            .output()
+            .expect("memoar binary should run")
+    };
+    let output = bare(&["--json", "capabilities"]);
+    assert!(output.status.success(), "{:?}", output.status.code());
+
+    let dir = |name: &str| temp.path().join(name).to_str().unwrap().to_owned();
+    let output = bare(&[
+        "--json",
+        "--config-dir",
+        &dir("config"),
+        "--data-dir",
+        &dir("data"),
+        "--capture-home",
+        &dir("home"),
+        "status",
+    ]);
+    assert_eq!(
+        output.status.code(),
+        Some(memoar_cli::EXIT_NOT_INITIALIZED.into()),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    let output = bare(&["--json", "status"]);
+    assert_eq!(output.status.code(), Some(memoar_cli::EXIT_USAGE.into()));
+}

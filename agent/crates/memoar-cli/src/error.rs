@@ -25,6 +25,12 @@ pub struct AppError {
     pub message: String,
     pub hint: String,
     pub retryable: bool,
+    /// The status the archive answered with, when it answered at all.
+    ///
+    /// Kept so a caller can decide what a refusal means without reading the
+    /// prose: `sync --watch` and `doctor` used to match on the message text.
+    #[serde(skip)]
+    pub http_status: Option<u16>,
 }
 
 impl AppError {
@@ -37,6 +43,7 @@ impl AppError {
             message: message.into(),
             hint: "Run memoar introspect for the command surface.".to_owned(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -49,6 +56,7 @@ impl AppError {
             message: "Memoar is not initialized on this machine.".to_owned(),
             hint: "Run memoar login.".to_owned(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -61,6 +69,7 @@ impl AppError {
             message: message.into(),
             hint: "Check the endpoint, connection, and credentials, then retry.".to_owned(),
             retryable: true,
+            http_status: None,
         }
     }
 
@@ -83,6 +92,7 @@ impl AppError {
             message: message.into(),
             hint: hint.into(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -101,6 +111,7 @@ impl AppError {
             message: message.into(),
             hint: hint.into(),
             retryable: true,
+            http_status: None,
         }
     }
 
@@ -120,9 +131,28 @@ impl AppError {
             message: message.into(),
             hint: hint.into(),
             retryable: false,
+            http_status: None,
         }
     }
 
+    /// A file this client wrote that no longer parses.
+    ///
+    /// It was `MEMOAR_UNKNOWN`, exit 9, "run memoar doctor", and `doctor`
+    /// failed on the same file before checking anything. `login` rewrites both
+    /// files and no longer refuses to start over a damaged one, so it is the
+    /// way back, and the exit is "not initialized" because that is the state.
+    #[must_use]
+    pub fn damaged(path: &std::path::Path, detail: &str) -> Self {
+        Self {
+            exit_code: EXIT_NOT_INITIALIZED,
+            code: "MEMOAR_CONFIG_DAMAGED".to_owned(),
+            kind: "damaged".to_owned(),
+            message: format!("{} is damaged: {detail}", path.display()),
+            hint: "Run memoar login to write it again. Sources you turned off and redaction settings are lost with the file.".to_owned(),
+            retryable: false,
+            http_status: None,
+        }
+    }
     #[must_use]
     pub fn locked(message: impl Into<String>) -> Self {
         Self {
@@ -133,6 +163,7 @@ impl AppError {
             hint: "Resolve the competing process or native-session collision, then retry."
                 .to_owned(),
             retryable: true,
+            http_status: None,
         }
     }
 
@@ -145,6 +176,7 @@ impl AppError {
             message: message.into(),
             hint: "Run memoar doctor and retry with the latest client.".to_owned(),
             retryable: false,
+            http_status: None,
         }
     }
 
@@ -159,7 +191,22 @@ impl AppError {
 }
 
 pub(crate) fn map_queue_error(error: DaemonError) -> AppError {
-    AppError::queue(error.to_string())
+    // A queue file that is not a database, or is one SQLite says is broken,
+    // is not an unknown fault and `doctor` cannot repair it. Saying what to
+    // move aside is the whole remedy.
+    let message = error.to_string();
+    if message.contains("not a database") || message.contains("malformed") {
+        return AppError {
+            exit_code: EXIT_UNKNOWN,
+            code: "MEMOAR_QUEUE_DAMAGED".to_owned(),
+            kind: "damaged".to_owned(),
+            message,
+            hint: "Move queue.sqlite3 out of the data directory and run memoar sync again. The queue is rebuilt and sessions are captured afresh, and the archive skips what it already has.".to_owned(),
+            retryable: false,
+            http_status: None,
+        };
+    }
+    AppError::queue(message)
 }
 
 pub(crate) fn map_capture_error(error: DaemonError) -> AppError {
@@ -173,7 +220,13 @@ pub(crate) fn map_capture_error(error: DaemonError) -> AppError {
 
 pub(crate) fn map_sync_error(error: DaemonError) -> AppError {
     match error {
-        DaemonError::Transport(_) => AppError::network(error.to_string()),
+        // The archive answered: its status decides, as it does for every
+        // other request this client makes. A revoked machine token was a
+        // retryable network error here, and a watch retried it for ever.
+        DaemonError::Http { status, ref body } => crate::http_error::http_error(status, body),
+        DaemonError::Transport(_) | DaemonError::Unreachable(_) => {
+            AppError::network(error.to_string())
+        }
         _ => AppError::queue(error.to_string()),
     }
 }

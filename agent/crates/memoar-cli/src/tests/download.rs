@@ -81,6 +81,30 @@ fn a_bundle_download_is_not_held_to_the_control_plane_budget() {
     );
 }
 
+/// `listen` fetches a pushed bundle from a pre-signed URL, and did it with
+/// the control-plane budget, which bounds the whole body: a large conversion
+/// failed on a deadline it could never meet.
+#[test]
+fn a_presigned_bundle_fetch_gets_the_download_budget() {
+    let (endpoint, _requests, _server) = spawn_mock(MockOptions {
+        request_count: 1,
+        conversion_bundle: Some(json!({ "contractVersion": "unreadable" })),
+        slow_path: "/download",
+        slow_by: Duration::from_millis(900),
+        ..MockOptions::default()
+    });
+    let api = ApiClient::with_timeouts(
+        "",
+        None,
+        Duration::from_millis(400),
+        Duration::from_secs(10),
+    );
+    let outcome = api.fetch_presigned(&format!("{endpoint}/convert/conversion-job/download"));
+    assert!(
+        outcome.is_ok(),
+        "the bundle fetch was held to the control-plane budget: {outcome:?}"
+    );
+}
 /// "error sending request for url (…)" is not something an operator can act
 /// on. Behind a TLS-inspecting proxy it was the whole message: the URL, and
 /// nothing about the certificate. The reason is in the source chain.

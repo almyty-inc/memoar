@@ -14,8 +14,12 @@ function countKinds(findings: string[]): { kind: string; count: number }[] {
 const KIND_LABELS: Record<string, string> = {
   api_key: 'API key',
   jwt: 'signed token',
+  // No longer produced. Kept so a finding stored before the shared catalogue
+  // still reads as words.
   env: 'environment variable',
   private_key: 'private key',
+  credential: 'password or credential',
+  connection_string: 'connection string',
   email: 'email address',
   path: 'home directory path',
   custom: 'one of your own patterns',

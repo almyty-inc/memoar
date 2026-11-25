@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::args::Cli;
 use crate::credential::{Credential, CredentialStore, FileCredentialStore};
+use crate::dirs::{Platform, default_dirs};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,19 +43,27 @@ pub struct RuntimePaths {
 
 impl RuntimePaths {
     pub fn resolve(cli: &Cli) -> Result<Self, AppError> {
-        let user_home = user_home(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))?;
-        let home = cli
-            .capture_home
-            .clone()
-            .unwrap_or_else(|| user_home.clone());
-        let config_dir = cli
-            .config_dir
-            .clone()
-            .unwrap_or_else(|| user_home.join(".config/memoar"));
-        let data_dir = cli
-            .data_dir
-            .clone()
-            .unwrap_or_else(|| user_home.join(".local/share/memoar"));
+        // Asked for only when a directory was left to default, so a run that
+        // names all three works in an environment without HOME or USERPROFILE,
+        // a service account or a scrubbed CI step.
+        let user_home = || user_home(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"));
+        let home = match &cli.capture_home {
+            Some(home) => home.clone(),
+            None => user_home()?,
+        };
+        let (config_dir, data_dir) = match (&cli.config_dir, &cli.data_dir) {
+            (Some(config), Some(data)) => (config.clone(), data.clone()),
+            (config, data) => {
+                let (default_config, default_data) =
+                    default_dirs(&user_home()?, Platform::current(), |name| {
+                        std::env::var_os(name)
+                    });
+                (
+                    config.clone().unwrap_or(default_config),
+                    data.clone().unwrap_or(default_data),
+                )
+            }
+        };
         Ok(Self {
             config_dir,
             data_dir,
@@ -102,9 +111,8 @@ pub(crate) fn load_config_optional(paths: &RuntimePaths) -> Result<Option<Config
     let bytes = fs::read(&path).map_err(|error| {
         AppError::internal(format!("could not read {}: {error}", path.display()))
     })?;
-    let config = serde_json::from_slice(&bytes).map_err(|error| {
-        AppError::internal(format!("invalid config {}: {error}", path.display()))
-    })?;
+    let config = serde_json::from_slice(&bytes)
+        .map_err(|error| AppError::damaged(&path, &error.to_string()))?;
     Ok(Some(config))
 }
 
@@ -114,13 +122,30 @@ pub(crate) fn save_config(paths: &RuntimePaths, config: &Config) -> Result<(), A
     atomic_replace(&paths.config_file(), &bytes, 0o600)
 }
 
+/// Creates a directory, and any parent it needs, readable by its owner only.
+///
+/// Only a directory this creates: one that exists keeps its permissions,
+/// because `--config-dir` and `--data-dir` may name a directory somebody chose.
+/// On Windows a new directory inherits the profile ACL, which already admits
+/// only the user.
+pub(crate) fn create_private_dir(path: &Path) -> Result<(), AppError> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path).map_err(|error| {
+        AppError::internal(format!("could not create {}: {error}", path.display()))
+    })
+}
 pub(crate) fn atomic_replace(path: &Path, bytes: &[u8], unix_mode: u32) -> Result<(), AppError> {
     let parent = path
         .parent()
         .ok_or_else(|| AppError::internal(format!("{} has no parent", path.display())))?;
-    fs::create_dir_all(parent).map_err(|error| {
-        AppError::internal(format!("could not create {}: {error}", parent.display()))
-    })?;
+    // Owner-only when this creates it: the directory holds the credential.
+    create_private_dir(parent)?;
     let temporary = parent.join(format!(".memoar-{}.tmp", Uuid::now_v7()));
     let result = (|| -> Result<(), std::io::Error> {
         let mut file = create_private(&temporary, unix_mode)?;
@@ -170,7 +195,11 @@ pub(crate) fn user_home(
     home.and_then(usable)
         .or_else(|| user_profile.and_then(usable))
         .map(PathBuf::from)
-        .ok_or_else(AppError::not_initialized)
+        .ok_or_else(|| {
+            AppError::usage(
+                "neither HOME nor USERPROFILE is set, so there is no home directory to work in. Set one, or pass --config-dir, --data-dir and --capture-home.",
+            )
+        })
 }
 
 /// Creates a file that has its final permissions from the moment it exists.

@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::enqueue::sha256_bytes;
 use crate::error::DaemonError;
 use crate::manifest::{IngestManifest, ManifestArtifact, SyncTransport};
-use crate::queue::OfflineQueue;
+use crate::queue::{OfflineQueue, QueuedArtifact};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +35,43 @@ impl<T: SyncTransport> SyncEngine<T> {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_batch_limit(transport: T, batch_limit: usize) -> Self {
+        Self {
+            transport,
+            batch_limit,
+        }
+    }
+
+    /// Passes until the queue has nothing left that is due.
+    ///
+    /// One pass takes at most `batch_limit` artifacts, and `memoar sync` ran
+    /// one pass: a first sync on a machine with 1,000 sessions uploaded 256
+    /// and reported success, and the rest waited for somebody to run it
+    /// three more times. A pass that fills its batch is followed by another.
+    /// It ends because every artifact a pass offered is either synced or
+    /// waiting out a backoff, so the next pass never offers it again.
+    pub fn drain(&self, queue: &OfflineQueue, machine_id: &str) -> Result<SyncReport, DaemonError> {
+        let mut total = self.sync(queue, machine_id)?;
+        let mut last = total.clone();
+        // A ceiling as well, so a queue that misbehaves cannot spin a sync
+        // for ever: 4,096 passes is a million artifacts.
+        let mut passes = 1;
+        while last.considered >= self.batch_limit && passes < 4096 {
+            passes += 1;
+            last = self.sync(queue, machine_id)?;
+            total.considered += last.considered;
+            total.uploaded += last.uploaded;
+            total.duplicates += last.duplicates;
+            total.failed += last.failed;
+            total.batch_id = last.batch_id.clone().or(total.batch_id);
+        }
+        Ok(total)
+    }
+    #[cfg(test)]
+    pub(crate) fn transport(&self) -> &T {
+        &self.transport
+    }
     pub fn sync(&self, queue: &OfflineQueue, machine_id: &str) -> Result<SyncReport, DaemonError> {
         let artifacts = queue.pending(self.batch_limit)?;
         if artifacts.is_empty() {
@@ -53,7 +90,7 @@ impl<T: SyncTransport> SyncEngine<T> {
         let missing = match self.transport.missing(machine_id, &hashes) {
             Ok(missing) => missing,
             Err(error) => {
-                queue.mark_retry_all(&artifacts, &error.to_string())?;
+                record_failure(queue, &artifacts, &error)?;
                 return Err(error);
             }
         };
@@ -68,7 +105,7 @@ impl<T: SyncTransport> SyncEngine<T> {
         // manifest must not name them: it is a claim that these bytes are in
         // the archive, and the server checks.
         let mut absent: HashSet<String> = HashSet::new();
-        for artifact in &artifacts {
+        for (index, artifact) in artifacts.iter().enumerate() {
             if !missing.contains(&artifact.sha256) {
                 duplicates += 1;
                 continue;
@@ -107,6 +144,18 @@ impl<T: SyncTransport> SyncEngine<T> {
                 continue;
             }
             if let Err(error) = self.transport.upload(artifact, bytes) {
+                if error.is_pass_wide() {
+                    // Nothing after this one will get through either. What
+                    // was uploaded already is in the archive by its hash, so
+                    // the next pass finds it there and declares it then.
+                    let untried: Vec<QueuedArtifact> = artifacts[index..]
+                        .iter()
+                        .filter(|later| missing.contains(&later.sha256))
+                        .cloned()
+                        .collect();
+                    queue.mark_deferred(&untried, &error.to_string())?;
+                    return Err(error);
+                }
                 queue.mark_retry(&artifact.sha256, &artifact.source_path, &error.to_string())?;
                 absent.insert(artifact.sha256.clone());
                 failed += 1;
@@ -133,7 +182,12 @@ impl<T: SyncTransport> SyncEngine<T> {
         let receipt = match self.transport.submit_manifest(&manifest) {
             Ok(receipt) => receipt,
             Err(error) => {
-                queue.mark_retry_all(&artifacts, &error.to_string())?;
+                let claimed: Vec<QueuedArtifact> = artifacts
+                    .iter()
+                    .filter(|artifact| !absent.contains(&artifact.sha256))
+                    .cloned()
+                    .collect();
+                record_failure(queue, &claimed, &error)?;
                 return Err(error);
             }
         };
@@ -167,5 +221,19 @@ impl<T: SyncTransport> SyncEngine<T> {
             uploaded,
             duplicates,
         })
+    }
+}
+
+/// Charges these artifacts an attempt for a failure that was theirs, and only
+/// records the reason for one that stopped the whole pass.
+fn record_failure(
+    queue: &OfflineQueue,
+    artifacts: &[QueuedArtifact],
+    error: &DaemonError,
+) -> Result<(), DaemonError> {
+    if error.is_pass_wide() {
+        queue.mark_deferred(artifacts, &error.to_string())
+    } else {
+        queue.mark_retry_all(artifacts, &error.to_string())
     }
 }

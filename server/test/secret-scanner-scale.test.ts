@@ -72,21 +72,20 @@ describe("a header with no closing line", () => {
 });
 
 /**
- * The private-key body stays bounded, in both languages.
+ * The private-key body stays short of the whole transcript, in both languages.
  *
- * `[\s\S]+?` walks to the end of the document looking for a closing line, and a
- * transcript that merely mentions the header has none. One real 30 MB artifact
- * carries `-----BEGIN RSA PRIVATE KEY-----` twice and the END line zero times;
- * with all four patterns running in sequence the scanner threw
- * `RangeError: Maximum call stack size exceeded`, which failed the parse and
- * lost every turn in the session.
+ * `[\s\S]+?` walked to the end of the document looking for a closing line, and
+ * a transcript that merely mentions the header has none. One real 30 MB
+ * artifact carries `-----BEGIN RSA PRIVATE KEY-----` twice and the END line
+ * zero times, and the scanner threw `RangeError: Maximum call stack size
+ * exceeded`, which failed the parse and lost every turn in the session.
  *
- * The bound is the fix and this is the only guard on it. I could not reproduce
- * the overflow itself — in isolation the unbounded pattern completes in 35ms on
- * that same artifact, and nothing reproduces locally at any size — so this pins
- * the property instead of the symptom: the span is bounded, in both halves of
- * the product, and the deliberate cost of that bound is stated rather than
- * discovered later.
+ * The first fix bounded the body at 8000 characters. That bound is cheap in V8
+ * and ruinous in Rust's regex crate, whose lazy DFA keeps a state per count:
+ * the capture agent took a minute over twenty thousand bare headers. The body
+ * is now held to the PEM alphabet, which neither engine can walk past the first
+ * `-` or punctuation mark. Both sides run the same rule from the shared
+ * catalogue, so there is no second copy to keep in step here.
  */
 describe("the private key pattern", () => {
   const header = `-----BEGIN RSA ${"PRIVATE"} KEY-----`;
@@ -94,39 +93,24 @@ describe("the private key pattern", () => {
   const pattern = () => SECRET_PATTERNS.find((entry) => entry.kind === "private_key")!;
 
   it("matches a key whose body is a realistic size", () => {
-    // A 4096-bit RSA body is about 3.2 kB of base64; 8000 is comfortably past it.
     const body = "MIIEowIBAAKCAQEA".repeat(200);
-    expect(body.length).toBeLessThan(8000);
     const found = new SecretScanner().scan(Buffer.from(`${header}\n${body}\n${footer}`, "utf8"));
     expect(found.filter((entry) => entry.kind === "private_key")).toHaveLength(1);
   });
 
-  /*
-    The cost of the bound, stated on purpose.
-
-    A body longer than the bound is not matched. That is the trade: an unmatched
-    header can no longer drag the scan across a whole transcript, and in return a
-    key larger than any real one goes unflagged. Asserting it here means the
-    trade is a decision somebody made, and that removing the bound fails a test
-    rather than passing silently.
-  */
-  it("does not match a body longer than the bound, which is the trade", () => {
-    const body = "MIIEowIBAAKCAQEA".repeat(700);
+  it("matches a body past the old 8000-character bound, which was a cost and not a choice", () => {
+    const body = "MIIEowIBAAKCAQEA\n".repeat(700);
     expect(body.length).toBeGreaterThan(8000);
-    const found = new SecretScanner().scan(Buffer.from(`${header}\n${body}\n${footer}`, "utf8"));
-    expect(found.filter((entry) => entry.kind === "private_key")).toHaveLength(0);
+    const found = new SecretScanner().scan(Buffer.from(`${header}\n${body}${footer}`, "utf8"));
+    expect(found.filter((entry) => entry.kind === "private_key")).toHaveLength(1);
   });
 
-  it("is bounded in the agent too, which redacts before the archive ever sees it", async () => {
-    const { readFile } = await import("node:fs/promises");
-    const { resolve } = await import("node:path");
-    const rust = await readFile(resolve(import.meta.dirname, "../../agent/crates/memoar-daemon/src/redaction.rs"), "utf8");
-    const rule = /-----BEGIN \(\?:RSA \|EC \|OPENSSH \)\?PRIVATE KEY-----(.{0,24}?)-----END/u.exec(rust);
-    expect(rule, "the agent's private-key rule is not written the way this test reads it").not.toBeNull();
-    expect(
-      rule![1],
-      "the agent's private-key body must be bounded like the archive's, or the two halves disagree about what a key is",
-    ).toMatch(/\{1,\d+\}\?/u);
-    expect(pattern().expression.source, "and so must the archive's").toMatch(/\{1,\d+\}\?/u);
+  it("stops at the first character a PEM body cannot hold", () => {
+    expect(pattern().expression.source, "the body is a class, not a count").not.toMatch(/\[\\s\\S\]/u);
+    const mention = `${header} is what the file starts with, and it must never be committed.`;
+    const started = performance.now();
+    const found = new SecretScanner().scan(Buffer.from(`${mention}\n`.repeat(50_000), "utf8"));
+    expect(found.filter((entry) => entry.kind === "private_key")).toHaveLength(0);
+    expect(performance.now() - started, "fifty thousand mentions, one pass").toBeLessThan(4000);
   });
 });

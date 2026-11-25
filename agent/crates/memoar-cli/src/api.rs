@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::credential::Credential;
 use crate::error::AppError;
+use crate::http_error::http_error;
 
 /// A dead host should not cost a whole download budget to discover.
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
@@ -105,6 +106,18 @@ impl ApiClient {
         self.send_json(self.authorize(self.client.get(self.url(path))))
     }
 
+    /// A request whose answer is its status: 204, or a refusal.
+    pub(crate) fn delete(&self, path: &str) -> Result<(), AppError> {
+        self.send(self.authorize(self.client.delete(self.url(path))))
+            .map(|_| ())
+    }
+
+    /// `POST` with no body, for an action named entirely by its path.
+    pub(crate) fn post_empty(&self, path: &str) -> Result<(), AppError> {
+        self.send(self.authorize(self.client.post(self.url(path))))
+            .map(|_| ())
+    }
+
     pub(crate) fn get_query(
         &self,
         path: &str,
@@ -139,9 +152,21 @@ impl ApiClient {
             })?;
         // The redirect to storage carries the same bytes, so it carries the
         // same budget: the 30-second default cut this one off too.
-        let bytes = self.send_bytes(self.client.get(url).timeout(self.download_timeout))?;
+        let bytes = self.fetch_presigned(url)?;
         serde_json::from_slice(&bytes)
             .map_err(|error| AppError::network(format!("invalid conversion bundle: {error}")))
+    }
+
+    /// Fetches a pre-signed storage URL: no credential, because the signature
+    /// in the URL is the credential, and the download budget, because what is
+    /// behind it is a conversion bundle.
+    ///
+    /// `listen` fetched its bundles with the two-minute control-plane budget,
+    /// which bounds the whole body, so a large conversion pushed to a machine
+    /// failed on a deadline it could never meet. `convert --here` already had
+    /// the download budget.
+    pub(crate) fn fetch_presigned(&self, url: &str) -> Result<Vec<u8>, AppError> {
+        self.send_bytes(self.client.get(url).timeout(self.download_timeout))
     }
 
     fn send_json(&self, request: RequestBuilder) -> Result<Value, AppError> {
@@ -168,7 +193,7 @@ impl ApiClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().unwrap_or_default();
-            return Err(AppError::network(problem_message(status.as_u16(), &body)));
+            return Err(http_error(status.as_u16(), &body));
         }
         Ok(response)
     }

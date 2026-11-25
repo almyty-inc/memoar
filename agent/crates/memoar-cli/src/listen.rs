@@ -9,7 +9,8 @@ use crate::args::ListenArgs;
 use crate::config::{Config, RuntimePaths, authenticated_config};
 use crate::credential::Credential;
 use crate::error::{AppError, map_materialize_error};
-use crate::machine::issue_machine_token;
+use crate::http_error::http_error;
+use crate::machine::{issue_machine_token, machine_refusal};
 use crate::sse::SseDecoder;
 
 /// Subscribes to this machine's durable command channel and materializes
@@ -22,7 +23,8 @@ use crate::sse::SseDecoder;
 pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let (config, token) = authenticated_config(paths)?;
     let api = ApiClient::new(&config.endpoint, Some(&token));
-    let (machine_token, _) = issue_machine_token(&api, &config.machine_id)?;
+    let (machine_token, _) = issue_machine_token(&api, &config.machine_id)
+        .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
     let machine_api = ApiClient::new(
         &config.endpoint,
         Some(&Credential::Bearer(machine_token.clone())),
@@ -38,10 +40,15 @@ pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandO
         .send()
         .map_err(|error| AppError::network(format!("command stream failed: {error}")))?;
     if !response.status().is_success() {
-        return Err(AppError::network(format!(
-            "command stream rejected with status {}",
-            response.status()
-        )));
+        // A deregistered machine is refused here too, and "rejected with
+        // status 403" said nothing about why or what to do.
+        let status = response.status().as_u16();
+        let body = response.text().unwrap_or_default();
+        return Err(machine_refusal(
+            &api,
+            &config.machine_id,
+            http_error(status, &body),
+        ));
     }
 
     let mut stream = response;
@@ -244,8 +251,7 @@ fn materialize_from_command(paths: &RuntimePaths, payload: &Value) -> Result<Val
         .get("downloadUrl")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::network("materialize command did not include downloadUrl"))?;
-    let anonymous = ApiClient::new("", None);
-    let bytes = anonymous.send_bytes(anonymous.client.get(url))?;
+    let bytes = ApiClient::new("", None).fetch_presigned(url)?;
     let bundle: ConversionBundle = serde_json::from_slice(&bytes)
         .map_err(|error| AppError::network(format!("invalid conversion bundle: {error}")))?;
     if let Some(session_id) = payload.get("sessionId").and_then(Value::as_str)
