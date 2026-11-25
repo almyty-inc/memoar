@@ -7,8 +7,11 @@ export interface QueueJob<T extends Record<string, unknown> = Record<string, unk
   data: T;
 }
 
+/** `delay` holds the job back that many milliseconds before a worker may take it. */
+export interface EnqueueOptions { jobId: string; attempts: number; delay?: number }
+
 export interface JobQueue {
-  enqueue(name: string, data: Record<string, unknown>, options: { jobId: string; attempts: number }): Promise<void>;
+  enqueue(name: string, data: Record<string, unknown>, options: EnqueueOptions): Promise<void>;
   health(): Promise<void>;
 }
 
@@ -28,9 +31,11 @@ export function redisConnectionFromUrl(redisUrl: string): { host: string; port: 
 }
 
 export class InMemoryJobQueue implements JobQueue {
-  readonly jobs: QueueJob[] = [];
-  enqueue(name: string, data: Record<string, unknown>, options: { jobId: string }): Promise<void> {
-    if (!this.jobs.some((job) => job.id === options.jobId)) this.jobs.push({ id: options.jobId, name, data: structuredClone(data) });
+  readonly jobs: (QueueJob & { delay?: number })[] = [];
+  enqueue(name: string, data: Record<string, unknown>, options: EnqueueOptions): Promise<void> {
+    if (!this.jobs.some((job) => job.id === options.jobId)) {
+      this.jobs.push({ id: options.jobId, name, data: structuredClone(data), ...(options.delay ? { delay: options.delay } : {}) });
+    }
     return Promise.resolve();
   }
   health(): Promise<void> { return Promise.resolve(); }
@@ -39,7 +44,7 @@ export class InMemoryJobQueue implements JobQueue {
 export interface QueueRetention { age: number; count: number }
 
 export interface BullMqQueuePort {
-  add(name: string, data: Record<string, unknown>, options: { jobId: string; attempts: number; removeOnComplete: number; removeOnFail: QueueRetention }): Promise<unknown>;
+  add(name: string, data: Record<string, unknown>, options: EnqueueOptions & { removeOnComplete: number; removeOnFail: QueueRetention }): Promise<unknown>;
   waitUntilReady?(): Promise<unknown>;
 }
 
@@ -63,7 +68,7 @@ export const FAILED_JOB_RETENTION: QueueRetention = { age: 86_400, count: 1000 }
 
 export class BullMqQueueAdapter implements JobQueue {
   constructor(private readonly queue: BullMqQueuePort) {}
-  async enqueue(name: string, data: Record<string, unknown>, options: { jobId: string; attempts: number }): Promise<void> {
+  async enqueue(name: string, data: Record<string, unknown>, options: EnqueueOptions): Promise<void> {
     await this.queue.add(name, data, { ...options, removeOnComplete: 1000, removeOnFail: FAILED_JOB_RETENTION });
   }
   async health(): Promise<void> { await this.queue.waitUntilReady?.(); }

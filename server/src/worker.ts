@@ -13,7 +13,9 @@ import { MetricsService } from "./metrics/metrics.service.js";
 import { handlePipelineJob } from "./pipeline-jobs.js";
 import { runRetentionSweep } from "./settings.js";
 import { assertProductionCredentials } from "./startup-checks.js";
-import { ARCHIVE_STORE, OBJECT_STORAGE } from "./tokens.js";
+import { ArtifactSettler } from "./ingest/settle.js";
+import type { JobQueue } from "./ingest/queues.js";
+import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "./tokens.js";
 
 export async function runWorker(): Promise<void> {
   assertProductionCredentials();
@@ -24,12 +26,13 @@ export async function runWorker(): Promise<void> {
   const objects = context.get<ObjectStorage>(OBJECT_STORAGE);
   const pipeline = new IngestPipeline(store, objects, new ParserRegistry(), new FormatDetector(), new SecretScanner(), new DefaultPipelineSeedFactory(), embeddingProviderFromEnv());
   const conversions = context.get(ConversionService);
+  const settler = new ArtifactSettler(store, context.get<JobQueue>(JOB_QUEUE));
   // Conversion is processor work and belongs here rather than in a request:
   // done inline it did not overlap with anything, and starved the API's own
   // health endpoint while it ran.
   const worker = new Worker<Record<string, unknown>, unknown, string>(
     PIPELINE_QUEUE_NAME,
-    (job: Job<Record<string, unknown>, unknown, string>) => handlePipelineJob(job, { pipeline, conversions }),
+    (job: Job<Record<string, unknown>, unknown, string>) => handlePipelineJob(job, { pipeline, conversions, settler }),
     {
       connection: redisConnectionFromUrl(redisUrl),
       concurrency: Number(process.env.WORKER_CONCURRENCY ?? 4),
