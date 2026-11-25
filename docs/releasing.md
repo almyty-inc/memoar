@@ -80,6 +80,18 @@ checksum and its signing status. The assembled files are in the
 1. Pick the version, for example `0.4.0`. Then, in one pull request:
    - set `version` under `[workspace.package]` in `agent/Cargo.toml`
    - run `cargo check --manifest-path agent/Cargo.toml` so `agent/Cargo.lock` follows
+   - set `version` in `agent/crates/memoar-desktop/Cargo.toml` and `nsh.json`
+     (raise `build` there too), then `cargo check` in that crate for its lockfile
+   - move the contract to the same version: `contracts/VERSION`,
+     `contractVersion` in `contracts/source/canonical.model.json` and
+     `contracts/convert-matrix/versions.json`, and `info.version` in
+     `contracts/openapi.yaml`. The CLI and the materializer require an exact
+     match, so this is not optional. Announce it in `#memoar`, then run
+     `node contracts/scripts/generate.mjs`, `node contracts/scripts/generate-fixtures.mjs`,
+     rebuild the two committed conversion bundles from the server's own
+     builders, update the CLI goldens, and run `node scripts/check-version-pins.mjs`
+   - deploy the server from the merge commit before tagging, since a CLI and an
+     archive on different contract versions refuse each other's bundles
    - set `AGENT_VERSION` in `packages/npx/lib/platform.js`
    - set `version` in `packages/npx/package.json` if the launcher ships too
    - run `npm test` in `packages/npx` and `node scripts/release/check-versions.mjs --version 0.4.0 --binaries`
