@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { Session } from "../libs/canonical/src/generated.js";
+import { ParserRegistry, type SessionSeed } from "../libs/parsers/src/index.js";
 import type { RawArtifactRecord, TenantContext } from "../src/archive-store.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { IngestPipeline, MemoryObjectStorage, SUPERSEDED_DIAGNOSTIC } from "../src/ingest.js";
@@ -65,6 +69,41 @@ function turnCount(bytes: Buffer): number {
 const parent = syntheticClaudeTranscript({ targetBytes: 40_000, sessionId: PARENT, seed: "parent", toolOutputBytes: 400 });
 const first = syntheticClaudeTranscript({ targetBytes: 12_000, seed: "agent-one", toolOutputBytes: 400, subagent: { parentSessionId: PARENT, agentId: "a0f1" } });
 const second = syntheticClaudeTranscript({ targetBytes: 8_000, seed: "agent-two", toolOutputBytes: 400, subagent: { parentSessionId: PARENT, agentId: "a0f2" } });
+
+describe("the subagent-1 contract fixture", () => {
+  const fixture = resolve(process.cwd(), "../contracts/fixtures/claude-code/v1/subagent-1");
+  async function load(): Promise<{ raw: Buffer; expected: Session }> {
+    const [raw, expected] = await Promise.all([
+      readFile(resolve(fixture, "input/session.jsonl")),
+      readFile(resolve(fixture, "expected.canonical.json"), "utf8"),
+    ]);
+    return { raw, expected: JSON.parse(expected) as Session };
+  }
+
+  it("normalizes byte-exact", async () => {
+    const { raw, expected } = await load();
+    const seed = Object.fromEntries(Object.entries(expected).filter(([key]) => key !== "turns")) as SessionSeed;
+    const result = new ParserRegistry().parse({ source: "claude-code", version: "v1", raw, seed });
+    expect(result.kind).toBe("parsed");
+    if (result.kind === "parsed") expect(result.sessions).toEqual([expected]);
+  });
+
+  it("takes its identity and its parent link from the file, not from the seed", async () => {
+    // The byte-exact case seeds from the expected output, which already holds
+    // both, so on its own it cannot tell a parser that reads them from one
+    // that passes them through.
+    const { raw, expected } = await load();
+    const seed = {
+      ...Object.fromEntries(Object.entries(expected).filter(([key]) => key !== "turns")),
+      source: { ...expected.source, nativeSessionId: "seed-native-id" },
+      ext: { fixtureSource: "claude-code" },
+    } as SessionSeed;
+    const result = new ParserRegistry().parse({ source: "claude-code", version: "v1", raw, seed });
+    if (result.kind !== "parsed") throw new Error("the fixture did not parse");
+    expect(result.sessions[0]!.source.nativeSessionId).toBe(expected.source.nativeSessionId);
+    expect(result.sessions[0]!.ext).toEqual(expected.ext);
+  });
+});
 
 describe("Claude Code subagent transcripts", () => {
   it("archives a parent and each subagent as their own sessions, in any parse order", async () => {

@@ -124,6 +124,15 @@ moves the mistake.
 | `copilot` | VS Code `chatSessions/*.json` and nothing else, on all three platforms. VS Code has written that envelope under two extensions: `<id>.json` is one whole envelope, and `<id>.jsonl` is a `{kind:0, v:<envelope>}` snapshot followed by `{kind:1, k:[path], v:value}` writes against it, which is what it writes now. Of the 23 files under `chatSessions` on this machine, **18 are `.jsonl` and 5 are `.json`, and every `.jsonl` is newer than every `.json`** — the `.json` panels were created between 2025-05-02 and 2025-12-12, the `.jsonl` ones between 2026-02-20 and 2026-06-29, with no overlap. So the pattern named the layout the editor has stopped writing, and would have collected less of Copilot Chat every month | both, which is what it names now |
 | `copilot` | the four `.copilot/{session-state,history-session-state}/**.json` patterns. Checked against GitHub Copilot CLI 1.0.59 with a recorded session: `session-state/<id>/` holds `workspace.yaml`, `checkpoints/index.md` and two empty directories, with no `.json` at any depth, and `history-session-state/` does not exist. The only JSON under `~/.copilot` is `config.json` and `command-history-state.json`, which are settings and which those patterns never named | `session-store.db`, which is what the parser opens |
 
+`claude-code/v1/subagent-1` is synthetic and holds no captured text. Its shape
+was checked against the real store on 2026-11-25, reading only key names and
+counts: all 614 files under `~/.claude/projects/*/*/subagents/` carry the
+parent's `sessionId`, `isSidechain: true` and an `agentId` on every line, the
+`agentId` matches the file name, and no two subagents of one parent share it.
+Before parser `claude-code:v1:0.4.0` that `sessionId` filed every subagent under
+its parent's session, and on dev the file parsed last replaced the turns of the
+others. The fixture pins the identity they get instead.
+
 `claude-code` had also stopped taking the subagent transcripts. They are
 written a directory below the session that spawned them — and some two further
 down, under `subagents/workflows/<id>/` — so `projects/*/*.jsonl` reached none
