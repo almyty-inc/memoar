@@ -13,6 +13,9 @@ pub const EXIT_NETWORK: u8 = 4;
 /// you believe a script should retry both, and one of them will be refused
 /// identically forever.
 pub const EXIT_REFUSED: u8 = 5;
+/// The data directory's volume is at the free-space floor, so capture did
+/// not read anything new. Retrying helps once space is freed.
+pub const EXIT_DISK_LOW: u8 = 6;
 pub const EXIT_LOCKED: u8 = 7;
 pub const EXIT_UNKNOWN: u8 = 9;
 
@@ -187,6 +190,24 @@ impl AppError {
         }
     }
 
+    /// The volume the queue is on would go below the free-space floor.
+    ///
+    /// Retryable, so a background capture waits for space rather than
+    /// stopping for good, and its own exit code so a script can tell it from
+    /// a network failure.
+    #[must_use]
+    pub fn disk_low(message: impl Into<String>) -> Self {
+        Self {
+            exit_code: EXIT_DISK_LOW,
+            code: "MEMOAR_DISK_LOW".to_owned(),
+            kind: "disk".to_owned(),
+            message: message.into(),
+            hint: "Free space on the volume that holds the data directory, or set a lower floor with memoar policy --min-free <SIZE>. memoar sync --plan shows what capture would take.".to_owned(),
+            retryable: true,
+            http_status: None,
+        }
+    }
+
     #[must_use]
     pub fn queue(message: impl Into<String>) -> Self {
         let message = message.into();
@@ -198,6 +219,9 @@ impl AppError {
 }
 
 pub(crate) fn map_queue_error(error: DaemonError) -> AppError {
+    if matches!(error, DaemonError::DiskLow { .. }) {
+        return AppError::disk_low(error.to_string());
+    }
     // A queue file that is not a database, or is one SQLite says is broken,
     // is not an unknown fault and `doctor` cannot repair it. Saying what to
     // move aside is the whole remedy.
@@ -221,6 +245,7 @@ pub(crate) fn map_capture_error(error: DaemonError) -> AppError {
         DaemonError::UnsupportedRedaction(_) | DaemonError::Zip { .. } => {
             AppError::usage(error.to_string())
         }
+        DaemonError::DiskLow { .. } => AppError::disk_low(error.to_string()),
         _ => AppError::queue(error.to_string()),
     }
 }
@@ -234,6 +259,7 @@ pub(crate) fn map_sync_error(error: DaemonError) -> AppError {
         DaemonError::Transport(_) | DaemonError::Unreachable(_) => {
             AppError::network(error.to_string())
         }
+        DaemonError::DiskLow { .. } => AppError::disk_low(error.to_string()),
         _ => AppError::queue(error.to_string()),
     }
 }

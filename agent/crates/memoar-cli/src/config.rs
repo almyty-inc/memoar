@@ -32,6 +32,32 @@ pub(crate) struct Config {
     pub(crate) disabled_sources: BTreeSet<String>,
     #[serde(default)]
     pub(crate) redaction: RedactionConfig,
+    /// How far back capture reaches, which projects it leaves out, and the
+    /// free space it keeps. Absent from a file written before it existed.
+    #[serde(default, skip_serializing_if = "CaptureSettings::is_default")]
+    pub(crate) capture: CaptureSettings,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CaptureSettings {
+    /// `all`, a date, an instant, or a duration such as `90d`. Unset means
+    /// the default first-run window. See `capture_policy`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) since: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) include: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) exclude: Vec<String>,
+    /// An exact free-space floor in bytes, in place of the default rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) min_free_bytes: Option<u64>,
+}
+
+impl CaptureSettings {
+    fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
 }
 
 #[derive(Debug, Clone)]

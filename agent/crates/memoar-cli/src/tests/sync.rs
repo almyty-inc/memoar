@@ -21,6 +21,7 @@ fn http_sync_negotiates_uploads_raw_bytes_and_submits_manifest() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 0,
+            ..SyncArgs::default()
         },
         false,
         &paths,
@@ -64,6 +65,7 @@ fn sync_captures_the_memory_files_of_projects_the_archive_knows() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 0,
+            ..SyncArgs::default()
         },
         false,
         &paths,
@@ -130,6 +132,7 @@ fn a_workspace_outside_the_capture_home_is_never_read() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 0,
+            ..SyncArgs::default()
         },
         false,
         &paths,
@@ -182,6 +185,7 @@ fn a_secret_in_an_instruction_file_is_masked_before_it_leaves() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 0,
+            ..SyncArgs::default()
         },
         false,
         &paths,

@@ -10,6 +10,8 @@ Use `--json` whenever a program or agent consumes Memoar CLI output. Successful 
 | 2 | Invalid usage |
 | 3 | Memoar is not initialized |
 | 4 | Network or service failure |
+| 5 | The archive answered and refused |
+| 6 | The data directory's volume is at the free-space floor, so nothing new was captured |
 | 7 | Local queue or process lock is held |
 | 9 | Unknown failure |
 

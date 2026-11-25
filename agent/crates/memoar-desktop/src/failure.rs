@@ -118,6 +118,13 @@ pub fn classify_capture(error: &AppError, endpoint: &str) -> Failure {
             "This machine is not signed in. Sign in to start capturing.",
             detail,
         ),
+        // Retried on the next cycle, once space has been freed. Uploading what
+        // is already queued carries on, and gives space back.
+        ("MEMOAR_DISK_LOW", _) => Failure::new(
+            FailureKind::Temporary,
+            "This computer is nearly out of disk space, so nothing new is being captured. Free some space and capture resumes.",
+            detail,
+        ),
         ("MEMOAR_LOCKED", _) => Failure::new(
             FailureKind::Temporary,
             "Another capture is using this machine's queue. The next one will run as usual.",

@@ -74,6 +74,12 @@ fn details(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> imp
         .child(row("Sources found", move || {
             words::sources(&status().sources)
         }))
+        .child(row("Disk space", move || {
+            words::disk(status().disk_low.as_deref())
+        }))
+        .child(row("Held back by the capture policy", move || {
+            words::count(status().held, "artifact")
+        }))
 }
 
 fn actions(ctl: Controller) -> impl IntoElement {

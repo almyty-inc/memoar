@@ -1,6 +1,8 @@
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
+pub use crate::capture_args::{PolicyArgs, SyncArgs};
+
 #[derive(Debug, Parser)]
 #[command(
     name = "memoar",
@@ -50,6 +52,9 @@ pub enum Command {
     },
     /// Show or change what is masked before anything is hashed and uploaded.
     Redaction(RedactionArgs),
+    /// Show or change how far back capture reaches, which projects it leaves
+    /// out, and the free space it keeps. Offline.
+    Policy(PolicyArgs),
     /// Search the archive.
     Search(SearchArgs),
     /// Read one archived session, a chunk of turns at a time.
@@ -144,22 +149,6 @@ pub enum SourcesCommand {
     List,
     Enable { source: String },
     Disable { source: String },
-}
-
-#[derive(Debug, Args)]
-pub struct SyncArgs {
-    /// Keep polling native stores after the first sync.
-    #[arg(long)]
-    pub watch: bool,
-    #[arg(long, default_value_t = 2)]
-    pub interval_seconds: u64,
-    #[arg(long, default_value_t = 2)]
-    pub debounce_seconds: u64,
-    /// Stop watching after this many completed sync cycles. 0 watches until
-    /// interrupted, which is what a person running this wants; a finite count
-    /// is how the retry behaviour is exercised without an infinite loop.
-    #[arg(long, default_value_t = 0, hide = true)]
-    pub max_cycles: usize,
 }
 
 /// What `redaction` can change, after `login` and without one.

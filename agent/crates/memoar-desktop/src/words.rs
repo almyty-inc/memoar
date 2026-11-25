@@ -36,6 +36,15 @@ pub fn sources(names: &[String]) -> String {
     }
 }
 
+/// `Enough` or the reason capture is paused for space.
+#[must_use]
+pub fn disk(low: Option<&str>) -> String {
+    match low {
+        None => "Enough".to_owned(),
+        Some(detail) => format!("Low, capture is paused: {detail}"),
+    }
+}
+
 #[must_use]
 pub fn last_capture(at: Option<&str>, now: DateTime<Utc>) -> String {
     at.map_or_else(|| "Not yet".to_owned(), |at| ago(at, now))
@@ -67,6 +76,15 @@ mod tests {
         assert_eq!(
             sources(&["Claude Code".to_owned(), "Codex".to_owned()]),
             "Claude Code, Codex"
+        );
+    }
+
+    #[test]
+    fn low_disk_says_why_capture_is_paused() {
+        assert_eq!(disk(None), "Enough");
+        assert_eq!(
+            disk(Some("1.0 GB free, capture keeps 2.1 GB free")),
+            "Low, capture is paused: 1.0 GB free, capture keeps 2.1 GB free"
         );
     }
 

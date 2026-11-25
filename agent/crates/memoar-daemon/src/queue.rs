@@ -7,8 +7,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::error::DaemonError;
+use crate::space::{SpaceCheck, SpaceFloor, ensure_space};
 
-const SCHEMA_VERSION: i64 = 3;
+/// 4 stopped copying every artifact: a row names its source file and a blob
+/// only when the bytes to upload differ from the source.
+const SCHEMA_VERSION: i64 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -16,6 +19,10 @@ pub enum QueueStatus {
     Pending,
     Retry,
     Synced,
+    /// Queued once, and outside the capture policy now: older than the
+    /// backfill window or in an excluded project. Not offered for upload until
+    /// the policy takes it in again.
+    Held,
 }
 
 impl QueueStatus {
@@ -23,6 +30,7 @@ impl QueueStatus {
         match value {
             "synced" => Self::Synced,
             "retry" => Self::Retry,
+            "held" => Self::Held,
             _ => Self::Pending,
         }
     }
@@ -35,8 +43,11 @@ pub struct QueuedArtifact {
     pub size: u64,
     pub source: String,
     pub source_path: String,
-    /// Immutable content-addressed snapshot. Sync never re-reads the mutable source file.
-    pub local_path: PathBuf,
+    /// A private copy of the bytes to upload, kept only when the source cannot
+    /// stand in for them: redacted content, or a database the tool rewrites in
+    /// place. `None` means the upload reads the source file and checks it
+    /// still hashes to `sha256`.
+    pub local_path: Option<PathBuf>,
     pub modified_at: String,
     pub status: QueueStatus,
     pub attempts: u32,
@@ -45,17 +56,38 @@ pub struct QueuedArtifact {
     pub redaction_count: u32,
 }
 
+impl QueuedArtifact {
+    /// Where the bytes to upload are read from.
+    #[must_use]
+    pub fn content_path(&self) -> &Path {
+        self.local_path
+            .as_deref()
+            .unwrap_or_else(|| Path::new(&self.source_path))
+    }
+}
+
+/// A stored `local_path`. The column predates optional blobs and is NOT NULL,
+/// so an empty string stands for "read the source".
+pub(crate) fn blob_path(value: String) -> Option<PathBuf> {
+    (!value.is_empty()).then(|| PathBuf::from(value))
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueCounts {
     pub pending: u64,
     pub retry: u64,
     pub synced: u64,
+    /// Queued and outside the capture policy, so not being uploaded.
+    pub held: u64,
 }
 
 pub struct OfflineQueue {
     pub(crate) connection: Connection,
     pub(crate) blob_dir: PathBuf,
+    /// The free-space floor blob writes respect. `None` writes without asking,
+    /// which is what a test on a nearly full CI runner needs.
+    pub(crate) space_floor: Option<SpaceFloor>,
 }
 
 impl OfflineQueue {
@@ -110,6 +142,17 @@ impl OfflineQueue {
             "INTEGER NOT NULL DEFAULT 0",
         )?;
         ensure_column(&connection, "artifacts", "next_attempt_at", "TEXT")?;
+        // Schema 4. The size of the source file and the redaction settings it
+        // was read under, so an unchanged file is recognised from a `stat`
+        // without reading it again, and the workspace it belongs to, so the
+        // capture policy can be applied to rows already queued.
+        ensure_column(&connection, "artifacts", "source_size", "INTEGER")?;
+        ensure_column(&connection, "artifacts", "redaction_key", "TEXT")?;
+        ensure_column(&connection, "artifacts", "workspace", "TEXT")?;
+        connection.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_artifacts_source ON artifacts(source_path, modified_at);
+             CREATE INDEX IF NOT EXISTS idx_artifacts_local ON artifacts(local_path);",
+        )?;
         connection.execute(
             "INSERT INTO metadata(key, value) VALUES ('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -118,7 +161,64 @@ impl OfflineQueue {
         Ok(Self {
             connection,
             blob_dir,
+            space_floor: None,
         })
+    }
+
+    /// Refuse blob writes that would take the volume below `floor`.
+    #[must_use]
+    pub fn with_space_floor(mut self, floor: SpaceFloor) -> Self {
+        self.space_floor = Some(floor);
+        self
+    }
+
+    /// The queue's volume measured against its floor, as a refusal when it
+    /// would fall below it with `needed` more bytes written. A queue with no
+    /// floor always passes.
+    pub fn ensure_space(&self, needed: u64) -> Result<Option<SpaceCheck>, DaemonError> {
+        match self.space_floor {
+            Some(floor) => ensure_space(&self.blob_dir, floor, needed).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) fn metadata(&self, key: &str) -> Result<Option<String>, DaemonError> {
+        use rusqlite::OptionalExtension;
+        self.connection
+            .query_row("SELECT value FROM metadata WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn set_metadata(&self, key: &str, value: &str) -> Result<(), DaemonError> {
+        self.connection.execute(
+            "INSERT INTO metadata(key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Runs `work` in one transaction. With `synchronous = FULL` every bare
+    /// statement is its own fsync, and a first capture of a few hundred
+    /// thousand files spent its time waiting on the disk, not reading files.
+    pub(crate) fn batch<R>(
+        &self,
+        work: impl FnOnce() -> Result<R, DaemonError>,
+    ) -> Result<R, DaemonError> {
+        self.connection.execute_batch("BEGIN IMMEDIATE")?;
+        match work() {
+            Ok(value) => {
+                self.connection.execute_batch("COMMIT")?;
+                Ok(value)
+            }
+            Err(error) => {
+                let _ = self.connection.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
     }
 }
 

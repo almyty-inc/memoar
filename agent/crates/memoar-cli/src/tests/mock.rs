@@ -286,6 +286,11 @@ pub(crate) fn configured_paths(temp: &tempfile::TempDir, endpoint: &str) -> Runt
             installation_id: INSTALLATION_ID.to_owned(),
             disabled_sources: BTreeSet::new(),
             redaction: RedactionConfig::disabled(),
+            // No floor: a test must not depend on the runner's free space.
+            capture: crate::config::CaptureSettings {
+                min_free_bytes: Some(0),
+                ..Default::default()
+            },
         },
     )
     .unwrap();

@@ -5,9 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use crate::capture::{CaptureSummary, FileCapture};
 use crate::error::DaemonError;
+use crate::policy::CapturePolicy;
 use crate::queue::OfflineQueue;
 use crate::redaction::RedactionConfig;
+use crate::workspace::WorkspaceResolver;
 use memoar_connectors::{OperatingSystem, SOURCES, files_for_source};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +76,8 @@ impl DebouncedChanges {
 /// after a stable debounce window; subsequent mutations reset that window.
 pub struct PollingCapture {
     changes: DebouncedChanges,
+    /// Kept across polls, so a project directory's workspace is read once.
+    resolver: WorkspaceResolver,
 }
 
 impl PollingCapture {
@@ -80,6 +85,7 @@ impl PollingCapture {
     pub fn new(debounce: Duration) -> Self {
         Self {
             changes: DebouncedChanges::new(debounce),
+            resolver: WorkspaceResolver::new(),
         }
     }
 
@@ -92,12 +98,43 @@ impl PollingCapture {
         redaction: RedactionConfig,
         now: SystemTime,
     ) -> Result<usize, DaemonError> {
-        let mut captured = 0;
+        let sources = ScanSources {
+            home,
+            os,
+            enabled: enabled_sources,
+        };
+        self.scan_with_policy(
+            queue,
+            &sources,
+            redaction,
+            &CapturePolicy::everything(),
+            now,
+        )
+        .map(|summary| summary.captured)
+    }
+
+    /// One poll, taking only what `policy` takes. Stops, like a one-shot
+    /// capture, when the queue's volume reaches its free-space floor.
+    pub fn scan_with_policy(
+        &mut self,
+        queue: &OfflineQueue,
+        sources: &ScanSources<'_>,
+        redaction: RedactionConfig,
+        policy: &CapturePolicy,
+        now: SystemTime,
+    ) -> Result<CaptureSummary, DaemonError> {
+        let mut summary = CaptureSummary::default();
+        let mut capture = FileCapture {
+            queue,
+            redaction,
+            policy,
+            resolver: &mut self.resolver,
+        };
         for spec in SOURCES {
-            if !enabled_sources.is_empty() && !enabled_sources.contains(spec.id) {
+            if !sources.enabled.is_empty() && !sources.enabled.contains(spec.id) {
                 continue;
             }
-            for path in files_for_source(spec, home, os)? {
+            for path in files_for_source(spec, sources.home, sources.os)? {
                 let metadata = fs::metadata(&path).map_err(|source| DaemonError::Io {
                     path: path.clone(),
                     source,
@@ -107,8 +144,9 @@ impl PollingCapture {
                     modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                 };
                 if self.changes.observe(path.clone(), fingerprint, now) {
-                    match queue.enqueue_with_redaction(spec.id, &path, redaction) {
-                        Ok(_) => captured += 1,
+                    queue.ensure_space(0)?;
+                    match capture.file(spec.id, &path) {
+                        Ok(outcome) => summary.record(outcome),
                         // The same set the one-shot pass skips, named the same
                         // way. This branch listed two of the three refusals by
                         // hand, so `UnscannableSecret` fell through to the
@@ -117,12 +155,20 @@ impl PollingCapture {
                         // state file, a transcript truncated mid-write — ended
                         // continuous capture for every source until the daemon
                         // was restarted, which would hit it again.
-                        Err(error) if error.is_skippable() => {}
+                        Err(error) if error.is_skippable() => summary.skipped.push(path),
                         Err(other) => return Err(other),
                     }
                 }
             }
         }
-        Ok(captured)
+        Ok(summary)
     }
+}
+
+/// Where a poll looks: the home it reads stores under, the platform's store
+/// layout, and the sources switched on. Empty `enabled` means every source.
+pub struct ScanSources<'a> {
+    pub home: &'a Path,
+    pub os: OperatingSystem,
+    pub enabled: &'a HashSet<String>,
 }

@@ -74,6 +74,7 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
             ),
         ),
         queue_check(paths),
+        crate::capture_policy::disk_check(paths, &config),
         check(
             "credentials",
             Some(!credential.secret().is_empty()),

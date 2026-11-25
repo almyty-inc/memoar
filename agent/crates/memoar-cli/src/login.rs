@@ -64,6 +64,11 @@ pub(crate) fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOut
             email_addresses: args.redact_email_addresses || kept.email_addresses,
             home_paths: args.redact_home_paths || kept.home_paths,
         },
+        // The backfill window and project rules are kept the same way.
+        capture: existing
+            .as_ref()
+            .map(|config| config.capture.clone())
+            .unwrap_or_default(),
     };
     patch_machine_state(&api, &config, paths)?;
     // A password or a browser token gets us this far and no further: what is

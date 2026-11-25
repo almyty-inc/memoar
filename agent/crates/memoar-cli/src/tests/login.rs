@@ -185,6 +185,7 @@ fn logging_in_registers_again_when_the_archive_no_longer_has_the_machine() {
             installation_id: INSTALLATION_ID.to_owned(),
             disabled_sources: BTreeSet::new(),
             redaction: RedactionConfig::disabled(),
+            capture: Default::default(),
         },
     )
     .unwrap();

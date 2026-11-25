@@ -22,6 +22,7 @@ fn credentials_are_separate_and_mode_is_private() {
         installation_id: INSTALLATION_ID.to_owned(),
         disabled_sources: BTreeSet::new(),
         redaction: RedactionConfig::disabled(),
+        capture: Default::default(),
     };
     save_config(&paths, &config).unwrap();
     paths

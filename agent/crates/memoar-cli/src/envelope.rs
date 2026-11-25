@@ -3,8 +3,8 @@ use serde_json::{Value, json};
 
 use crate::CommandOutput;
 use crate::error::{
-    AppError, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK, EXIT_REFUSED, EXIT_UNKNOWN,
-    EXIT_USAGE,
+    AppError, EXIT_DISK_LOW, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK,
+    EXIT_REFUSED, EXIT_UNKNOWN, EXIT_USAGE,
 };
 
 pub const ROBOT_ENVELOPE_VERSION: &str = "1";
@@ -64,6 +64,7 @@ pub fn introspect_value() -> Value {
             { "name": "service status", "requiresAuth": false, "network": false },
             { "name": "service logs", "requiresAuth": false, "network": false },
             { "name": "redaction", "requiresAuth": true, "network": false },
+            { "name": "policy", "requiresAuth": true, "network": false },
             { "name": "search", "requiresAuth": true, "network": true },
             { "name": "view", "requiresAuth": true, "network": true },
             { "name": "pack", "requiresAuth": true, "network": true },
@@ -85,6 +86,8 @@ pub fn introspect_value() -> Value {
             // The archive answered and said no. Separate from `network` so a
             // wrapper can retry the one that is worth retrying.
             "refused": EXIT_REFUSED,
+            // The data directory's volume is at the free-space floor.
+            "diskLow": EXIT_DISK_LOW,
             "lock": EXIT_LOCKED,
             "unknown": EXIT_UNKNOWN
         },

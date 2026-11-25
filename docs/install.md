@@ -356,10 +356,22 @@ owner-only (`0700`). On Windows these files sit in the user's profile, whose
 access list admits only that user, and the agent adds nothing to it. No
 keychain integration exists today.
 
-The offline SQLite queue stores immutable content-addressed snapshots and
-resumable upload state. Optional client redaction is applied before snapshots
-are hashed. Native session content remains in its original location until
-upload. One `memoar sync` runs per data directory at a time: a second one exits
+The offline SQLite queue records each artifact's path, size, modification time
+and SHA-256, and the upload state. It does not copy the session: the upload
+reads the file from where the tool keeps it and checks that it still has the
+recorded hash. A file that changed since is queued again as it is now and sent
+in the next pass. A file that was deleted first is dropped from the queue. The
+`blobs` directory holds a private copy only where the original cannot stand in
+for the bytes: content that client redaction changed, and SQLite stores that
+their tool rewrites in place (`.db`, `.sqlite`, `.vscdb` and their journals).
+Each copy is deleted as soon as its artifact is synced.
+
+A queue written by an earlier agent holds a copy of everything it captured.
+Every sync first gives those copies back where the original file still has the
+size and modification time it was captured with, and the rest upload from
+their copies and are deleted after. Nothing needs to be done by hand.
+
+One `memoar sync` runs per data directory at a time: a second one exits
 with `MEMOAR_LOCKED` and names the process that holds the queue. The lock is
 released when that process ends, however it ends.
 
@@ -367,6 +379,74 @@ A sync that loses the archive part way stops at the first upload that cannot
 connect, and nothing it did not send is counted against it. Run it again, or
 let `sync --watch` retry, and it resumes. When the archive rate-limits uploads,
 the agent waits the time the archive asks for and carries on.
+
+## A machine with a large session store
+
+A first sync does not try to upload everything the machine has ever recorded.
+Unless told otherwise it captures sessions changed in the 30 days before that
+first sync, and says how many older ones it left out. Look before you upload:
+
+```sh
+memoar sync --plan              # counts and bytes per source and project
+memoar --json sync --plan       # the same, every project listed
+```
+
+The plan reads file metadata and the first few kilobytes of a file where it
+needs the workspace. It queues nothing, uploads nothing and writes nothing to
+the data directory.
+
+| What | How |
+|---|---|
+| Take older sessions once | `memoar sync --since all`, or a date (`--since 2026-01-01`), or a duration (`--since 90d`, `8w`, `36h`) |
+| Keep taking them | `memoar policy --since all` (or a date or duration). A duration rolls with the clock. `--since default` returns to the first-run window |
+| Leave out throwaway workspaces | `memoar policy --exclude '/private/tmp/**' --exclude '**/.claude/worktrees/**'` |
+| Capture only some workspaces | `memoar policy --include '/Users/me/src/**'` |
+| Undo a rule | `memoar policy --remove '<glob>'` |
+| Leave out a whole tool | `memoar sources disable <source>` |
+| Show what is in force | `memoar policy`, or `capturePolicy` in `memoar status` |
+
+The globs match the workspace a session was recorded in, which the agent reads
+from the session's `cwd` field. `*` and `?` match within one path segment and
+`**` matches any number of segments. A pattern with no wildcard is a directory
+and everything below it. A session whose workspace is not known, such as a
+Cursor state database, is kept by `--include` rules. Rows queued before a rule
+existed are held back, not deleted, and widening the rule releases them.
+
+The 30-day window starts at the first sync on a data directory and stays
+there, so a session changed in that window is still captured by a sync weeks
+later. It is long enough for the work in progress and short enough that a
+machine with years of sessions shows you a plan before it sends them.
+
+### Free disk space
+
+Capture keeps free space on the volume that holds the data directory: 5% of
+the volume, at least 2 GiB and at most 10 GiB. A sync that would go below it
+captures nothing new, still uploads what is already queued (which gives back
+any copies), and exits with code 6 and `MEMOAR_DISK_LOW`. On a data directory
+that does not exist yet it writes nothing at all. `memoar sync --watch` and
+the service wait and try again rather than stopping. `memoar status` and
+`memoar doctor` report the volume as `disk`, and the desktop application shows
+it under "Disk space". Set a different floor with
+`memoar policy --min-free 5GiB`, or `--min-free default`. The environment
+variable `MEMOAR_MIN_FREE_BYTES` (a size such as `5GiB`, or `0` for no floor)
+overrides the setting for one process, which is how the test scripts run on CI
+machines whose free space nobody controls.
+
+### Upload rate
+
+The archive accepts 300 requests a minute on each route per account by
+default. A sync keeps up to four uploads in flight and starts at most 280 a
+minute, so a long drain moves steadily instead of spending a minute's budget in
+seconds and waiting out the rest. Both can be changed:
+`memoar sync --workers 8 --uploads-per-minute 600` for an archive configured
+with a larger `MEMOAR_RATE_LIMIT`. In a terminal a sync shows a progress line
+with the count, the bytes sent, the rate and the time left. Under the service
+the same line is written to the log every 30 seconds. An interrupted drain
+resumes where it stopped on the next sync.
+
+At 280 a minute, 10,000 sessions take about 36 minutes and 200,000 take about
+12 hours. Excluding throwaway workspaces and keeping the window short are the
+ways to make that smaller.
 
 ## Exit codes and the JSON envelope
 
@@ -382,6 +462,7 @@ With `--json`, every command prints one envelope on stdout. Success is
 | 3 | Not signed in, or the config or credential file is damaged. Run `memoar login` | No |
 | 4 | The archive could not be reached, is overloaded or rate limiting, or a wait ran out | Yes |
 | 5 | The archive answered and refused: a revoked key, a deregistered machine, a missing session | No |
+| 6 | The data directory's volume is at the free-space floor, so nothing new was captured. What was already queued was still uploaded | Yes, once space is freed |
 | 7 | Another process holds the queue | Yes, once it finishes |
 | 9 | Anything else, including a damaged queue file | No |
 
