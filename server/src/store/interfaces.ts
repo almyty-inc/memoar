@@ -21,10 +21,14 @@ import type {
 
 export interface SessionStore {
   saveSession(context: TenantContext, session: ArchivedSession): Promise<void>;
+  /**
+   * The session an identity maps to. A new identity takes the first proposal
+   * no other identity holds, so two conversations are never given one session.
+   */
   resolveSessionIdentity(
     context: TenantContext,
     identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string },
-    proposedSessionId: string,
+    proposedSessionIds: string | readonly string[],
   ): Promise<string>;
   saveSessionEmbedding(context: TenantContext, sessionId: string, vector: readonly number[]): Promise<void>;
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean>;
@@ -243,6 +247,8 @@ export interface ArtifactStore {
   /** Artifacts kept but never turned into a session, grouped by the tool they came from. */
   countUnparsedArtifactsBySource(context: TenantContext): Promise<{ source: string; artifacts: number; diagnostic: string | null }[]>;
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]>;
+  /** Whether this session already holds a later parsed capture of the same file. See `IngestPipeline`. */
+  hasNewerCapture(context: TenantContext, sessionId: string, artifact: RawArtifactRecord): Promise<boolean>;
 }
 
 export interface JobStore {

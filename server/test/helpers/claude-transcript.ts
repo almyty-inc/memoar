@@ -18,6 +18,12 @@ export interface SyntheticTranscriptOptions {
   seed?: string;
   /** Bytes of tool output per tool result. Real ones average about 8 KB. */
   toolOutputBytes?: number;
+  /**
+   * Writes a subagent transcript instead: every line carries the parent's
+   * session id, `isSidechain: true` and the agent id, which is what Claude Code
+   * writes to `<session>/subagents/agent-<agentId>.jsonl`.
+   */
+  subagent?: { parentSessionId: string; agentId: string };
 }
 
 const WORDS = ["archive", "session", "parser", "worker", "queue", "turn", "block", "index", "migration", "tenant", "search", "build", "deploy", "review", "commit", "branch", "schema", "fixture", "budget", "latency"];
@@ -36,7 +42,8 @@ function words(count: number, offset: number): string {
 
 export function syntheticClaudeTranscript(options: SyntheticTranscriptOptions): Buffer {
   const seed = options.seed ?? "synthetic";
-  const sessionId = options.sessionId ?? syntheticUuid(`${seed}:session`);
+  const sessionId = options.subagent?.parentSessionId ?? options.sessionId ?? syntheticUuid(`${seed}:session`);
+  const sidechain = options.subagent ? { isSidechain: true, agentId: options.subagent.agentId } : { isSidechain: false };
   const outputBytes = options.toolOutputBytes ?? 8_000;
   // One output body, sliced per result: building a fresh one per line made the
   // generator slower than the code it exercises.
@@ -49,7 +56,7 @@ export function syntheticClaudeTranscript(options: SyntheticTranscriptOptions): 
     const uuid = syntheticUuid(`${seed}:turn:${ordinal}`);
     const line = JSON.stringify({
       parentUuid: parent,
-      isSidechain: false,
+      ...sidechain,
       userType: "external",
       cwd: "/workspace/synthetic",
       sessionId,
