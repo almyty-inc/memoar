@@ -1,5 +1,5 @@
 {
-  "contractVersion": "0.3.0",
+  "contractVersion": "0.4.0",
   "bundleVersion": "1",
   "kind": "memory",
   "source": "claude-code",
@@ -22,5 +22,5 @@
     "documents": 2,
     "concatenated": true
   },
-  "bundleSha256": "8a28ff5e3ad7f504da9d8dedc7e686a825da2317f9e1f5ea015bb774f4a8ab63"
+  "bundleSha256": "ace56c7d85b564e9d2ae42720724d2c5c96b0e58a43716a808ab9796617c5d9d"
 }
