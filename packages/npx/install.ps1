@@ -93,12 +93,24 @@ function Install-Memoar {
     $destination = Join-Path $installDir 'memoar.exe'
     $staged = Join-Path $installDir ".memoar-install-$PID.exe"
     Copy-Item -Path $binary -Destination $staged -Force
+    # A running memoar.exe, such as the background service, cannot be
+    # overwritten or deleted, but it can be renamed. So the old binary is moved
+    # aside first and removed when nothing runs it any more, here or on the
+    # next install. The service notices the new file and restarts on it.
+    Get-ChildItem -Path $installDir -Filter '.memoar-old-*.exe' -ErrorAction SilentlyContinue |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+    $aside = Join-Path $installDir ".memoar-old-$PID.exe"
     try {
+      if (Test-Path $destination) { Move-Item -Path $destination -Destination $aside -Force }
       Move-Item -Path $staged -Destination $destination -Force
     } catch {
+      if ((Test-Path $aside) -and -not (Test-Path $destination)) {
+        Move-Item -Path $aside -Destination $destination -Force -ErrorAction SilentlyContinue
+      }
       Remove-Item -Force -ErrorAction SilentlyContinue $staged
       throw "memoar: could not replace $destination, is memoar still running? $($_.Exception.Message)"
     }
+    Remove-Item -Force -ErrorAction SilentlyContinue $aside
   } finally {
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $scratch
   }
