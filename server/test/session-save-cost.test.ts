@@ -113,7 +113,7 @@ suite("session save cost", () => {
     const turns = (await queryRows<{ count: number }>(owner!, `SELECT count(*)::int AS count FROM turns WHERE "sessionId" = $1`, large.sessionIds))[0]!.count;
 
     // About a thousand turns and fifteen hundred blocks. Written row by row,
-    // this was over five thousand statements.
+    // this was about four thousand statements, against a few dozen now.
     expect(turns).toBeGreaterThan(900);
     expect(large.statements, `${small.statements} statements for 250 KB, ${large.statements} for 4 MB`).toBeLessThan(small.statements + 10);
     expect(large.statements).toBeLessThan(60);
@@ -138,8 +138,7 @@ suite("session save cost", () => {
     const again = await measure(syntheticClaudeTranscript({ targetBytes: 10_300_000, seed: "growing" }), "growing.jsonl");
     expect(again.sessionIds).toEqual(first.sessionIds);
     // Generous, since this shares a machine with every other suite. Before the
-    // fix the re-capture took about fifteen seconds on a laptop, and about
-    // half a second after it.
+    // fix the re-capture took 16 seconds on a laptop, and under one after it.
     expect(again.ms, `${first.ms.toFixed(0)} ms first capture, ${again.ms.toFixed(0)} ms re-capture`).toBeLessThan(6_000);
   }, 300_000);
 
