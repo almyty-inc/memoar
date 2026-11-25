@@ -1,5 +1,5 @@
 use memoar_connectors::OperatingSystem;
-use memoar_daemon::{CaptureSummary, PollingCapture};
+use memoar_daemon::{CaptureSummary, PollingCapture, ScanSources};
 use serde_json::json;
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -64,24 +64,24 @@ pub(crate) fn watch(
                 retry_or_give_up(&error, &mut backoff, &mut recorder)?;
             }
         }
-        captured = match watcher.scan(
+        let sources = ScanSources {
+            home: &sweep.paths.home,
+            os: OperatingSystem::current(),
+            enabled: &sweep.enabled,
+        };
+        // A full disk is retryable: the watch waits for space rather than
+        // ending, and `status` shows why nothing new is arriving.
+        captured = match watcher.scan_with_policy(
             sweep.queue,
-            &sweep.paths.home,
-            OperatingSystem::current(),
-            &sweep.enabled,
+            &sources,
             sweep.config.redaction,
+            &sweep.policy,
             SystemTime::now(),
         ) {
-            Ok(captured) => CaptureSummary {
-                captured,
-                skipped: Vec::new(),
-            },
+            Ok(captured) => captured,
             Err(error) => {
                 retry_or_give_up(&map_capture_error(error), &mut backoff, &mut recorder)?;
-                CaptureSummary {
-                    captured: 0,
-                    skipped: Vec::new(),
-                }
+                CaptureSummary::default()
             }
         };
     }

@@ -20,6 +20,11 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+# Capture keeps free space on the data directory's volume. A CI runner's free
+# space is not this test's to decide, and the run writes a few kilobytes.
+MEMOAR_MIN_FREE_BYTES=${MEMOAR_MIN_FREE_BYTES:-0}
+export MEMOAR_MIN_FREE_BYTES
+
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/memoar-agent-e2e.XXXXXX")
 cleanup() { rm -rf "$scratch"; }
 trap cleanup EXIT HUP INT TERM

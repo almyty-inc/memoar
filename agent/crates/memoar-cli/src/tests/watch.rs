@@ -29,6 +29,7 @@ fn a_watch_does_not_re_upload_an_unchanged_instruction_file() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 2,
+            ..SyncArgs::default()
         },
         false,
         &paths,
@@ -68,6 +69,7 @@ fn a_lost_network_does_not_end_a_watch() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 1,
+            ..SyncArgs::default()
         },
         false,
         &paths,
@@ -128,6 +130,7 @@ fn a_revoked_machine_token_is_replaced_at_the_next_cycle() {
             interval_seconds: 1,
             debounce_seconds: 1,
             max_cycles: 1,
+            ..SyncArgs::default()
         },
         false,
         &paths,

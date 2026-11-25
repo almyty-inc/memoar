@@ -29,6 +29,7 @@ fn a_watch_on_a_deregistered_machine_stops_and_says_how_to_re_register() {
                 interval_seconds: 1,
                 debounce_seconds: 1,
                 max_cycles: 0,
+                ..SyncArgs::default()
             },
             false,
             &paths,

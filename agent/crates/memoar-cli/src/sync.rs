@@ -1,22 +1,26 @@
 use chrono::Utc;
-use memoar_connectors::{OperatingSystem, SOURCES};
+use memoar_connectors::SOURCES;
 use memoar_daemon::{
-    CaptureSummary, OfflineQueue, SyncEngine, capture_sources_with_redaction, memory::MemorySync,
+    CapturePolicy, CaptureSummary, OfflineQueue, SyncEngine, check_space, memory::MemorySync,
 };
 use serde_json::{Value, json};
-use std::collections::{BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 
 use crate::CommandOutput;
 use crate::api::ApiClient;
 use crate::args::SyncArgs;
+use crate::capture_policy::{Origin, disk_json, effective_policy, space_floor};
+use crate::capture_step::{backfill_value, capture_step};
 use crate::config::{Config, RuntimePaths, load_config, load_credential};
 use crate::credential::Credential;
-use crate::error::{AppError, map_capture_error, map_queue_error, map_sync_error};
+use crate::error::{AppError, map_queue_error, map_sync_error};
 use crate::lock::acquire_sync_lock;
 use crate::machine::{
     capture_transport, issue_machine_token, machine_refusal, patch_machine_state,
 };
+use crate::plan_report::plan;
+use crate::progress::{ProgressMode, ProgressPrinter};
+use crate::sync_archive::{archived_workspaces, machine_token_refusal};
 use crate::watch::watch;
 
 pub(crate) fn sync(
@@ -28,19 +32,37 @@ pub(crate) fn sync(
         return Err(AppError::usage("--watch cannot be combined with --json"));
     }
     let config = load_config(paths)?;
+    let enabled = enabled_sources(&config);
+    if args.plan {
+        return plan(args, json_mode, paths, &config, &enabled);
+    }
     let credential = load_credential(paths)?;
     // Held until this function returns, a watch included.
     let _lock = acquire_sync_lock(paths)?;
-    let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
-    let enabled = enabled_sources(&config);
-    let captured = capture_sources_with_redaction(
-        &queue,
-        &paths.home,
-        OperatingSystem::current(),
-        &enabled,
-        config.redaction,
-    )
-    .map_err(map_capture_error)?;
+    let floor = space_floor(&config);
+    // Before anything is written: on a full disk a queue that does not exist
+    // yet is not created. One that exists is opened, because uploading what
+    // it holds is how its copies are given back.
+    let space = check_space(&paths.data_dir, floor, 0).map_err(map_queue_error)?;
+    if !space.ok && !paths.queue_file().exists() {
+        return Err(AppError::disk_low(format!(
+            "Capture did not start: {} has {} bytes free and capture keeps {} free.",
+            space.path.display(),
+            space.available_bytes,
+            space.floor_bytes
+        )));
+    }
+    let queue = OfflineQueue::open(&paths.queue_file())
+        .map_err(map_queue_error)?
+        .with_space_floor(floor);
+    let (policy, origin) = effective_policy(&config, Some(&queue), args.since.as_deref())?;
+    let captured = capture_step(&queue, paths, &config, &enabled, &policy)?;
+    let mode = ProgressMode::for_command(json_mode);
+    if let Some(refused) = &captured.refused
+        && mode != ProgressMode::Silent
+    {
+        eprintln!("memoar: {}", refused.message);
+    }
     let mut sweep = Sweep {
         queue: &queue,
         config: &config,
@@ -53,12 +75,28 @@ pub(crate) fn sync(
         // instruction file on the machine re-uploaded every interval for as
         // long as the laptop is on.
         memory: MemorySync::with_redaction(config.redaction),
+        policy,
+        origin,
+        workers: usize::from(args.workers),
+        uploads_per_minute: args.uploads_per_minute,
+        progress: mode,
     };
     if args.watch {
-        return watch(args, &mut sweep, captured);
+        return watch(args, &mut sweep, captured.summary);
     }
-    let last = sync_pending(&mut sweep, captured)?;
+    let last = sync_pending(&mut sweep, captured.summary)?;
     crate::capture_state::record_sync(paths);
+    if let (Some(hint), false) = (
+        last["backfill"]["hint"].as_str(),
+        mode == ProgressMode::Silent,
+    ) {
+        eprintln!("memoar: {hint}");
+    }
+    // Uploaded what was already queued, and still says capture was refused:
+    // a sync that read nothing new did not do what was asked.
+    if let Some(refused) = captured.refused {
+        return Err(refused);
+    }
     Ok(CommandOutput {
         command: "sync".to_owned(),
         data: last,
@@ -77,6 +115,11 @@ pub(crate) struct Sweep<'a> {
     pub(crate) paths: &'a RuntimePaths,
     pub(crate) enabled: HashSet<String>,
     pub(crate) memory: MemorySync,
+    pub(crate) policy: CapturePolicy,
+    pub(crate) origin: Origin,
+    pub(crate) workers: usize,
+    pub(crate) uploads_per_minute: u32,
+    pub(crate) progress: ProgressMode,
 }
 
 fn enabled_sources(config: &Config) -> HashSet<String> {
@@ -100,25 +143,27 @@ pub(crate) fn sync_pending(sweep: &mut Sweep, captured: CaptureSummary) -> Resul
         .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
     let (token, expires_at) = issue_machine_token(&api, &config.machine_id)
         .map_err(|error| machine_refusal(&api, &config.machine_id, error))?;
-    let report = SyncEngine::new(capture_transport(
+    let mut printer = ProgressPrinter::new(sweep.progress);
+    let drained = SyncEngine::new(capture_transport(
         config,
         credential,
         &token,
         expires_at.as_deref(),
     ))
-    .drain(queue, &config.machine_id)
-    .map_err(|error| machine_token_refusal(map_sync_error(error)))?;
+    .with_workers(sweep.workers)
+    .with_upload_rate(sweep.uploads_per_minute)
+    .with_requeue(config.redaction)
+    .drain_with_progress(queue, &config.machine_id, &mut |progress| {
+        printer.update(progress);
+    });
+    printer.finish();
+    let report = drained.map_err(|error| machine_token_refusal(map_sync_error(error)))?;
     // The instruction files the agents on this machine read, for the projects
-    // this account already has sessions in. They are not transcripts and do not
-    // go through the queue: what matters is whether the text changed.
-    // With the redaction the user asked for. It was applied to transcripts and
-    // not to these — so somebody who ran `memoar login --redact-secrets` had
-    // their sessions scrubbed and their `~/.claude/CLAUDE.md`, every project
-    // `AGENTS.md` and every `~/.claude/projects/*/memory/*.md` uploaded byte for
-    // byte, which are the files a connection string actually gets pasted into.
-    // The sweep is handed in rather than built here so its "this file has not
-    // changed" cache survives a watch cycle; building a new one each pass
-    // re-uploaded every instruction file on this machine every interval.
+    // this account already has sessions in, with the redaction the user asked
+    // for. They are not transcripts and do not go through the queue: what
+    // matters is whether the text changed. The sweep is handed in rather than
+    // built here so its "this file has not changed" cache survives a watch
+    // cycle.
     let memory = sweep.memory.run(
         &capture_transport(config, credential, &token, expires_at.as_deref()),
         &paths.home,
@@ -126,91 +171,24 @@ pub(crate) fn sync_pending(sweep: &mut Sweep, captured: CaptureSummary) -> Resul
         &config.machine_id,
         &Utc::now().to_rfc3339(),
     );
+    let disk = check_space(
+        &paths.data_dir,
+        crate::capture_policy::space_floor(config),
+        0,
+    )
+    .map(|check| disk_json(&check))
+    .unwrap_or(Value::Null);
     // `skipped` is named, not just counted: a file redaction could not be
     // applied to stays on this machine, and you are entitled to know which.
-    //
-    // `memoryRefused` is the same thing for instruction files, and is a count
-    // rather than a list because the report the daemon returns carries only a
-    // number. It sits here, beside `skipped`, rather than buried in the memory
-    // block: a file that stayed behind is not a detail. Naming them needs
-    // `MemoryReport` to carry the paths, which is the daemon's to change.
+    // `memoryRefused` is the same thing for instruction files, as a count
+    // because the report the daemon returns carries only a number.
     Ok(json!({
         "captured": captured.captured,
         "skipped": captured.skipped.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
         "memoryRefused": memory.refused,
+        "backfill": backfill_value(&captured, &sweep.policy, sweep.origin),
         "sync": report,
         "memory": memory,
+        "disk": disk,
     }))
-}
-
-/// The project roots this account has archived sessions in, kept inside the
-/// home this machine captures from.
-///
-/// Which directories are projects is not something the agent can know by
-/// looking: a home directory is full of checkouts nobody works in. The archive
-/// already knows, because a transcript names the directory it was recorded in,
-/// so memory files are captured for the projects actually being worked on and
-/// nowhere else. A failure here means no project files this sweep, not a failed
-/// sync — the transcripts are the point.
-///
-/// But a `workspace` is a string the server chose, and it was being used as a
-/// local read root on the strength of `is_absolute() && is_dir()` alone. An
-/// archive that was compromised, or simply wrong, could answer
-/// `"workspace": "/Users/someone-else"` and this machine would read instruction
-/// files out of it and upload them. The server does not get to choose which
-/// local files the client reads: the capture home is the only directory the
-/// person running the agent nominated, so a root outside it is discarded.
-/// Both sides are canonicalised first, because `..` and a symlink pointing out
-/// of the home are the same trick spelled differently.
-fn archived_workspaces(api: &ApiClient, home: &Path) -> Vec<PathBuf> {
-    let Ok(response) = api.get_query("/sessions", &[("limit", "100".to_owned())]) else {
-        return Vec::new();
-    };
-    let Ok(home) = home.canonicalize() else {
-        return Vec::new();
-    };
-    let mut roots: BTreeSet<PathBuf> = BTreeSet::new();
-    for session in response["items"].as_array().unwrap_or(&Vec::new()) {
-        let Some(workspace) = session["workspace"].as_str() else {
-            continue;
-        };
-        let path = PathBuf::from(workspace);
-        // Canonicalising answers "does it exist" and "where does it really
-        // lead" in one step; an absolute path is still required first so a
-        // relative one is never resolved against this process's directory.
-        if !path.is_absolute() {
-            continue;
-        }
-        let Ok(path) = path.canonicalize() else {
-            continue;
-        };
-        if path.is_dir() && path.starts_with(&home) {
-            roots.insert(path);
-        }
-    }
-    roots.into_iter().collect()
-}
-
-/// A refusal of the machine token, as opposed to the account credential.
-///
-/// The ingest requests are made with the short-lived machine token, and this
-/// cycle has just used the account key to update the machine and mint that
-/// token. So a 401 or 403 here is the token, revoked with `POST
-/// /machines/{id}/tokens/revoke` after it was minted, and the contract says
-/// the agent mints a new one at its next cycle. Reported as retryable, so a
-/// watch waits a cycle instead of stopping over a lever made to be recovered
-/// from. If the account itself was revoked, the next cycle fails before this
-/// point, on a request made with it, and that one stops the watch.
-fn machine_token_refusal(error: AppError) -> AppError {
-    if !matches!(error.http_status, Some(401 | 403)) {
-        return error;
-    }
-    AppError {
-        code: "MEMOAR_MACHINE_TOKEN_REFUSED".to_owned(),
-        kind: "network".to_owned(),
-        exit_code: crate::error::EXIT_NETWORK,
-        hint: "The machine token was revoked after it was issued. The next sync mints a new one, so run it again.".to_owned(),
-        retryable: true,
-        ..error
-    }
 }

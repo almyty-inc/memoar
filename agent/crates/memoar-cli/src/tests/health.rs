@@ -25,6 +25,7 @@ fn activity(waiting: u64, oldest_hours: i64, last_hours: Option<i64>) -> QueueAc
         waiting,
         oldest_waiting_at: (waiting > 0).then(|| ago(oldest_hours)),
         last_synced_at: last_hours.map(ago),
+        ..QueueActivity::default()
     }
 }
 

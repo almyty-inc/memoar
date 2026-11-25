@@ -12,6 +12,11 @@ set -euo pipefail
 . "$(dirname -- "$0")/desktop-nsh.sh"
 ensure_nsh
 
+# Capture keeps free space on the data directory's volume, and how much a CI
+# runner has is not this test's to decide. Nothing here writes more than a few
+# kilobytes.
+export MEMOAR_MIN_FREE_BYTES=0
+
 # The address App.test.tsx signs in to.
 stub_address=127.0.0.1:47613
 target_dir=${CARGO_TARGET_DIR:-"$desktop_dir/target"}

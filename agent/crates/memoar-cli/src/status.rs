@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::CommandOutput;
+use crate::capture_policy::{disk_value, effective_policy, policy_value};
 use crate::config::{RuntimePaths, load_config, load_credential};
 use crate::error::{AppError, map_queue_error};
 use crate::service::background_with;
@@ -15,6 +16,7 @@ pub(crate) fn status(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let queue = OfflineQueue::open(&paths.queue_file()).map_err(map_queue_error)?;
     let counts = queue.counts().map_err(map_queue_error)?;
     let activity = queue.activity().map_err(map_queue_error)?;
+    let (policy, origin) = effective_policy(&config, Some(&queue), None)?;
     drop(queue);
     let (health, service) = background_with(paths, &activity);
     let discovered = discover(&paths.home, OperatingSystem::current());
@@ -30,6 +32,11 @@ pub(crate) fn status(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
             "endpoint": config.endpoint,
             "machineId": config.machine_id,
             "queue": counts,
+            "waitingBytes": activity.waiting_bytes,
+            // Whether capture has room to work. `ok: false` means it reads
+            // nothing new until space is freed.
+            "disk": disk_value(paths, &config),
+            "capturePolicy": policy_value(&policy, origin),
             "redaction": config.redaction,
             "detectedSources": discovered.iter().filter(|source| source.detected).count(),
             "sourceCount": discovered.len(),
