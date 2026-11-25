@@ -58,6 +58,7 @@ pub(crate) fn sync(
         return watch(args, &mut sweep, captured);
     }
     let last = sync_pending(&mut sweep, captured)?;
+    crate::capture_state::record_sync(paths);
     Ok(CommandOutput {
         command: "sync".to_owned(),
         data: last,

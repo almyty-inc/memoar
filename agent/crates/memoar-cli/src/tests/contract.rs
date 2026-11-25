@@ -23,6 +23,12 @@ fn every_required_command_parses() {
         vec!["memoar", "pack", "queue bug"],
         vec!["memoar", "convert", "session-id", "--target", "codex"],
         vec!["memoar", "doctor"],
+        vec!["memoar", "service", "install"],
+        vec!["memoar", "service", "install", "--name", "work", "--force"],
+        vec!["memoar", "service", "uninstall", "--name", "work"],
+        vec!["memoar", "service", "status"],
+        vec!["memoar", "service", "logs", "--lines", "10"],
+        vec!["memoar", "logout", "--keep-service"],
         vec!["memoar", "capabilities"],
         vec!["memoar", "introspect"],
     ];

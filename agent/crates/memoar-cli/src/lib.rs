@@ -1,6 +1,7 @@
 mod account;
 mod api;
 mod args;
+mod capture_state;
 mod config;
 mod convert;
 mod credential;
@@ -8,6 +9,7 @@ mod dirs;
 mod doctor;
 mod envelope;
 mod error;
+mod health;
 mod http_error;
 mod listen;
 mod lock;
@@ -17,6 +19,7 @@ mod machine;
 mod memory;
 mod query;
 mod revoke;
+mod service;
 mod settings;
 mod sse;
 mod status;
@@ -42,6 +45,9 @@ pub use crate::envelope::{
 pub use crate::error::{
     AppError, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK, EXIT_REFUSED, EXIT_UNKNOWN,
     EXIT_USAGE,
+};
+pub use crate::service::args::{
+    ServiceChangeArgs, ServiceCommand, ServiceLogsArgs, ServiceNameArgs,
 };
 pub use crate::sse::{ServerEvent, SseDecoder};
 
@@ -71,6 +77,7 @@ pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppErro
         Command::Login(args) => login(args, paths),
         Command::Logout(args) => logout(args, paths),
         Command::Status => status(paths),
+        Command::Service { command } => crate::service::service(command, paths, cli.json),
         Command::Sources { command } => sources(command, paths),
         Command::Sync(args) => sync(args, cli.json, paths),
         Command::Redaction(args) => redaction(args, paths),

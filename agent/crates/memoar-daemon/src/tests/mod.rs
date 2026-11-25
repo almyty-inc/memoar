@@ -1,3 +1,4 @@
+mod activity;
 mod capture;
 mod fake;
 mod outage;

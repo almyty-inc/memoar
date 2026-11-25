@@ -31,6 +31,7 @@ use crate::api::ApiClient;
 use crate::config::{RuntimePaths, load_config, load_credential};
 use crate::error::AppError;
 use crate::machine::{issue_machine_token, machine_exists, patch_machine_state};
+use crate::service::background;
 use crate::status::{skipped_symlinks, symlink_summary};
 
 /// One check's verdict.
@@ -101,6 +102,10 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     symlink_check["skipped"] = json!(symlinks);
     checks.push(symlink_check);
 
+    // Whether anything is capturing, which every other check can pass without.
+    let (health, _) = background(paths);
+    checks.push(json!({ "name": "background_capture", "ok": health.ok, "detail": health.summary, "hint": health.hint }));
+
     let api = ApiClient::new(&config.endpoint, Some(&credential));
     checks.extend(archive_checks(&api, &config.endpoint, &config.machine_id));
     checks.push(machine_state_check(&api, &config, paths));
@@ -112,7 +117,7 @@ pub(crate) fn doctor(paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     let ok = checks.iter().all(|check| check["ok"] == json!(true));
     Ok(CommandOutput {
         command: "doctor".to_owned(),
-        data: json!({ "ok": ok, "checks": checks }),
+        data: json!({ "ok": ok, "backgroundCapture": health, "checks": checks }),
     })
 }
 

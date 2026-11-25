@@ -77,6 +77,31 @@ jobs:
         run: cargo build --release -p memoar-cli
       - name: Exercise compiled robot contract
         run: cargo test -p memoar-cli --test robot_cli
+      # A real install, crash, stop and uninstall of the background service in
+      # each platform's own service manager, for a scratch configuration under
+      # a unique name. The unit tests cover the definitions as text, and only
+      # this shows that launchd, systemd and Task Scheduler accept them.
+      - name: Background service (launchd)
+        if: runner.os == 'macOS'
+        run: sh scripts/service-smoke.sh "$PWD/target/release/memoar"
+      # The runner has no login session, so its user manager is started the
+      # way a lingering user's is. The CLI itself only ever suggests this.
+      - name: Background service (systemd --user)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sudo loginctl enable-linger "$USER"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 30); do
+            [ -S "$XDG_RUNTIME_DIR/bus" ] && break
+            sleep 1
+          done
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          sh scripts/service-smoke.sh "$PWD/target/release/memoar"
+      - name: Background service (Task Scheduler)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/service-smoke.ps1 -Memoar "$PWD\target\release\memoar.exe"
 
   # The desktop application on every desktop it ships for: native AppKit,
   # GTK 4 and Win32 windows drawn by NSH. Each runner builds, lints and tests

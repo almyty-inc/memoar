@@ -19,8 +19,12 @@ use crate::config::{Config, RuntimePaths, load_config_optional};
 use crate::credential::{Credential, CredentialStore};
 use crate::error::AppError;
 use crate::revoke::{Revocation, key_hint, revocation_report, revoke_key};
+use crate::service::remove_for_logout;
 
 pub(crate) fn logout(args: &LogoutArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
+    // The background service goes first, so it is not uploading with the key
+    // while the key is being revoked.
+    let service = remove_for_logout(paths, args.keep_service);
     let store = paths.credential_store();
     // A file that cannot be read is still a file to delete.
     let stored = store.load().ok().flatten();
@@ -28,7 +32,7 @@ pub(crate) fn logout(args: &LogoutArgs, paths: &RuntimePaths) -> Result<CommandO
     let config = load_config_optional(paths).ok().flatten();
     let (Some(stored), Some(config)) = (stored, config) else {
         let removed = store.remove()?;
-        return Ok(signed_out(removed, Value::Null, Value::Null));
+        return Ok(signed_out(removed, Value::Null, Value::Null, service));
     };
     let wants_account = args.email.is_some() || args.token.is_some();
     // The machine is deregistered with the stored key, which holds
@@ -72,7 +76,7 @@ pub(crate) fn logout(args: &LogoutArgs, paths: &RuntimePaths) -> Result<CommandO
         }
     };
     let removed = store.remove()?;
-    Ok(signed_out(removed, key, machine))
+    Ok(signed_out(removed, key, machine, service))
 }
 
 /// Asks the stored key to revoke itself.
@@ -116,7 +120,7 @@ fn end_session(authority: &ApiClient, account: &Credential) {
     }
 }
 
-fn signed_out(removed: bool, key: Value, machine: Value) -> CommandOutput {
+fn signed_out(removed: bool, key: Value, machine: Value, service: Value) -> CommandOutput {
     let revoked = key.get("revoked").and_then(Value::as_bool);
     CommandOutput {
         command: "logout".to_owned(),
@@ -125,8 +129,12 @@ fn signed_out(removed: bool, key: Value, machine: Value) -> CommandOutput {
             "credentialsRemoved": removed,
             "key": key,
             "machine": machine,
+            // `null` when no background service was installed for this
+            // configuration.
+            "service": service,
             "nextStep": match revoked {
                 Some(false) => key_hint(),
+                _ if service["removed"] == json!(true) => "Run memoar login to sign this computer in again, then memoar service install to capture in the background again.".to_owned(),
                 _ => "Run memoar login to sign this computer in again.".to_owned(),
             },
         }),

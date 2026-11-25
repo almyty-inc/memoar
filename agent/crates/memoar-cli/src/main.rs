@@ -48,12 +48,34 @@ fn main() -> ExitCode {
         Ok(output) => {
             if cli.json {
                 println!("{}", success_envelope(&output));
+            } else if let Some(text) = output.data.as_str() {
+                // A command whose answer is text, such as a log, prints it
+                // as text rather than as one JSON string.
+                println!("{text}");
             } else if let Ok(text) = serde_json::to_string_pretty(&output.data) {
                 println!("{text}");
             }
+            warn_if_capture_stopped(cli.json, &output.data);
             ExitCode::SUCCESS
         }
         Err(error) => render_error(cli.json, error),
+    }
+}
+
+/// `status` and `doctor` print a page of JSON, and a stopped capture is one
+/// field in it. For a person reading a terminal it is also the last thing on
+/// stderr, where it cannot scroll past unread.
+fn warn_if_capture_stopped(json_mode: bool, data: &serde_json::Value) {
+    let health = &data["backgroundCapture"];
+    if json_mode || health["ok"] != serde_json::Value::Bool(false) {
+        return;
+    }
+    eprintln!(
+        "\nmemoar: {}",
+        health["summary"].as_str().unwrap_or_default()
+    );
+    if let Some(hint) = health["hint"].as_str() {
+        eprintln!("hint: {hint}");
     }
 }
 

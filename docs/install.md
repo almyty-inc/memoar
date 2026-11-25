@@ -153,6 +153,96 @@ MEMOAR_NO_DOWNLOAD=1 \
 node packages/npx/bin/memoar.js doctor
 ```
 
+## Keep capture running in the background
+
+`memoar sync --watch` captures only while something keeps it running. Started
+from a terminal, it ends when that terminal closes, and nothing says so. Install
+it as a service instead:
+
+```sh
+memoar login --endpoint https://archive.example.com/v1 --email you@example.com --password -
+memoar service install
+```
+
+That installs a per-user service in the platform's own service manager. It
+starts at login, restarts the watch after a crash or a lost network, and writes
+its log to `logs/agent.log` in the data directory. Nothing needs administrator
+rights.
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Manager | launchd LaunchAgent | systemd user unit | Task Scheduler, at logon |
+| Definition | `~/Library/LaunchAgents/dev.memoar.agent.plist` | `$XDG_CONFIG_HOME/systemd/user/memoar-agent.service` | Task `\Memoar\agent` |
+| Restart after a failure | `KeepAlive` on a non-zero exit, `ThrottleInterval` 30s | `Restart=on-failure`, `RestartSec=30` | `RestartOnFailure`, every minute |
+
+The service runs `memoar service run`, which starts `memoar sync --watch` and
+watches it:
+
+- A watch that crashes or exits on an error that waiting can fix is started
+  again after 10 seconds, doubling to 5 minutes, and back to 10 seconds after a
+  healthy run of 10 minutes or more.
+- A watch that exits 2, 3 or 5 is not started again. Those are a setting no
+  capture can satisfy, a configuration that is signed out, and an archive that
+  refused this machine (a revoked key or a deregistered machine). Restarting
+  cannot change them. The service records the reason and exits 0, which each
+  service manager above treats as "stay stopped". `memoar status` and
+  `memoar doctor` then say `background capture stopped:` and the reason.
+- The service writes absolute paths for the binary and for all three
+  directories into its definition, so it runs the same configuration whatever
+  environment the service manager starts it in. An install with
+  `--config-dir`, `--data-dir` or `--capture-home` gets a service for those.
+- An upgrade that replaces the binary in place (the installers above, or
+  `brew upgrade`, whose `/opt/homebrew/bin/memoar` path stays the same) is
+  picked up within a minute: the service sees the file change and restarts the
+  watch on the new binary.
+
+`memoar service install` is safe to run again. It rewrites the definition and
+restarts the service, which is also how to start it again after it stopped.
+
+```sh
+memoar service status        # installed, running, and whether capture is
+memoar service logs          # the end of logs/agent.log
+memoar service uninstall     # stop it and remove the definition
+```
+
+The log is rotated at 5 MiB with two older copies kept. A line that repeats the
+one before it is counted rather than written, so an idle watch does not grow it.
+
+`memoar logout` removes the service for that configuration as well, because it
+cannot capture without the credential. Pass `--keep-service` to leave it.
+
+### Per platform
+
+**macOS.** The LaunchAgent is loaded with `launchctl bootstrap gui/$UID` and
+runs while you are logged in. `launchctl print gui/$UID/dev.memoar.agent` shows
+what launchd knows about it.
+
+**Linux.** The unit is enabled with `systemctl --user enable` and restarted.
+A user unit runs while you have a session. To keep capturing after you log out,
+run `loginctl enable-linger` once. `memoar service install` says so when
+lingering is off and does not change it for you. Without a systemd user session
+(a container, WSL without systemd, or an init system other than systemd) the
+install stops with `MEMOAR_SERVICE` and says what to use instead: your
+desktop's autostart, or a `@reboot` crontab line running `memoar sync --watch`.
+
+**Windows.** The task runs at your logon, as you, without administrator rights.
+`memoar.exe` is a console program, so the task starts it through
+`conhost.exe --headless`, which gives it a console without a window. The
+installer replaces `memoar.exe` by renaming the running one aside, so upgrading
+works while the service runs.
+
+### Two configurations on one machine
+
+Each service has a name, `agent` unless you pass `--name`. A second
+configuration needs a second name:
+
+```sh
+memoar service install --name work --config-dir ~/work/memoar --data-dir ~/work/memoar-data
+```
+
+`install` and `uninstall` refuse to replace or remove a service of the same name
+that belongs to another configuration directory, unless you pass `--force`.
+
 ## The desktop application
 
 For a machine where nobody wants a command-line tool, the Memoar desktop
