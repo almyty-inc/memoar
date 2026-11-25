@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crate::config::RuntimePaths;
 use crate::service::spec::{ServiceSpec, program_note, validate_name};
 use crate::service::{launchd, schtasks, systemd};
 
@@ -31,7 +30,7 @@ fn spec(program: &str, root: &str) -> ServiceSpec {
 #[cfg(unix)]
 #[test]
 fn the_service_runs_the_supervisor_with_absolute_directories() {
-    let paths = RuntimePaths {
+    let paths = crate::config::RuntimePaths {
         config_dir: PathBuf::from("/tmp/scratch/config dir"),
         data_dir: PathBuf::from("/tmp/scratch/data"),
         home: PathBuf::from("/tmp/scratch/home"),
