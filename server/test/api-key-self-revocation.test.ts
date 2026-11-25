@@ -5,7 +5,7 @@ import { CredentialsService } from "../src/auth/credentials.service.js";
 import { TokenService } from "../src/auth/tokens.js";
 import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { TEST_CONTEXT } from "./fixtures/archive.js";
-import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 /**
  * A key revoking itself, against both credential stores.
@@ -15,7 +15,7 @@ import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./hel
  * rows joined on the key's prefix, and only this suite proves that join.
  */
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
-const FIXTURE = { container: "memoar-api-key-self-revocation-test", port: 55996 };
+const FIXTURE = new PostgresFixture("memoar-api-key-self-revocation-test");
 
 /** The signed-in person who mints the keys. */
 const person: TenantContext = { ...TEST_CONTEXT, scopes: ["archive:read", "archive:write", "keys:write"], authType: "browser" };

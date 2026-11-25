@@ -4,7 +4,7 @@ import type { ArchivedSession } from "../src/archive-store.js";
 import { SourcePathUtf81700000021000 } from "../src/migrations/1700000021000-SourcePathUtf8.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
-import { appRoleUrl, dockerAvailable, migrationRoleUrl, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { appRoleUrl, dockerAvailable, migrationRoleUrl, PostgresFixture, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 /**
  * The repair of capture paths stored as latin1 readings of UTF-8.
@@ -15,7 +15,7 @@ import { appRoleUrl, dockerAvailable, migrationRoleUrl, queryRows, seedAccount, 
  */
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-source-path-migration-test", port: 55995 };
+const FIXTURE = new PostgresFixture("memoar-source-path-migration-test");
 
 const MACHINE = "0191cafe-0000-7000-8000-0000000000e3";
 const PATH = "/Users/ünï 日本/session.jsonl";

@@ -5,11 +5,11 @@ import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { PostgresFtsBackend } from "../src/search.js";
 import { DisabledSemanticSearchProvider } from "../src/search.js";
 import { SearchService } from "../src/search.js";
-import { dockerAvailable, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-query-count-test", port: 55983 };
+const FIXTURE = new PostgresFixture("memoar-query-count-test");
 const RESULT_COUNT = 25;
 
 let dataSource: DataSource | null = null;

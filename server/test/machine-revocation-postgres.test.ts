@@ -9,7 +9,7 @@ import { uuidV7 } from "../src/ids.js";
 import { MachineRevocationService } from "../src/machine-revocation.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { TEST_CONTEXT } from "./fixtures/archive.js";
-import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 /**
  * Retirement and token revocation against both stores.
@@ -21,7 +21,7 @@ import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./hel
  * way: one set of expectations, run against each implementation.
  */
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
-const FIXTURE = { container: "memoar-machine-revocation-test", port: 55990 };
+const FIXTURE = new PostgresFixture("memoar-machine-revocation-test");
 
 const alice: TenantContext = TEST_CONTEXT;
 const bob: TenantContext = {

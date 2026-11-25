@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "../src/data-source.js";
@@ -6,12 +5,12 @@ import { runMigrations } from "../src/migrate.js";
 import { runtimeRole } from "../src/main.js";
 import { assertTenantIsolationEnforced } from "../src/startup-checks.js";
 import { ENTITIES } from "../src/entities.js";
-import { connectWithRetry, dockerAvailable, migrationRoleUrl, prepareMigrationRole, queryRows } from "./helpers/postgres.js";
+import { docker } from "./helpers/docker.js";
+import {
+  appRoleUrl, connectWithRetry, dockerAvailable, migrationRoleUrl, PostgresFixture, prepareMigrationRole, queryRows,
+} from "./helpers/postgres.js";
 
-const CONTAINER = "memoar-migrations-test";
-const PORT = 55981;
-const OWNER_URL = `postgres://memoar:migrations@127.0.0.1:${PORT}/memoar`;
-const APP_URL = `postgres://memoar_app:memoar_app@127.0.0.1:${PORT}/memoar`;
+const FIXTURE = new PostgresFixture("memoar-migrations-test");
 
 /** Tables whose tenant policies must be forced, not merely enabled. */
 const FORCED_RLS_TABLES = [
@@ -25,48 +24,39 @@ const suite = usePostgres ? describe : describe.skip;
 let owner: DataSource | null = null;
 let migrator: DataSource | null = null;
 
-function docker(...args: string[]): string {
-  return execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-}
-
 beforeAll(async () => {
   if (!usePostgres) return;
-  try { docker("rm", "-f", CONTAINER); } catch { /* not running */ }
-  docker(
-    "run", "-d", "--name", CONTAINER,
-    "-e", "POSTGRES_DB=memoar", "-e", "POSTGRES_USER=memoar", "-e", "POSTGRES_PASSWORD=migrations",
-    "-p", `${PORT}:5432`, "pgvector/pgvector:pg16",
-  );
+  FIXTURE.start({ password: "migrations" });
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      docker("exec", CONTAINER, "pg_isready", "-U", "memoar");
+      docker("exec", FIXTURE.container, "pg_isready", "-U", "memoar");
       break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
   owner = new DataSource({
-    type: "postgres", url: OWNER_URL, entities: [...ENTITIES],
+    type: "postgres", url: FIXTURE.url("memoar", "migrations"), entities: [...ENTITIES],
     migrations: MIGRATIONS, synchronize: false, migrationsRun: false,
   });
   // Shares the readiness retry: pg_isready passes while the image is still
   // initialising and about to restart, so a first connection can be reset.
-  await connectWithRetry(owner, { container: CONTAINER, port: PORT });
+  await connectWithRetry(owner, FIXTURE);
   // The cluster runs migrations as a schema owner that is neither a superuser
   // nor BYPASSRLS. Run as the superuser, they passed here while a probe and a
   // repair did nothing under row-level security in the deployment.
-  prepareMigrationRole(CONTAINER);
+  prepareMigrationRole(FIXTURE.container);
   if (migrator?.isInitialized) await migrator.destroy();
   migrator = new DataSource({
-    type: "postgres", url: migrationRoleUrl({ container: CONTAINER, port: PORT }), entities: [...ENTITIES],
+    type: "postgres", url: migrationRoleUrl(FIXTURE), entities: [...ENTITIES],
     migrations: MIGRATIONS, synchronize: false, migrationsRun: false,
   });
-  await connectWithRetry(migrator, { container: CONTAINER, port: PORT });
+  await connectWithRetry(migrator, FIXTURE);
 }, 180_000);
 
 afterAll(async () => {
   if (owner?.isInitialized) await owner.destroy();
-  try { docker("rm", "-f", CONTAINER); } catch { /* already gone */ }
+  FIXTURE.remove();
 });
 
 /**
@@ -106,8 +96,8 @@ suite("migrations", () => {
   });
 
   it("enforces those policies for the runtime role, not just in the catalog", async () => {
-    const appRole = new DataSource({ type: "postgres", url: APP_URL, entities: [], synchronize: false });
-    await connectWithRetry(appRole, { container: CONTAINER, port: PORT });
+    const appRole = new DataSource({ type: "postgres", url: appRoleUrl(FIXTURE), entities: [], synchronize: false });
+    await connectWithRetry(appRole, FIXTURE);
     try {
       const role = await queryRows<{ rolsuper: boolean; rolbypassrls: boolean }>(
         appRole,
@@ -136,8 +126,8 @@ suite("migrations", () => {
     await expect(assertTenantIsolationEnforced(() => runtimeRole(owner!)))
       .rejects.toThrow(/bypasses every FORCE ROW LEVEL SECURITY policy/u);
 
-    const appRole = new DataSource({ type: "postgres", url: APP_URL, entities: [], synchronize: false });
-    await connectWithRetry(appRole, { container: CONTAINER, port: PORT });
+    const appRole = new DataSource({ type: "postgres", url: appRoleUrl(FIXTURE), entities: [], synchronize: false });
+    await connectWithRetry(appRole, FIXTURE);
     try {
       await expect(assertTenantIsolationEnforced(() => runtimeRole(appRole))).resolves.toBeUndefined();
     } finally {
@@ -154,14 +144,9 @@ suite("migrations", () => {
    * this is the code standing between a schema and every pod that serves it.
    */
   it("migrates a fresh database from the command the deploy job runs", async () => {
-    const container = "memoar-migrate-entrypoint-test";
-    const port = 55992;
-    try { docker("rm", "-f", container); } catch { /* not running */ }
-    docker(
-      "run", "-d", "--name", container,
-      "-e", "POSTGRES_DB=memoar", "-e", "POSTGRES_USER=memoar", "-e", "POSTGRES_PASSWORD=migrate",
-      "-p", `${port}:5432`, "pgvector/pgvector:pg16",
-    );
+    const fixture = new PostgresFixture("memoar-migrate-entrypoint-test");
+    const { container } = fixture;
+    fixture.start({ password: "migrate" });
     try {
       /*
         `pg_isready` is not a readiness probe for this.
@@ -190,7 +175,7 @@ suite("migrations", () => {
 
       const previousUrl = process.env.MIGRATION_DATABASE_URL;
       const previousPassword = process.env.MEMOAR_APP_DB_PASSWORD;
-      process.env.MIGRATION_DATABASE_URL = migrationRoleUrl({ container, port });
+      process.env.MIGRATION_DATABASE_URL = migrationRoleUrl(fixture);
       process.env.MEMOAR_APP_DB_PASSWORD = "a-runtime-password-of-real-length";
       try {
         await runMigrations();
@@ -205,8 +190,8 @@ suite("migrations", () => {
         else process.env.MEMOAR_APP_DB_PASSWORD = previousPassword;
       }
 
-      const migrated = new DataSource({ type: "postgres", url: `postgres://memoar:migrate@127.0.0.1:${port}/memoar`, entities: [...ENTITIES] });
-      await connectWithRetry(migrated, { container, port });
+      const migrated = new DataSource({ type: "postgres", url: fixture.url("memoar", "migrate"), entities: [...ENTITIES] });
+      await connectWithRetry(migrated, fixture);
       try {
         const applied = await queryRows<{ count: number }>(migrated, "SELECT count(*)::int AS count FROM migrations");
         expect(applied[0]?.count).toBe(MIGRATIONS.length);
@@ -218,7 +203,7 @@ suite("migrations", () => {
         await migrated.destroy();
       }
     } finally {
-      try { docker("rm", "-f", container); } catch { /* already gone */ }
+      fixture.remove();
     }
   }, 300_000);
 

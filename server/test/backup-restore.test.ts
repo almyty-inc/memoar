@@ -5,11 +5,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TenantContext } from "../src/archive-store.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
 import { TEST_CONTEXT, TEST_SESSION } from "./fixtures/archive.js";
-import { countRows, dockerAvailable, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { countRows, dockerAvailable, PostgresFixture, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-backup-test", port: 55985 };
+const FIXTURE = new PostgresFixture("memoar-backup-test");
 
 let dataSource: DataSource | null = null;
 let store: PostgresArchiveStore;

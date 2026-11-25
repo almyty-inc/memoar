@@ -8,11 +8,11 @@ import { DefaultPipelineSeedFactory, IngestPipeline, MemoryObjectStorage } from 
 import { ParserRegistry } from "../libs/parsers/src/index.js";
 import { FormatDetector, SecretScanner } from "../src/ingest/detection.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
-import { dockerAvailable, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-ingest-throughput-test", port: 55984 };
+const FIXTURE = new PostgresFixture("memoar-ingest-throughput-test");
 
 let dataSource: DataSource | null = null;
 let queries: string[] = [];

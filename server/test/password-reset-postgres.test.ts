@@ -11,7 +11,7 @@ import { DevArchiveStore } from "../src/dev-archive-store.js";
 import { AuthIdentityEntity, MachineEntity, UserEntity } from "../src/entities.js";
 import { uuidV7 } from "../src/ids.js";
 import { resetPassword, runResetPassword } from "../src/reset-password.js";
-import { dockerAvailable, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { dockerAvailable, PostgresFixture, startPostgres, stopPostgres, superuserUrl } from "./helpers/postgres.js";
 
 /**
  * Changing and resetting a password against a real database, which is where
@@ -19,8 +19,7 @@ import { dockerAvailable, startPostgres, stopPostgres } from "./helpers/postgres
  */
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-password-reset-test", port: 55993 };
-const DATABASE_URL = `postgres://memoar:contract@127.0.0.1:${FIXTURE.port}/memoar`;
+const FIXTURE = new PostgresFixture("memoar-password-reset-test");
 
 let dataSource: DataSource | null = null;
 let auth: AuthService;
@@ -153,6 +152,7 @@ suite("the operator reset", () => {
     const out: string[] = [];
     const err: string[] = [];
     const io = { out: (line: string) => out.push(line), err: (line: string) => err.push(line) };
+    const DATABASE_URL = superuserUrl(FIXTURE);
 
     expect(await runResetPassword(["node", "reset-password.js"], { DATABASE_URL }, io)).toBe(2);
     expect(await runResetPassword(["node", "reset-password.js", "--email", freshEmail()], { DATABASE_URL }, io)).toBe(1);

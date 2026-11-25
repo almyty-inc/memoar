@@ -5,7 +5,7 @@ import type { ArchivedSession, TenantContext } from "../src/archive-store.js";
 import { ENTITIES } from "../src/entities.js";
 import { IngestPipeline, MemoryObjectStorage } from "../src/ingest.js";
 import { PostgresArchiveStore } from "../src/postgres-archive-store.js";
-import { appRoleUrl, dockerAvailable, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
+import { appRoleUrl, dockerAvailable, PostgresFixture, queryRows, seedAccount, startPostgres, stopPostgres } from "./helpers/postgres.js";
 
 /**
  * Two accounts upload the same transcript.
@@ -22,7 +22,7 @@ import { appRoleUrl, dockerAvailable, queryRows, seedAccount, startPostgres, sto
  */
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 const suite = usePostgres ? describe : describe.skip;
-const FIXTURE = { container: "memoar-turn-accounts-test", port: 55994 };
+const FIXTURE = new PostgresFixture("memoar-turn-accounts-test");
 
 function account(suffix: string): TenantContext {
   return {

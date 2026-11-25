@@ -1,39 +1,34 @@
-import { execFileSync } from "node:child_process";
 import { Client } from "pg";
 import { DataSource } from "typeorm";
 import { ENTITIES } from "../../src/entities.js";
 import { MIGRATIONS } from "../../src/data-source.js";
+import { docker, PostgresFixture } from "./docker.js";
 
-/** Each suite gets its own container and port so files can run in parallel. */
-export interface PostgresFixture {
-  container: string;
-  port: number;
-}
+export { dockerAvailable, PostgresFixture } from "./docker.js";
 
-export const CONTRACT_FIXTURE: PostgresFixture = { container: "memoar-store-contract-test", port: 55979 };
-export const RLS_FIXTURE: PostgresFixture = { container: "memoar-rls-test", port: 55980 };
+/**
+ * Each suite gets its own container, and Docker picks each one's host port,
+ * so files can run in parallel without coordinating port numbers.
+ */
+export const CONTRACT_FIXTURE = new PostgresFixture("memoar-store-contract-test");
+export const RLS_FIXTURE = new PostgresFixture("memoar-rls-test");
 /** Two teams, four tenants: the cross-workspace isolation proof runs alone. */
-export const TEAM_FANOUT_FIXTURE: PostgresFixture = { container: "memoar-team-fanout-test", port: 55988 };
+export const TEAM_FANOUT_FIXTURE = new PostgresFixture("memoar-team-fanout-test");
+
+/** The superuser password the shared helper starts every container with. */
+const SUPERUSER_PASSWORD = "contract";
+
+/** The container's superuser, for seeding and for inspecting every tenant. */
+export function superuserUrl(fixture: PostgresFixture): string {
+  return fixture.url("memoar", SUPERUSER_PASSWORD);
+}
 
 /** Least-privilege runtime role created by the AppRole migration. */
 export function appRoleUrl(fixture: PostgresFixture): string {
-  return `postgres://memoar_app:memoar_app@127.0.0.1:${fixture.port}/memoar`;
+  return fixture.url("memoar_app", "memoar_app");
 }
 
 export { MIGRATIONS } from "../../src/data-source.js";
-
-function docker(...args: string[]): string {
-  return execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-}
-
-export function dockerAvailable(): boolean {
-  try {
-    docker("info");
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Starts a throwaway pgvector container and applies every migration, so the
@@ -47,18 +42,13 @@ export function dockerAvailable(): boolean {
  * and for inspecting every tenant's rows.
  */
 export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE): Promise<DataSource> {
-  try { docker("rm", "-f", fixture.container); } catch { /* not running */ }
-  docker(
-    "run", "-d", "--name", fixture.container,
-    "-e", "POSTGRES_DB=memoar", "-e", "POSTGRES_USER=memoar", "-e", "POSTGRES_PASSWORD=contract",
-    "-p", `${fixture.port}:5432`, "pgvector/pgvector:pg16",
-  );
+  fixture.start({ password: SUPERUSER_PASSWORD });
   // pg_isready passes while the image's entrypoint still has Postgres up for
   // initialization, and the server is restarted immediately afterwards. A
   // connection opened in that window is reset, which showed up as suites that
   // passed alone and failed when several containers started at once. Readiness
   // is therefore a connection that survives, not a single probe.
-  await waitForStablePostgres(`postgres://memoar:contract@127.0.0.1:${fixture.port}/memoar`);
+  await waitForStablePostgres(superuserUrl(fixture));
   prepareMigrationRole(fixture.container);
   const migrator = new DataSource({
     type: "postgres", url: migrationRoleUrl(fixture), entities: [...ENTITIES],
@@ -72,7 +62,7 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
   }
   const dataSource = new DataSource({
     type: "postgres",
-    url: `postgres://memoar:contract@127.0.0.1:${fixture.port}/memoar`,
+    url: superuserUrl(fixture),
     entities: [...ENTITIES],
     migrations: MIGRATIONS,
     synchronize: false,
@@ -86,7 +76,7 @@ export async function startPostgres(fixture: PostgresFixture = CONTRACT_FIXTURE)
 export const MIGRATION_ROLE = { name: "memoar_owner", password: "migration-role" };
 
 export function migrationRoleUrl(fixture: PostgresFixture): string {
-  return `postgres://${MIGRATION_ROLE.name}:${MIGRATION_ROLE.password}@127.0.0.1:${fixture.port}/memoar`;
+  return fixture.url(MIGRATION_ROLE.name, MIGRATION_ROLE.password);
 }
 
 /**
@@ -157,7 +147,7 @@ export async function connectWithRetry(dataSource: DataSource, fixture: Postgres
 
 export async function stopPostgres(dataSource: DataSource | null, fixture: PostgresFixture = CONTRACT_FIXTURE): Promise<void> {
   if (dataSource?.isInitialized) await dataSource.destroy();
-  try { docker("rm", "-f", fixture.container); } catch { /* already gone */ }
+  fixture.remove();
 }
 
 /** Seeds the users and auth identities the store's directory lookups depend on. */

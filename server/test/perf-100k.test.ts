@@ -1,21 +1,20 @@
-import { execFileSync } from "node:child_process";
 import { loadavg, cpus } from "node:os";
 import { performance } from "node:perf_hooks";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dockerAvailable, waitForStablePostgres } from "./helpers/postgres.js";
+import { docker } from "./helpers/docker.js";
+import { appRoleUrl, dockerAvailable, PostgresFixture, waitForStablePostgres } from "./helpers/postgres.js";
 import { startTestApi, type TestApi } from "./helpers/http-app.js";
 
-const CONTAINER = "memoar-perf-test";
-const PORT = 55982;
-const OWNER_URL = `postgres://memoar:memoar-perf@127.0.0.1:${PORT}/memoar`;
-const APP_URL = `postgres://memoar_app:memoar_app@127.0.0.1:${PORT}/memoar`;
+const FIXTURE = new PostgresFixture("memoar-perf-test");
+const OWNER_PASSWORD = "memoar-perf";
+const ownerUrl = (): string => FIXTURE.url("memoar", OWNER_PASSWORD);
 // Production connects as the least-privilege role, so row-level security is
 // evaluated on every query; measuring as the superuser would understate it.
 // MEMOAR_PERF_ROLE=owner runs the same benchmark with RLS bypassed, which
 // isolates the policy cost from machine contention.
 const RUNTIME_ROLE = process.env.MEMOAR_PERF_ROLE === "owner" ? "owner" : "app";
-const DATABASE_URL = RUNTIME_ROLE === "owner" ? OWNER_URL : APP_URL;
+const databaseUrl = (): string => (RUNTIME_ROLE === "owner" ? ownerUrl() : appRoleUrl(FIXTURE));
 const TENANT_ID = "0191cafe-0000-7000-8000-000000000002";
 const SESSION_COUNT = Number(process.env.MEMOAR_PERF_SESSIONS ?? 100_000);
 const P95_BUDGET_MS = Number(process.env.MEMOAR_PERF_P95_BUDGET_MS ?? 300);
@@ -33,10 +32,6 @@ const enabled = process.env.MEMOAR_TEST_PERF === "1" && dockerAvailable();
 const suite = enabled ? describe : describe.skip;
 
 let api: TestApi | null = null;
-
-function docker(...args: string[]): string {
-  return execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-}
 
 function percentile(samples: readonly number[], fraction: number): number {
   const sorted = [...samples].sort((left, right) => left - right);
@@ -75,7 +70,7 @@ function measurementContext(): string {
 }
 
 async function seed(): Promise<void> {
-  const database = new Client({ connectionString: OWNER_URL });
+  const database = new Client({ connectionString: ownerUrl() });
   await database.connect();
   try {
     await database.query("SET row_security = off");
@@ -117,15 +112,10 @@ async function seed(): Promise<void> {
 
 beforeAll(async () => {
   if (!enabled) return;
-  try { docker("rm", "-f", CONTAINER); } catch { /* not running */ }
-  docker(
-    "run", "-d", "--name", CONTAINER, "--shm-size", "1g",
-    "-e", "POSTGRES_DB=memoar", "-e", "POSTGRES_USER=memoar", "-e", "POSTGRES_PASSWORD=memoar-perf",
-    "-p", `${PORT}:5432`, "pgvector/pgvector:pg16",
-  );
+  FIXTURE.start({ password: OWNER_PASSWORD, runArgs: ["--shm-size", "1g"] });
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      docker("exec", CONTAINER, "pg_isready", "-U", "memoar");
+      docker("exec", FIXTURE.container, "pg_isready", "-U", "memoar");
       break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -135,11 +125,11 @@ beforeAll(async () => {
   // up, and that server is shut down straight afterwards; booting the app in
   // that gap is how this failed in CI with "Connection terminated unexpectedly"
   // while passing locally.
-  await waitForStablePostgres(OWNER_URL);
+  await waitForStablePostgres(ownerUrl());
   // Boot the real app against the throwaway database; migrations run on start.
   api = await startTestApi({
-    DATABASE_URL,
-    MIGRATION_DATABASE_URL: OWNER_URL,
+    DATABASE_URL: databaseUrl(),
+    MIGRATION_DATABASE_URL: ownerUrl(),
     MEMOAR_RUN_MIGRATIONS: "true",
     MEMOAR_EMBEDDINGS_PROVIDER: "deterministic",
     MEMOAR_TOKEN_SECRET: "perf-benchmark-only",
@@ -149,7 +139,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (api) await api.close();
-  try { docker("rm", "-f", CONTAINER); } catch { /* already gone */ }
+  FIXTURE.remove();
 });
 
 suite("hybrid search at 100k sessions", () => {
@@ -225,7 +215,7 @@ suite("hybrid search at 100k sessions", () => {
   // fail for a reason that has nothing to do with the defect this guards. CI
   // runs the full hundred thousand; a smaller local run says it skipped this.
   it.skipIf(SESSION_COUNT < 25_000)("serves vector retrieval from the HNSW index with no sort stacked on top", async () => {
-    const database = new Client({ connectionString: APP_URL });
+    const database = new Client({ connectionString: appRoleUrl(FIXTURE) });
     await database.connect();
     try {
       await database.query("SELECT set_config('memoar.tenant_id', $1, false)", [TENANT_ID]);
