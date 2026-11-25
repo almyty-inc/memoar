@@ -5,7 +5,8 @@ import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 /** Keys an exported task might carry its messages under. */
 const MESSAGE_KEYS = ["apiConversationHistory", "history", "messages", "conversation"];
 
-function messageArray(input: unknown): unknown[] | null {
+/** The message array a task holds, or null. Format detection asks the same question. */
+export function messageArray(input: unknown): unknown[] | null {
   const direct = arrayValue(input);
   if (direct) return direct;
   if (!isRecord(input)) return null;

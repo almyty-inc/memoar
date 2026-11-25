@@ -15,6 +15,10 @@ import { ZedV1Parser } from "./zed.js";
 
 export * from "./types.js";
 export { isSqliteBytes } from "./sqlite.js";
+// The shape tests format detection shares with the parsers, so the two cannot
+// disagree about what a Copilot Chat panel or a Roo task looks like.
+export { chatEnvelopes, chatEnvelopesFromLog } from "./copilot-chat.js";
+export { messageArray } from "./task-history.js";
 
 /** Parsers fed by an upload rather than by reading a store on a machine. */
 const UPLOAD_FORMATS = new Set(["canonical-bundle", "cass-export", "chatgpt-export"]);
