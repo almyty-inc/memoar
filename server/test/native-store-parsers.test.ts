@@ -78,9 +78,10 @@ describe("zed", () => {
     expect(result.kind).toBe("parsed");
     if (result.kind !== "parsed") return;
     const blocks = result.sessions[0]!.turns[0]!.blocks;
-    // An unrecognised variant is skipped rather than failing the thread: Zed
-    // will add variants, and losing a transcript to one is far worse.
-    expect(blocks.map((block) => block.kind)).toEqual(["thinking", "tool_call", "text"]);
+    // An unrecognised variant neither fails the thread nor vanishes: Zed will
+    // add variants, so it is kept whole in `ext` beside the ones understood.
+    expect(blocks.map((block) => block.kind)).toEqual(["thinking", "tool_call", "text", "text"]);
+    expect(blocks[3]!.ext).toEqual({ nativeKind: "SomethingZedAddedLater", native: { SomethingZedAddedLater: { unknown: true } } });
     expect(blocks[1]!.name).toBe("read_file");
     expect(blocks[1]!.callId).toBe("call-1");
     expect(result.sessions[0]!.models).toEqual(["claude-sonnet"]);
@@ -252,7 +253,9 @@ describe("cursor", () => {
     expect(session.source.nativeSessionId).toBe("c1");
     expect(session.turns.map((turn) => turn.role)).toEqual(["user", "assistant"]);
     expect(session.turns[1]!.blocks.map((block) => block.kind)).toEqual(["thinking", "text", "tool_result"]);
-    expect(session.turns[1]!.parentId).toBe("b1");
+    // "b1" is not a uuid, so the turn id is derived from it, and the parent
+    // link follows the same derivation.
+    expect(session.turns[1]!.parentId).toBe(session.turns[0]!.id);
     expect(session.turns[0]!.createdAt).toBe("2026-08-02T09:00:00.000Z");
   });
 
@@ -270,7 +273,7 @@ describe("cursor", () => {
     const turns = result.sessions[0]!.turns;
     expect(turns.map((turn) => turn.blocks[0]!.text)).toEqual(["first", "third"]);
     expect(turns.map((turn) => turn.ordinal)).toEqual([0, 1]);
-    expect(turns[1]!.parentId).toBe("b1");
+    expect(turns[1]!.parentId).toBe(turns[0]!.id);
   });
 
   it("reports a database with no composer rows", () => {

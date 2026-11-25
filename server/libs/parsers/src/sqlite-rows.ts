@@ -1,5 +1,6 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { derivedBlockId, isRecord, mapParent, parseBlock, stringValue, turnId, withModelAndTokens } from "./common.js";
+import { parseBlock } from "./blocks.js";
+import { derivedBlockId, isRecord, mapParent, stringValue, turnId, withModelAndTokens } from "./common.js";
 import type { SessionSeed } from "./types.js";
 
 interface RowShape {
@@ -10,7 +11,12 @@ interface RowShape {
   blocks?: unknown;
 }
 
-export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed): Turn {
+/**
+ * @param normalize turns one native part into the shape `parseBlock` reads, or
+ * null for a part that is bookkeeping. Ids stay keyed to the native position,
+ * so a dropped part does not move the id of the parts after it.
+ */
+export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed, normalize: (part: unknown) => unknown = (part) => part): Turn {
   const record = row as Record<string, unknown>;
   const nativeId = stringValue(record, "id");
   if (!nativeId) throw new Error(`row ${ordinal} lacks a message id`);
@@ -21,7 +27,7 @@ export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed): 
   const roleValue = stringValue(record, "role") ?? "user";
   const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
   const rawBlocks = Array.isArray(row.blocks) ? row.blocks : [];
-  const blocks = rawBlocks.map((block, index) => parseBlock(block, derivedBlockId(id, index + 1, seed.id, ordinal))).filter((block) => block !== null);
+  const blocks = rawBlocks.map((block, index) => parseBlock(normalize(block), derivedBlockId(id, index + 1, seed.id, ordinal))).filter((block) => block !== null);
   return withModelAndTokens({
     id,
     ordinal,

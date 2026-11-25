@@ -1,8 +1,10 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
 import { epochToIso, incrementUuid, turnId } from "./common.js";
+import { crushPart } from "./native-parts.js";
 import { parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 export class CrushV1Parser implements VersionedParser {
   readonly source = "crush";
@@ -41,7 +43,7 @@ export class CrushV1Parser implements VersionedParser {
               role: row.role,
               createdAt: epochToIso(row.created_at, request.seed.createdAt),
               blocks: parseJsonColumn(row.parts, `messages.parts row ${ordinal}`),
-            }, ordinal, request.seed);
+            }, ordinal, request.seed, crushPart);
             previousId = id;
             return row.model ? { ...turn, model: row.model } : turn;
           });
@@ -54,7 +56,7 @@ export class CrushV1Parser implements VersionedParser {
           };
         });
       });
-      return { kind: "parsed", parser: "crush:v1:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions };
     } catch (error) {
       return { kind: "unknown", diagnostic: `crush v1 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`, raw: request.raw };
     }

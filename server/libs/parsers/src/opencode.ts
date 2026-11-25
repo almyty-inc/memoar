@@ -2,6 +2,7 @@ import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.
 import { blockId, incrementUuid, isRecord, mapParent, stringValue, turnId } from "./common.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 interface PartRow {
   id: string;
@@ -34,8 +35,10 @@ function partsToBlocks(part: Record<string, unknown>, id: string, resultId: stri
     return text === null || text.length === 0 ? [] : [{ id, kind: "text", text }];
   }
   if (type === "reasoning") {
+    // Provider metadata is where an encrypted reasoning payload is kept.
     const text = stringValue(part, "text");
-    return text === null || text.length === 0 ? [] : [{ id, kind: "thinking", text }];
+    const metadata = isRecord(part.metadata) && Object.keys(part.metadata).length > 0 ? { data: { metadata: part.metadata } } : {};
+    return (text === null || text.length === 0) && !("data" in metadata) ? [] : [{ id, kind: "thinking", ...(text ? { text } : {}), ...metadata }];
   }
   if (type === "tool") {
     const state = isRecord(part.state) ? part.state : {};
@@ -51,16 +54,54 @@ function partsToBlocks(part: Record<string, unknown>, id: string, resultId: stri
     // command was being kept: every `ls`, every test run, every diff an agent
     // read came back empty in the archive. A session where you can see what was
     // asked and not what came back is not a record of what happened.
+    //
+    // A failed call keeps its error under `state.error` instead, and the
+    // tool's own account of what it did (the diff an edit made, a title) under
+    // `state.metadata` and `state.title`. Those were dropped too.
     const output = stringValue(state, "output");
-    if (output !== null && output.length > 0) {
-      blocks.push({ id: resultId, kind: "tool_result", callId, text: output });
+    const error = stringValue(state, "error");
+    const data: Record<string, unknown> = {};
+    if (error !== null) data.isError = true;
+    for (const key of ["title", "metadata", "attachments"] as const) {
+      if (state[key] !== undefined && state[key] !== null) data[key] = state[key];
+    }
+    const text = output !== null && output.length > 0 ? output : error;
+    if (text !== null || Object.keys(data).length > 0) {
+      blocks.push({ id: resultId, kind: "tool_result", callId, ...(text !== null ? { text } : {}), ...(Object.keys(data).length > 0 ? { data } : {}) });
     }
     return blocks;
   }
   if (type === "patch") {
     return [{ id, kind: "diff", data: { hash: stringValue(part, "hash"), files: part.files } }];
   }
-  return [];
+  if (type === "file") return [fileBlock(part, id)];
+  if (type === "step-start" || type === "step-finish" || type === "snapshot") return [];
+  // Subtasks, agent switches, compaction markers, retries, and any part type
+  // added since this was written: their prose if they have any, and the part.
+  const text = stringValue(part, "prompt") ?? stringValue(part, "text") ?? stringValue(part, "description");
+  return [{ id, kind: type === "retry" ? "error" : "system", name: type ?? "part", ...(text ? { text } : {}), data: part }];
+}
+
+/**
+ * A file the person attached or @-mentioned: `{mime, filename, url, source}`.
+ * The url is a `data:` URL when the bytes were inlined, and `source.text`
+ * holds the text opencode sent to the model for a mentioned file.
+ */
+function fileBlock(part: Record<string, unknown>, id: string): ContentBlock {
+  const url = stringValue(part, "url");
+  const mime = stringValue(part, "mime");
+  const filename = stringValue(part, "filename");
+  const source = isRecord(part.source) ? part.source : null;
+  const sourceText = source && isRecord(source.text) ? stringValue(source.text, "value") : null;
+  return {
+    id,
+    kind: "attachment",
+    ...(filename ? { name: filename } : {}),
+    ...(mime ? { mimeType: mime } : {}),
+    ...(url && !url.startsWith("data:") ? { artifactRef: url } : {}),
+    ...(sourceText ? { text: sourceText } : {}),
+    ...(url?.startsWith("data:") || source ? { data: { ...(url?.startsWith("data:") ? { url } : {}), ...(source ? { source } : {}) } } : {}),
+  };
 }
 
 /**
@@ -142,7 +183,7 @@ export class OpencodeV1Parser implements VersionedParser {
           };
         });
       });
-      return { kind: "parsed", parser: "opencode:v1:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions };
     } catch (error) {
       return {
         kind: "unknown",

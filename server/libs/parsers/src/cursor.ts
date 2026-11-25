@@ -1,8 +1,10 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
-import { epochToIso, incrementUuid, isRecord, stringValue, withModelAndTokens } from "./common.js";
+import { epochToIso, incrementUuid, isRecord, stringValue, turnId, withModelAndTokens } from "./common.js";
+import { cursorBubbleBlocks } from "./cursor-bubble.js";
 import { ensureRecord, parseJsonColumn } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 export class CursorV3Parser implements VersionedParser {
   readonly source = "cursor";
@@ -63,26 +65,13 @@ export class CursorV3Parser implements VersionedParser {
             const role = typeValue === 2 ? "assistant" : "user";
             const blocks: ContentBlock[] = [];
 
-            for (const thought of Array.isArray(bubble.allThinkingBlocks) ? bubble.allThinkingBlocks : []) {
-              const text = typeof thought === "string" ? thought : isRecord(thought) ? stringValue(thought, "text") : null;
-              if (text) blocks.push({ id: mint(), kind: "thinking", text });
-            }
-            const text = stringValue(bubble, "text");
-            if (text) blocks.push({ id: mint(), kind: "text", text });
-            for (const result of Array.isArray(bubble.toolResults) ? bubble.toolResults : []) {
-              if (!isRecord(result)) continue;
-              const output = stringValue(result, "result") ?? stringValue(result, "output") ?? stringValue(result, "text");
-              blocks.push({
-                id: mint(),
-                kind: "tool_result",
-                ...(stringValue(result, "toolCallId") ? { callId: stringValue(result, "toolCallId")! } : {}),
-                ...(output ? { text: output } : {}),
-              });
-            }
+            blocks.push(...cursorBubbleBlocks(bubble, mint));
             if (blocks.length === 0) return [];
 
             const turn = withModelAndTokens({
-              id: bubbleId,
+              // Cursor's bubble ids are uuids, kept as they are. One that is
+              // not would refuse the whole session at the uuid column.
+              id: turnId(bubbleId, request.seed.id),
               ordinal,
               // Cursor stores a flat ordered index, so order is the chain.
               parentId: previousId,
@@ -90,7 +79,7 @@ export class CursorV3Parser implements VersionedParser {
               createdAt: epochToIso(payload.createdAt, request.seed.createdAt),
               blocks,
             }, request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
-            previousId = bubbleId;
+            previousId = turnId(bubbleId, request.seed.id);
             return [turn];
           }).map((turn, ordinal) => ({ ...turn, ordinal }));
 
@@ -103,7 +92,7 @@ export class CursorV3Parser implements VersionedParser {
           };
         });
       });
-      return { kind: "parsed", parser: "cursor:v3:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions };
     } catch (error) {
       return { kind: "unknown", diagnostic: `cursor v3 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`, raw: request.raw };
     }
@@ -115,7 +104,7 @@ export class CursorV3Parser implements VersionedParser {
       if (!isRecord(input) || input.source !== "cursor" || input.version !== "v3" || !isRecord(input.session) || !Array.isArray(input.session.turns)) {
         return { kind: "unknown", diagnostic: "cursor v3 requires a native SQLite database or a legacy database row envelope", raw: request.raw };
       }
-      return { kind: "parsed", parser: "cursor:v3:0.1.0", sessions: [structuredClone(input.session) as unknown as Session] };
+      return { kind: "parsed", parser: parserVersion(this.source), sessions: [structuredClone(input.session) as unknown as Session] };
     } catch {
       return { kind: "unknown", diagnostic: "cursor v3 payload is neither SQLite nor valid JSON", raw: request.raw };
     }

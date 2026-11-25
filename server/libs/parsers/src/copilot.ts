@@ -3,6 +3,7 @@ import { derivedBlockId, incrementUuid, readJsonLines } from "./common.js";
 import { chatEnvelopes, chatEnvelopesFromLog, chatSessions } from "./copilot-chat.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { parserVersion } from "./versions.js";
 
 interface TurnRow {
   id: number;
@@ -44,8 +45,10 @@ export class CopilotV1Parser implements VersionedParser {
     try {
       const sessions = withSqlite(request.raw, (database) => {
         const sessionRows = database
-          .prepare("SELECT id, cwd, summary, created_at FROM sessions ORDER BY created_at, id")
-          .all() as unknown as { id: string; cwd: string | null; summary: string | null; created_at: string | null }[];
+          // Every column, so the repository and branch are read where the
+          // store has them and nothing fails where an older one does not.
+          .prepare("SELECT * FROM sessions ORDER BY created_at, id")
+          .all() as unknown as { id: string; cwd: string | null; summary: string | null; created_at: string | null; repository?: string | null; branch?: string | null }[];
         if (sessionRows.length === 0) throw new Error("session store has no sessions");
 
         const turnsFor = database
@@ -83,12 +86,21 @@ export class CopilotV1Parser implements VersionedParser {
             id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
             source: { ...request.seed.source, nativeSessionId: sessionRow.id },
             ...(sessionRow.summary ? { title: sessionRow.summary } : {}),
-            ...(sessionRow.cwd ? { workspace: { ...request.seed.workspace, path: sessionRow.cwd } } : {}),
+            ...(sessionRow.cwd || sessionRow.repository || sessionRow.branch ? {
+              workspace: {
+                ...request.seed.workspace,
+                ...(sessionRow.cwd ? { path: sessionRow.cwd } : {}),
+                // `owner/name`, which is less than a remote URL the capture
+                // already knows, so it fills the field only when nothing has.
+                ...(sessionRow.repository && !request.seed.workspace.gitRemote ? { gitRemote: sessionRow.repository } : {}),
+                ...(sessionRow.branch ? { branch: sessionRow.branch } : {}),
+              },
+            } : {}),
             turns,
           };
         });
       });
-      return { kind: "parsed", parser: "copilot:v1:0.2.0", sessions };
+      return { kind: "parsed", parser: parserVersion("copilot"), sessions };
     } catch (error) {
       return {
         kind: "unknown",
@@ -136,5 +148,5 @@ function parseChatSessions(request: ParseRequest): ParseResult {
       raw: request.raw,
     };
   }
-  return { kind: "parsed", parser: "copilot:v1:0.2.0", sessions };
+  return { kind: "parsed", parser: parserVersion("copilot"), sessions };
 }

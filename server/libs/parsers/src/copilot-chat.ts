@@ -102,9 +102,30 @@ function blockFrom(part: unknown, id: string): ContentBlock | null {
   const kind = stringValue(part, "kind");
   if (kind === "progressMessage" || kind === "codeblockUri") return null;
   if (kind === "toolInvocationSerialized") {
+    // The message is what the panel showed. The tool, its call id, the
+    // terminal command or file it acted on (`toolSpecificData`) and what came
+    // back (`resultDetails`) sit beside it and were dropped.
     const text = stringValue(part, "pastTenseMessage") ?? markdown(part.pastTenseMessage)
       ?? stringValue(part, "invocationMessage") ?? markdown(part.invocationMessage);
-    return text ? { id, kind: "tool_call", text } : null;
+    const name = stringValue(part, "toolId");
+    const callId = stringValue(part, "toolCallId");
+    const data: Record<string, unknown> = {};
+    for (const key of ["invocationMessage", "toolSpecificData", "resultDetails", "isConfirmed", "isComplete"] as const) {
+      if (part[key] !== undefined && part[key] !== null) data[key] = part[key];
+    }
+    if (!text && !name && Object.keys(data).length === 0) return null;
+    return {
+      id,
+      kind: "tool_call",
+      ...(text ? { text } : {}),
+      ...(name ? { name } : {}),
+      ...(callId ? { callId } : {}),
+      ...(Object.keys(data).length > 0 ? { data } : {}),
+    };
+  }
+  if (kind === "thinking") {
+    const value = Array.isArray(part.value) ? (part.value as unknown[]).map(markdown).filter(Boolean).join("\n") : markdown(part.value);
+    return value && value.trim().length > 0 ? { id, kind: "thinking", text: value } : null;
   }
   if (kind === "textEditGroup") {
     const text = editText(part.edits);

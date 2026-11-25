@@ -46,7 +46,7 @@ describe("antigravity-cli as the CLI writes it", () => {
     expect(result.sessions[0]!.turns.map((turn) => turn.role)).toEqual(["user"]);
   });
 
-  it("reads tool output written as GENERIC steps and skips retry notices", () => {
+  it("reads tool output written as GENERIC steps and keeps errors and system messages", () => {
     const { result } = ingest("antigravity-cli", lines([
       { step_index: 0, source: "USER_EXPLICIT", type: "USER_INPUT", status: "DONE", created_at: AT, content: "list the files" },
       { step_index: 1, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", created_at: AT, input_tokens: 10, output_tokens: 2, cache_read_tokens: 0, tool_calls: [{ name: "run_command", args: { CommandLine: "ls" } }] },
@@ -58,8 +58,13 @@ describe("antigravity-cli as the CLI writes it", () => {
     expect(result.kind, result.kind === "unknown" ? result.diagnostic : "").toBe("parsed");
     if (result.kind !== "parsed") return;
     const turns = result.sessions[0]!.turns;
-    expect(turns.map((turn) => turn.role)).toEqual(["user", "assistant"]);
-    expect(turns[1]!.blocks.map((block) => block.kind)).toEqual(["tool_call", "tool_result", "text"]);
+    // The retry notice is an error the person saw and the system message is
+    // context the model was given. Both were dropped. They are kept as an
+    // error block and a system turn, in the order they happened.
+    expect(turns.map((turn) => turn.role)).toEqual(["user", "assistant", "system", "assistant"]);
+    expect(turns[1]!.blocks.map((block) => block.kind)).toEqual(["tool_call", "error", "tool_result"]);
+    expect(turns[1]!.blocks[2]!.callId).toBe(turns[1]!.blocks[0]!.callId);
+    expect(turns[3]!.blocks.map((block) => block.kind)).toEqual(["text"]);
   });
 
   it("is still recognised when its first line is damaged", () => {
