@@ -4,18 +4,19 @@ import { AwsS3ClientPort } from "../src/ingest/object-storage.js";
 /**
  * Which address shape the client signs for.
  *
- * MinIO needs path-style — `endpoint/bucket/key`. DigitalOcean Spaces documents
- * the opposite, and its own SDK guidance is to use the virtual-hosted form,
- * `bucket.fra1.digitaloceanspaces.com`. This was hard-coded to path-style, so
- * adopting a provider that wants the other shape meant editing the source.
+ * Path-style is `endpoint/bucket/key`, which any local S3 server answers without
+ * wildcard DNS. DigitalOcean Spaces documents the opposite, and its own SDK
+ * guidance is to use the virtual-hosted form, `bucket.fra1.digitaloceanspaces.com`.
+ * This was hard-coded to path-style, so adopting a provider that wants the other
+ * shape meant editing the source.
  *
  * It matters more than it looks because of how it fails: the request reaches
  * the provider and is refused at signature verification, which reads like a bad
  * key rather than a wrong address shape. Someone would sooner re-issue
  * credentials than suspect this line.
  *
- * The default must stay path-style — the Compose stack and every deployment
- * today are MinIO — so these pin the default as much as the switch.
+ * The default must stay path-style, which the Compose stack and existing
+ * deployments rely on, so these pin the default as much as the switch.
  */
 describe("object storage addressing", () => {
   const base = { endpoint: "https://example.invalid", region: "fra1", accessKeyId: "a", secretAccessKey: "b" };
@@ -23,7 +24,7 @@ describe("object storage addressing", () => {
     (port as unknown as { internal: { config: { forcePathStyle: boolean } } }).internal.config.forcePathStyle;
 
   it("uses path style unless told otherwise", () => {
-    expect(styleOf(new AwsS3ClientPort(base)), "MinIO needs path style and is what every deployment runs").toBe(true);
+    expect(styleOf(new AwsS3ClientPort(base)), "path style is what the Compose stack and existing deployments rely on").toBe(true);
     expect(styleOf(new AwsS3ClientPort({ ...base, forcePathStyle: true }))).toBe(true);
   });
 

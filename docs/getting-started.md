@@ -28,11 +28,25 @@ make contracts-generate
 docker compose -f deploy/docker-compose.dev.yml up --build
 ```
 
-That starts Postgres, Redis, MinIO, the API, the ingest worker and the web app.
-When it settles:
+That starts Postgres, Redis, an S3-compatible object store, the API, the ingest
+worker and the web app. When it settles:
 
-- web app — <http://localhost:5173>
-- API health — <http://localhost:4000/health>
+- web app at <http://localhost:5173>
+- API health at <http://localhost:4000/health>
+- object storage at <http://localhost:59000>, with its console at
+  <http://localhost:59001/rustfs/console/>
+
+The object store is [RustFS](https://github.com/rustfs/rustfs), and only for
+this local stack. A deployed instance uses its own S3 provider, configured
+through the `S3_*` variables in `.env.example`. Set `MEMOAR_S3_PORT` and
+`MEMOAR_S3_CONSOLE_PORT` to move its ports. The older `MEMOAR_MINIO_PORT` and
+`MEMOAR_MINIO_CONSOLE_PORT` still work.
+
+A stack first started with MinIO keeps its raw objects in the `minio-data`
+volume, which nothing mounts now. RustFS starts from a new, empty `s3-data`
+volume rather than on files MinIO wrote. To keep those objects, run the old
+MinIO image against that volume, if you still have it locally, and copy the
+`memoar-raw` bucket across with any S3 client before you remove the volume.
 
 `.env` sets `MEMOAR_BOOTSTRAP_EMAIL` and `MEMOAR_BOOTSTRAP_PASSWORD`. That
 account is created once, on first start, and never overwritten afterwards —
