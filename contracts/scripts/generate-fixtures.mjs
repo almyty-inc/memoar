@@ -79,6 +79,34 @@ for (const [position, fixture] of fixtures.entries()) {
     expected: relative(root, expectedPath)
   });
 }
+// Fixtures written by hand for a shape this generator cannot invent.
+//
+// A Claude Code subagent transcript names its parent's session id on every
+// line, with `isSidechain: true` and the agent's own id, and has to become a
+// session of its own. That is the point of the fixture, so its input is
+// written to that shape directly and its expected output is what the parser
+// produces from it. Neither is ever generated here. A missing one is an error,
+// not something to fill in.
+const handwritten = [
+  { source: "claude-code", version: "v1", slug: "subagent-1", input: "session.jsonl" },
+];
+for (const fixture of handwritten) {
+  const directory = resolve(fixturesRoot, fixture.source, fixture.version, fixture.slug);
+  const inputPath = resolve(directory, "input", fixture.input);
+  const expectedPath = resolve(directory, "expected.canonical.json");
+  if (!existsSync(inputPath) || !existsSync(expectedPath)) {
+    throw new Error(`hand-written fixture ${fixture.source}/${fixture.version}/${fixture.slug} is missing its input or expected output`);
+  }
+  console.log(`kept: ${fixture.source}/${fixture.version}/${fixture.slug}`);
+  manifest.push({
+    source: fixture.source,
+    version: fixture.version,
+    fixture: fixture.slug,
+    input: relative(root, inputPath),
+    inputSha256: createHash("sha256").update(await readFile(inputPath)).digest("hex"),
+    expected: relative(root, expectedPath)
+  });
+}
 await writeFile(resolve(fixturesRoot, "manifest.json"), `${JSON.stringify({ version: contractVersion, fixtures: manifest }, null, 2)}\n`);
 console.log(`generated ${manifest.length} scrubbed fixtures`);
 

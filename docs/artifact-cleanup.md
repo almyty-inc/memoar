@@ -36,6 +36,10 @@ copy of `agent/crates/memoar-connectors/src/deny.rs`, and
   time is nearest, which is the same sync in every case on dev. Override them
   with `--tenant <id> --user <id> --machine <id>`.
 - It exits 1 if any artifact failed, and says which in the report.
+- Artifacts in `stored` are left to the settle job, unless the deny list
+  refuses them. A superseded artifact is `parsed` and is never touched. For a
+  re-parse of one artifact or one status with a chosen machine, use
+  `reprocess` (docs/reprocess.md).
 
 ## Running it against dev
 

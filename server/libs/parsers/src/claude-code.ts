@@ -1,4 +1,5 @@
 import type { Turn } from "../../canonical/src/generated.js";
+import { claudeCodeIdentity } from "./claude-code-identity.js";
 import { incrementUuid, isRecord, mapParent, MIN_JSON_SHARE, parseBlock, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 
@@ -109,16 +110,20 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     // looked like a different session — and then failed to save, because its
     // turns already belonged to the first one. An ongoing session stopped being
     // archived after its first capture.
+    //
+    // A subagent transcript names its parent's session id instead of its own.
+    // See `claudeCodeIdentity`.
     const first = records[0]!;
-    const nativeSessionId = stringValue(first, "sessionId");
+    const { nativeSessionId, parent } = claudeCodeIdentity(first);
     const cwd = stringValue(first, "cwd");
     const branch = stringValue(first, "gitBranch");
     return {
       kind: "parsed",
-      parser: "claude-code:v1:0.3.0",
+      parser: "claude-code:v1:0.4.0",
       sessions: [{
         ...request.seed,
         ...(nativeSessionId ? { source: { ...request.seed.source, nativeSessionId } } : {}),
+        ...(parent ? { ext: { ...request.seed.ext, claudeCode: { parentNativeSessionId: parent.nativeSessionId, agentId: parent.agentId } } } : {}),
         ...(cwd || branch ? {
           workspace: {
             ...request.seed.workspace,

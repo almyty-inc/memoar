@@ -60,7 +60,7 @@ describe("queued pipeline jobs", () => {
     const accepted = await conversions.request(TEST_CONTEXT, { sessionId: TEST_SESSION.id, target: "codex", fallback: "injection" });
 
     const pipeline = { process: () => Promise.reject(new Error("not this job")) } as never;
-    await handlePipelineJob(queue.queued[0]!, { pipeline, conversions });
+    await handlePipelineJob(queue.queued[0]!, { pipeline, conversions, settler: {} as never });
 
     const finished = await conversions.get(TEST_CONTEXT, accepted.id as string);
     expect(finished.status).toBe("ready");
@@ -101,9 +101,12 @@ describe("queued pipeline jobs", () => {
   it("refuses a job it does not know rather than silently doing nothing", async () => {
     const { conversions } = services();
     const pipeline = { process: () => Promise.resolve({ status: "parsed", sessionIds: [] }) } as never;
-    await expect(handlePipelineJob({ name: "reticulate", data: { tenantId: "t", userId: "u" } }, { pipeline, conversions }))
+    const settler = {} as never;
+    await expect(handlePipelineJob({ name: "reticulate", data: { tenantId: "t", userId: "u" } }, { pipeline, conversions, settler }))
       .rejects.toThrow("unsupported_pipeline_job:reticulate");
-    await expect(handlePipelineJob({ name: "parse", data: { tenantId: "t", userId: "u" } }, { pipeline, conversions }))
+    await expect(handlePipelineJob({ name: "parse", data: { tenantId: "t", userId: "u" } }, { pipeline, conversions, settler }))
       .rejects.toThrow("parse_job_missing_sha256");
+    await expect(handlePipelineJob({ name: "settle", data: { tenantId: "t", userId: "u" } }, { pipeline, conversions, settler }))
+      .rejects.toThrow("settle_job_missing_sha256");
   });
 });

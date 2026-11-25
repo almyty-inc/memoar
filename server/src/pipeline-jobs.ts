@@ -1,6 +1,7 @@
 import type { TenantContext } from "./archive-store.js";
 import type { ConversionService } from "./convert/conversion.service.js";
 import type { IngestPipeline } from "./ingest.js";
+import { SETTLE_JOB, type ArtifactSettler } from "./ingest/settle.js";
 import { errorAggregator } from "./errors/error-aggregator.js";
 import { jobDuration, jobsProcessed } from "./metrics/metrics.registry.js";
 
@@ -13,6 +14,7 @@ export interface PipelineJob {
 export interface PipelineHandlers {
   pipeline: IngestPipeline;
   conversions: ConversionService;
+  settler: ArtifactSettler;
 }
 
 /** A worker acts for the tenant that queued the job, not for itself. */
@@ -57,6 +59,10 @@ async function dispatch(job: PipelineJob, handlers: PipelineHandlers): Promise<u
   if (job.name === "parse") {
     if (typeof job.data.sha256 !== "string") throw new Error("parse_job_missing_sha256");
     return handlers.pipeline.process(context, job.data.sha256);
+  }
+  if (job.name === SETTLE_JOB) {
+    if (typeof job.data.sha256 !== "string") throw new Error("settle_job_missing_sha256");
+    return handlers.settler.settle(context, job.data.sha256);
   }
   if (job.name === "convert") {
     if (typeof job.data.jobId !== "string") throw new Error("convert_job_missing_job_id");

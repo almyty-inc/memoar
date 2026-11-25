@@ -143,7 +143,6 @@ moves the mistake.
 | `claude-code` | `.claude/history.jsonl`, which is the prompt history the CLI's up-arrow reads, not a conversation: 10,619 lines on this machine, every one valid JSON, every one `{display, pastedContents, timestamp, project, sessionId}`, not one carrying `uuid` or `message`. Named `.jsonl`, so the agreement check — which compares extensions — never saw it, and 2.8 MB of every prompt ever typed went up on every sync and came back `unknown_format` | nothing: the conversation it indexes is the transcript named by its own `sessionId`, which `.claude/projects/*/*.jsonl` already takes |
 | `copilot` | VS Code `chatSessions/*.json` and nothing else, on all three platforms. VS Code has written that envelope under two extensions: `<id>.json` is one whole envelope, and `<id>.jsonl` is a `{kind:0, v:<envelope>}` snapshot followed by `{kind:1, k:[path], v:value}` writes against it, which is what it writes now. Of the 23 files under `chatSessions` on this machine, **18 are `.jsonl` and 5 are `.json`, and every `.jsonl` is newer than every `.json`** — the `.json` panels were created between 2025-05-02 and 2025-12-12, the `.jsonl` ones between 2026-02-20 and 2026-06-29, with no overlap. So the pattern named the layout the editor has stopped writing, and would have collected less of Copilot Chat every month | both, which is what it names now |
 | `copilot` | the four `.copilot/{session-state,history-session-state}/**.json` patterns. Checked against GitHub Copilot CLI 1.0.59 with a recorded session: `session-state/<id>/` holds `workspace.yaml`, `checkpoints/index.md` and two empty directories, with no `.json` at any depth, and `history-session-state/` does not exist. The only JSON under `~/.copilot` is `config.json` and `command-history-state.json`, which are settings and which those patterns never named | `session-store.db`, which is what the parser opens |
-
 | `claude-code` | Before commit 31897b4 a pattern's fixed prefix was walked and the pattern never applied, and the Claude Desktop entries were bare directories. The first real sync, 2026-09-17 15:29 to 16:32 UTC, left 1,354 `unknown_format` artifacts on dev: 516 markdown files, 13 `.audit-key`, 13 `.claude/.claude.json` and 3 of its backups, `.git/index`, `.git/logs/HEAD` and `.git/packed-refs` from a plugin marketplace checkout, 14 `.DS_Store`, task lists, debug logs, and the PDFs, images and `node_modules` a session wrote into `outputs/` | only transcripts, and a deny list after every pattern that refuses key files, credential stores, `.git` and its peers, and `.DS_Store` whatever a pattern says |
 | `kilo`, `roo` | `tasks/*/*.json`, which also took `ui_messages.json` and `task_metadata.json` from each task directory. The parser reads one file, `api_conversation_history.json` | `tasks/*/api_conversation_history.json` |
 
@@ -157,6 +156,15 @@ and all 49 parsed through format detection and the Claude Code parser. Capture
 names those depths and nothing else in the tree. `audit.jsonl` beside them is
 an HMAC-signed stream of the same conversation and is left out, because taking
 it would archive every session twice.
+
+`claude-code/v1/subagent-1` is synthetic and holds no captured text. Its shape
+was checked against the real store on 2026-11-25, reading only key names and
+counts: all 614 files under `~/.claude/projects/*/*/subagents/` carry the
+parent's `sessionId`, `isSidechain: true` and an `agentId` on every line, the
+`agentId` matches the file name, and no two subagents of one parent share it.
+Before parser `claude-code:v1:0.4.0` that `sessionId` filed every subagent under
+its parent's session, and on dev the file parsed last replaced the turns of the
+others. The fixture pins the identity they get instead.
 
 `claude-code` had also stopped taking the subagent transcripts. They are
 written a directory below the session that spawned them — and some two further

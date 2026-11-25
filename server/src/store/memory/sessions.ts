@@ -2,6 +2,7 @@
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
+import { firstUnheld } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
 import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
 import { copy, key, type MemoryTables } from "./tables.js";
@@ -33,13 +34,18 @@ export class MemorySessionStore implements SessionStore {
   async resolveSessionIdentity(
     context: TenantContext,
     identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string },
-    proposedSessionId: string,
+    proposedSessionIds: string | readonly string[],
   ): Promise<string> {
     const identityKey = key(context.tenantId, `${identity.sourceTool}:${identity.nativeSessionId}`);
     const existing = this.tables.sessionIdentities.get(identityKey);
     if (existing) return existing;
-    this.tables.sessionIdentities.set(identityKey, proposedSessionId);
-    return proposedSessionId;
+    const held = new Set<string>();
+    for (const [entryKey, sessionId] of this.tables.sessionIdentities) {
+      if (entryKey.startsWith(key(context.tenantId, ""))) held.add(sessionId);
+    }
+    const chosen = firstUnheld(proposedSessionIds, held);
+    this.tables.sessionIdentities.set(identityKey, chosen);
+    return chosen;
   }
 
   async saveSessionEmbedding(context: TenantContext, sessionId: string, vector: readonly number[]): Promise<void> {
