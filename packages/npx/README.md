@@ -103,11 +103,14 @@ whose digest does not match is refused and nothing is installed.
 | `MEMOAR_NO_DOWNLOAD=1` | Never download; require a local binary |
 | `MEMOAR_DOWNLOAD_BASE` | Install from a mirror or your own bucket |
 | `MEMOAR_PREFER_LOCAL=1` | Prefer a locally built binary over the release |
+| `MEMOAR_LIBC` | `gnu` or `musl`, to override C library detection on Linux |
 
 If a download fails it looks for a binary in the adjacent Rust workspace and on
 your `PATH` before giving up.
 
-macOS on Apple silicon or Intel, Linux on x86-64 or arm64, Windows on x86-64.
-The binaries are not code-signed.
+macOS on Apple silicon or Intel, Linux on x86-64 or arm64 (glibc 2.28 or newer,
+or a static build for Alpine and other musl systems), Windows on x64 or ARM64.
+Whether a release's macOS and Windows binaries are code-signed is stated in its
+release notes. Every binary has a build provenance attestation.
 
 Apache-2.0 · [source](https://github.com/almyty-inc/memoar)

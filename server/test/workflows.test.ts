@@ -131,7 +131,7 @@ describe("the release workflow", () => {
     // platform pairs, so `npx memoar` on Windows on ARM resolved
     // memoar-aarch64-pc-windows-msvc.exe and got a 404 from GitHub — after the
     // launcher had already told the user the platform was supported.
-    const matrix = release.jobs?.build?.strategy?.matrix as { include?: { target: string }[] } | undefined;
+    const matrix = release.jobs?.cli?.strategy?.matrix as { include?: { target: string }[] } | undefined;
     const built = new Set((matrix?.include ?? []).map((entry) => entry.target));
     expect(built.size, "the release matrix builds nothing").toBeGreaterThan(4);
 
@@ -147,10 +147,14 @@ describe("the release workflow", () => {
   it("checks the two lists against each other before publishing", () => {
     // The step that resolves through the launcher runs on ubuntu, so it only
     // ever exercises linux-x64. Without a list comparison, a platform no runner
-    // here happens to be is a platform nothing checks.
-    const steps = release.jobs?.verify?.steps ?? [];
-    const comparison = steps.find((step) => (step.run ?? "").includes("does not contain"));
-    expect(comparison, "nothing compares what was built against what the launcher offers").toBeDefined();
+    // here happens to be is a platform nothing checks. The comparison lives in
+    // the assemble script, which reads the launcher's own TARGETS table.
+    const steps = release.jobs?.assemble?.steps ?? [];
+    const assemble = steps.find((step) => (step.run ?? "").includes("scripts/release/assemble.sh"));
+    expect(assemble, "nothing compares what was built against what the launcher offers").toBeDefined();
+    const script = readFileSync(resolve(process.cwd(), "..", "scripts", "release", "assemble.sh"), "utf8");
+    expect(script, "assemble.sh no longer checks the launcher's TARGETS").toContain("TARGETS");
+    expect(script, "assemble.sh no longer fails on a missing launcher asset").toContain("does not contain");
   });
 });
 
