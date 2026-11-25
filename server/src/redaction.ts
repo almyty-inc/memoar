@@ -139,6 +139,16 @@ function applyMasks(text: string, masks: readonly ReviewedMask[]): string {
   return masked;
 }
 
+/** Every string inside a value, masked by the tenant's patterns. */
+function maskStrings(value: unknown, patterns: readonly SecretPattern[]): unknown {
+  if (typeof value === "string") return maskLiterals(value, patterns);
+  if (Array.isArray(value)) return (value as unknown[]).map((item) => maskStrings(item, patterns));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, maskStrings(item, patterns)]));
+  }
+  return value;
+}
+
 export interface ProjectionOptions {
   /** The tenant's patterns; the built-in secret catalogue when absent. */
   patterns?: readonly SecretPattern[];
@@ -192,9 +202,12 @@ export function applyRedactionProjection(session: ArchivedSession, options: Proj
       ...(typeof block.text === "string"
         ? { text: maskLiterals(applyMasks(block.text, byBlock.get(block.id) ?? []), patterns) }
         : {}),
+      // Tool payloads are removed whole. Every other block's data is now
+      // populated by the parsers too (a hook's injected context, a document's
+      // metadata, a thinking signature), so its strings are masked like text.
       ...((block.kind === "tool_call" || block.kind === "tool_result") && block.data
         ? { data: { memoarRedacted: "raw payload removed by redaction projection" } }
-        : {}),
+        : block.data ? { data: maskStrings(block.data, patterns) as Record<string, unknown> } : {}),
     }));
   }
   return clone;
