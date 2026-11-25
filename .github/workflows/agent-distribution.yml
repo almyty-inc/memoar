@@ -64,26 +64,99 @@ jobs:
         run: rustc -vV
       - name: Check formatting
         run: cargo fmt --all -- --check
-      # The desktop app is excluded here, on every platform, so the exclusion
-      # cannot drift between them. It draws with the system WebView, which needs
-      # a GTK toolchain on Linux and an icon this repository does not ship on
-      # Windows — neither of which this workflow installs, because this workflow
-      # is about distributing the CLI and the npx launcher. `ci.yml` builds and
-      # tests it on Linux with the right packages.
-      #
-      # It had been failing on two of these three runners since the desktop
-      # crate landed on 2026-09-04, and nobody could know: this workflow only
-      # runs on pull requests, and there had not been one.
+      # The desktop application is not a member of this workspace any more. It
+      # is an NSH app with a workspace of its own, tested and packaged on all
+      # three desktops by the `desktop` job below.
       - name: Check all targets
-        run: cargo check --workspace --exclude memoar-desktop --all-targets
+        run: cargo check --workspace --all-targets
       - name: Clippy
-        run: cargo clippy --workspace --exclude memoar-desktop --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
-        run: cargo test --workspace --exclude memoar-desktop --all-targets
+        run: cargo test --workspace --all-targets
       - name: Build release binary
         run: cargo build --release -p memoar-cli
       - name: Exercise compiled robot contract
         run: cargo test -p memoar-cli --test robot_cli
+
+  # The desktop application on every desktop it ships for: native AppKit,
+  # GTK 4 and Win32 windows drawn by NSH. Each runner builds, lints and tests
+  # it, drives the window headless with `nsh test` against a stand-in archive,
+  # then packages it with the same script a release calls, and keeps the
+  # package as an artifact. Windows is verified here and nowhere else.
+  desktop:
+    name: Desktop app / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent/crates/memoar-desktop
+          key: desktop-${{ matrix.os }}
+          cache-bin: false
+      # NSH's Linux backend is GTK 4, 4.14 or later: Ubuntu 24.04's. The
+      # packaged Linux runner (nsh-linux-app) also links WebKitGTK 6.0, whose
+      # development package brings libsoup 3 and JavaScriptCore with it.
+      - name: Install GTK 4 and WebKitGTK 6.0
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      # Pinned to the `nsh-*` crates in the desktop's Cargo.toml, and cached
+      # because building the CLI costs more than the rest of the job. Saved as
+      # soon as it is built, so a later failing step does not throw it away.
+      - name: Restore the nsh CLI
+        id: nsh-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/nsh
+            ~/.cargo/bin/nsh.exe
+          key: nsh-cli-0.2.0-${{ runner.os }}-${{ runner.arch }}
+      - name: Install the nsh CLI
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        run: cargo install nsh-cli --version 0.2.0 --locked
+      - name: Save the nsh CLI
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/bin/nsh
+            ~/.cargo/bin/nsh.exe
+          key: nsh-cli-0.2.0-${{ runner.os }}-${{ runner.arch }}
+      - name: Formatting and lints
+        working-directory: agent/crates/memoar-desktop
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+      - name: Rust tests and headless window tests
+        run: agent/scripts/test-desktop.sh --junit desktop-junit.xml
+      - name: Package
+        id: package
+        run: agent/scripts/package-desktop.sh
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: memoar-desktop-${{ runner.os }}
+          path: ${{ steps.package.outputs.package }}
+          if-no-files-found: error
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memoar-desktop-tests-${{ runner.os }}
+          path: agent/crates/memoar-desktop/desktop-junit.xml
+          if-no-files-found: ignore
 
   wrapper-and-installer:
     name: Wrapper platform/checksum/cache matrix

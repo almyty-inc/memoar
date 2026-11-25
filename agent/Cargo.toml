@@ -5,8 +5,12 @@ members = [
   "crates/memoar-daemon",
   "crates/memoar-materializer",
   "crates/memoar-cli",
-  "crates/memoar-desktop",
 ]
+# The desktop application is a workspace of its own: NSH generates runner
+# crates beside it and builds them against it, and its native toolkits are not
+# something every CLI build should need. See "The desktop application" in
+# docs/install.md.
+exclude = ["crates/memoar-desktop"]
 resolver = "2"
 
 [workspace.package]

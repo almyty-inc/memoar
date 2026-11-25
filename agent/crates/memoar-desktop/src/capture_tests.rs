@@ -1,7 +1,4 @@
 //! What the window shows, and what it does before anybody touches it.
-//!
-//! Split out of `capture.rs`, which was over the file-size rule and got
-//! there by carrying its own test module. Nothing moved but the tests.
 
 use super::*;
 use serde_json::json;
@@ -16,49 +13,9 @@ fn scratch() -> (tempfile::TempDir, Paths) {
     (temp, paths)
 }
 
-#[test]
-fn a_machine_that_has_never_signed_in_says_so() {
-    // Not an error dialog and not a page of zeros: an unconfigured machine
-    // is the ordinary state of one nobody has connected yet, and the window
-    // asks for credentials rather than reporting a healthy idle capture.
-    let (_temp, paths) = scratch();
-
-    let status = status(&paths, &State::default());
-
-    assert!(!status.signed_in);
-    assert!(status.endpoint.is_none());
-    assert!(status.machine_id.is_none());
-    assert!(status.queued.is_none());
-}
-
-#[test]
-fn a_failed_capture_is_remembered_and_shown() {
-    // The window polls; if the failure were only returned to the caller of
-    // sync_now it would vanish on the next refresh and the app would look
-    // like it was capturing.
-    let (_temp, paths) = scratch();
-    let state = State::default();
-
-    let failure = sync_now(&paths, &state, "2026-09-04T10:00:00Z");
-
-    assert!(
-        failure.is_err(),
-        "syncing without a configured archive cannot succeed"
-    );
-    let status = status(&paths, &state);
-    assert!(
-        status.last_error.is_some(),
-        "the reason is kept for the window"
-    );
-}
-
-/// What is masked was decided at sign-in and never again: this file passed
-/// three `false`s and the window offered nothing, so somebody who is not
-/// going to edit `config.json` by hand had no way to turn masking on after
-/// seeing what was being uploaded.
-#[test]
-fn redaction_is_changeable_from_the_window() {
-    let (_temp, paths) = scratch();
+/// A machine configured as `memoar login` leaves it, pointing at an archive
+/// that is not there.
+pub(crate) fn configured(paths: &Paths) {
     std::fs::create_dir_all(&paths.config_dir).unwrap();
     std::fs::write(
         paths.config_dir.join("config.json"),
@@ -77,6 +34,81 @@ fn redaction_is_changeable_from_the_window() {
         br#"{"apiKey":"memoar_test-capture-key"}"#,
     )
     .unwrap();
+}
+
+#[test]
+fn a_machine_that_has_never_signed_in_says_so() {
+    // Not an error dialog and not a page of zeros: an unconfigured machine
+    // is the ordinary state of one nobody has connected yet, and the window
+    // asks for credentials rather than reporting a healthy idle capture.
+    let (_temp, paths) = scratch();
+
+    let status = status(&paths, &State::default());
+
+    assert!(!status.signed_in);
+    assert!(status.endpoint.is_none());
+    assert!(status.machine_id.is_none());
+    assert!(status.queued.is_none());
+    assert!(status.sources.is_empty());
+}
+
+#[test]
+fn a_configured_machine_reports_its_queue_and_sources() {
+    let (_temp, paths) = scratch();
+    configured(&paths);
+    let session = paths.home.join(".claude/projects/-fixture/session.jsonl");
+    std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+    std::fs::write(&session, b"{\"type\":\"user\"}\n").unwrap();
+
+    let status = status(&paths, &State::default());
+
+    assert!(status.signed_in);
+    assert_eq!(status.endpoint.as_deref(), Some("http://127.0.0.1:1/v1"));
+    assert_eq!(status.queued, Some(0));
+    assert_eq!(status.uploaded_total, Some(0));
+    assert!(
+        status.sources.iter().any(|name| name.contains("Claude")),
+        "a Claude Code store on disk is a detected source: {:?}",
+        status.sources
+    );
+}
+
+#[test]
+fn a_failed_capture_is_remembered_and_shown() {
+    // The window polls. If the failure were only returned to the caller of
+    // sync_now it would vanish on the next refresh and the app would look
+    // like it was capturing.
+    let (_temp, paths) = scratch();
+    let state = State::default();
+
+    let failure = sync_now(&paths, &state, "2026-09-04T10:00:00Z").unwrap_err();
+
+    assert_eq!(failure.kind, FailureKind::SignedOut);
+    let status = status(&paths, &state);
+    assert_eq!(status.last_error, Some(failure), "the reason is kept");
+    assert_eq!(status.last_sync_at.as_deref(), Some("2026-09-04T10:00:00Z"));
+}
+
+#[test]
+fn an_archive_that_is_down_is_a_retryable_failure() {
+    let (_temp, paths) = scratch();
+    configured(&paths);
+    let state = State::default();
+
+    let failure = sync_now(&paths, &state, "2026-09-04T10:00:00Z").unwrap_err();
+
+    assert_eq!(failure.kind, FailureKind::Unreachable, "{failure:?}");
+    assert!(!failure.stops_capture());
+    assert!(failure.message.contains("http://127.0.0.1:1/v1"));
+}
+
+/// What is masked was decided at sign-in and never again: the old window
+/// offered nothing, so somebody who is not going to edit `config.json` by
+/// hand had no way to turn masking on after seeing what was being uploaded.
+#[test]
+fn redaction_is_changeable_from_the_window() {
+    let (_temp, paths) = scratch();
+    configured(&paths);
     let state = State::default();
 
     let before = status(&paths, &state);
@@ -86,51 +118,18 @@ fn redaction_is_changeable_from_the_window() {
         "the window must be able to see the setting before changing it"
     );
 
-    let after = set_redaction(&paths, &state, true, false, true).unwrap();
+    let wanted = Redaction {
+        secrets: true,
+        email_addresses: false,
+        home_paths: true,
+    };
+    let after = set_redaction(&paths, &state, wanted).unwrap();
 
+    assert_eq!(after.redaction, Some(wanted));
     assert_eq!(
-        after.redaction.map(|redaction| redaction.secrets),
-        Some(true)
-    );
-    assert_eq!(
-        after.redaction.map(|redaction| redaction.home_paths),
-        Some(true)
-    );
-    assert_eq!(
-        status(&paths, &state)
-            .redaction
-            .map(|redaction| redaction.secrets),
-        Some(true),
+        status(&paths, &state).redaction,
+        Some(wanted),
         "the change must survive the process, not just this call"
-    );
-}
-
-/// A first sign-in from the window used to ask for no masking at all.
-///
-/// Nothing about that was visible from the window, and redaction does not
-/// reach backwards: a key pasted into a transcript before anybody found the
-/// toggles is in the archive for good. This asserts the arguments the app
-/// actually builds, not the screen, so the default cannot be flipped back by
-/// an edit that leaves the window looking the same.
-#[test]
-fn a_first_sign_in_masks_secrets_and_nothing_else() {
-    let args = login_args(
-        " https://archive.example/v1 ",
-        " person@example.com ",
-        "hunter2",
-    );
-
-    assert!(
-        args.redact_secrets,
-        "a secret uploaded before anybody found the toggles is in the archive for good"
-    );
-    assert!(
-        !args.redact_email_addresses,
-        "an address is usually what makes a transcript legible; it stays opt-in"
-    );
-    assert!(
-        !args.redact_home_paths,
-        "a path is usually what makes a transcript legible; it stays opt-in"
     );
 }
 
@@ -160,13 +159,59 @@ fn reads_only_the_fields_the_archive_sends() {
 }
 
 #[test]
-fn uses_the_same_directories_the_cli_uses() {
-    // A machine set up with one is already set up for the other, and the
-    // offline queue is never duplicated between them.
-    let (_temp, paths) = scratch();
-    let runtime = paths.runtime();
+fn names_only_the_sources_found_on_disk() {
+    let payload = json!({ "items": [
+        { "id": "claude-code", "displayName": "Claude Code", "detected": true },
+        { "id": "codex", "displayName": "Codex", "detected": false },
+        { "id": "cursor", "detected": true },
+    ]});
 
-    assert_eq!(runtime.config_dir, paths.config_dir);
-    assert_eq!(runtime.data_dir, paths.data_dir);
-    assert_eq!(runtime.home, paths.home);
+    assert_eq!(detected_sources(&payload), vec!["Claude Code", "cursor"]);
+    assert!(detected_sources(&json!({})).is_empty());
+}
+
+/// In the Compose deployment the web app is on :5173 and the API on :4000, so
+/// stripping `/v1` alone opened the API's root.
+#[test]
+fn a_web_address_given_wins_over_the_derived_one() {
+    let endpoint = "http://127.0.0.1:4000/v1";
+
+    assert_eq!(
+        web_app_url(" http://127.0.0.1:5173/ ", endpoint),
+        "http://127.0.0.1:5173"
+    );
+    assert_eq!(web_app_url("", endpoint), "http://127.0.0.1:4000");
+    assert_eq!(web_app_url("   ", endpoint), "http://127.0.0.1:4000");
+}
+
+#[test]
+fn the_web_app_lives_beside_the_api() {
+    assert_eq!(
+        archive_url("https://archive.example/v1"),
+        "https://archive.example"
+    );
+    assert_eq!(
+        archive_url("https://archive.example/v1/"),
+        "https://archive.example"
+    );
+    assert_eq!(
+        archive_url(" http://127.0.0.1:4000 "),
+        "http://127.0.0.1:4000"
+    );
+}
+
+#[test]
+fn the_record_of_the_last_run_survives_a_restart() {
+    let run = LastRun {
+        at: Some("2026-09-04T10:00:00Z".to_owned()),
+        error: Some(Failure::new(FailureKind::Revoked, "stopped", "HTTP 401")),
+        uploaded: Some(2),
+        memory_recorded: None,
+    };
+    let saved = serde_json::to_string(&run).unwrap();
+    let state = State::with_last_run(serde_json::from_str(&saved).unwrap());
+
+    assert_eq!(state.last_run(), run);
+    state.forget();
+    assert_eq!(state.last_run(), LastRun::default());
 }
