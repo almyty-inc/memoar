@@ -4,6 +4,7 @@ import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } 
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
 import type { SessionStore } from "../interfaces.js";
+import { firstUnheld, proposalList } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
 import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
 import { assembleSession } from "./assemble.js";
@@ -86,7 +87,7 @@ export class PostgresSessionStore implements SessionStore {
   async resolveSessionIdentity(
     context: TenantContext,
     identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string },
-    proposedSessionId: string,
+    proposedSessionIds: string | readonly string[],
   ): Promise<string> {
     return this.runner.inTenant(context, async (manager) => {
       const repository = manager.getRepository(SessionIdentityEntity);
@@ -102,6 +103,10 @@ export class PostgresSessionStore implements SessionStore {
         }
         return existing.sessionId;
       }
+      // See `firstUnheld`: a proposal another identity holds would merge two
+      // conversations into one session.
+      const held = await repository.findBy({ tenantId: context.tenantId, sessionId: In([...proposalList(proposedSessionIds)]) });
+      const chosen = firstUnheld(proposedSessionIds, new Set(held.map((row) => row.sessionId)));
       await repository
         .createQueryBuilder()
         .insert()
@@ -109,12 +114,12 @@ export class PostgresSessionStore implements SessionStore {
           id: uuidV7(),
           ...lookup,
           sourceVersion: identity.sourceVersion,
-          sessionId: proposedSessionId,
+          sessionId: chosen,
         })
         .orIgnore()
         .execute();
       const resolved = await repository.findOneBy(lookup);
-      return resolved?.sessionId ?? proposedSessionId;
+      return resolved?.sessionId ?? chosen;
     });
   }
 

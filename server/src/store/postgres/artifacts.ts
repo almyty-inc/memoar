@@ -125,6 +125,23 @@ export class PostgresArtifactStore implements ArtifactStore {
     ));
   }
 
+  async hasNewerCapture(context: TenantContext, sessionId: string, artifact: RawArtifactRecord): Promise<boolean> {
+    if (!artifact.sourcePath) return false;
+    return this.runner.inTenant(context, async (manager) => {
+      const rows: unknown[] = await manager.query(
+        `SELECT 1
+           FROM artifact_sessions joined
+           JOIN raw_artifacts other ON other.id = joined."artifactId" AND other."tenantId" = joined."tenantId"
+          WHERE joined."tenantId" = $1 AND joined."sessionId" = $2
+            AND other.status = 'parsed' AND other."sourcePath" = $3
+            AND other.sha256 <> $4 AND other."capturedAt" > $5
+          LIMIT 1`,
+        [context.tenantId, sessionId, artifact.sourcePath, artifact.sha256, new Date(artifact.capturedAt)],
+      );
+      return rows.length > 0;
+    });
+  }
+
   async listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> {
     return this.runner.inTenant(context, async (manager) => {
       const rows = await manager.getRepository(RawArtifactEntity).findBy({ tenantId: context.tenantId });

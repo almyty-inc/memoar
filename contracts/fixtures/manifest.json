@@ -176,6 +176,14 @@
       "input": "contracts/fixtures/canonical-bundle/v1/session-1/input/bundle.json",
       "inputSha256": "f1872ce97e4086b43791ba72949ce92c642bb59fce92c9f0def8dabe4de9f0b9",
       "expected": "contracts/fixtures/canonical-bundle/v1/session-1/expected.canonical.json"
+    },
+    {
+      "source": "claude-code",
+      "version": "v1",
+      "fixture": "subagent-1",
+      "input": "contracts/fixtures/claude-code/v1/subagent-1/input/session.jsonl",
+      "inputSha256": "2533151766d76b40cb909eb0847bcf91bf55dc4603bbce83db07b0dc6ba8e007",
+      "expected": "contracts/fixtures/claude-code/v1/subagent-1/expected.canonical.json"
     }
   ]
 }

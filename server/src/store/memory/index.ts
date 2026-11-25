@@ -39,7 +39,7 @@ export class DevArchiveStore implements ArchiveStore {
   getSessionEmbedding(context: TenantContext, sessionId: string): readonly number[] | null { return this.sessionStore.getSessionEmbedding(context, sessionId); }
 
   saveSession(context: TenantContext, session: ArchivedSession): Promise<void> { return this.sessionStore.saveSession(context, session); }
-  resolveSessionIdentity(context: TenantContext, identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string }, proposedSessionId: string): Promise<string> { return this.sessionStore.resolveSessionIdentity(context, identity, proposedSessionId); }
+  resolveSessionIdentity(context: TenantContext, identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string }, proposedSessionIds: string | readonly string[]): Promise<string> { return this.sessionStore.resolveSessionIdentity(context, identity, proposedSessionIds); }
   saveSessionEmbedding(context: TenantContext, sessionId: string, vector: readonly number[]): Promise<void> { return this.sessionStore.saveSessionEmbedding(context, sessionId, vector); }
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean> { return this.sessionStore.updateSessionVisibility(context, sessionId, visibility); }
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage> { return this.sessionStore.listSessions(context, filter); }
@@ -105,6 +105,7 @@ export class DevArchiveStore implements ArchiveStore {
   getRawArtifact(context: TenantContext, sha256: string): Promise<RawArtifactRecord | null> { return this.artifactStore.getRawArtifact(context, sha256); }
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>> { return this.artifactStore.listArtifactHashes(context, hashes); }
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> { return this.artifactStore.listRawArtifacts(context); }
+  hasNewerCapture(context: TenantContext, sessionId: string, artifact: RawArtifactRecord): Promise<boolean> { return this.artifactStore.hasNewerCapture(context, sessionId, artifact); }
   countUnparsedArtifactsBySource(context: TenantContext) { return this.artifactStore.countUnparsedArtifactsBySource(context); }
 
   saveJob(context: TenantContext, job: JobRecord): Promise<void> { return this.jobStore.saveJob(context, job); }

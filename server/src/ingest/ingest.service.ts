@@ -5,6 +5,7 @@ import { uuidV7 } from "../ids.js";
 import { artifactsIngested, ingestBytes } from "../metrics/metrics.registry.js";
 import { ARCHIVE_STORE, JOB_QUEUE, OBJECT_STORAGE } from "../tokens.js";
 import { type JobQueue } from "./queues.js";
+import { parseJobData, parseJobId, SETTLE_JOB, settleDelayMs, settleJobId } from "./settle.js";
 import type { ObjectStorage } from "./object-storage.js";
 
 @Injectable()
@@ -52,7 +53,6 @@ export class IngestService {
     // capture has quietly stopped moving.
     artifactsIngested.inc({ result: created ? "stored" : "duplicate" });
     if (created) ingestBytes.inc(bytes.byteLength);
-    if (created) return { created, artifact };
     // The row that is actually held, not the one minted for this request.
     // An artifact is identified by (tenant, sha256) and the store enforces it,
     // so a re-offer of the same bytes stores nothing — but the id above was
@@ -60,8 +60,20 @@ export class IngestService {
     // uuid naming no row, different on every re-offer of one artifact. The
     // agent re-offers a growing transcript on every append, so the identity the
     // API reported for one artifact changed dozens of times.
-    const stored = await this.store.getRawArtifact(context, sha256);
-    return { created, artifact: stored ?? artifact };
+    const held = created ? artifact : (await this.store.getRawArtifact(context, sha256)) ?? artifact;
+    // A re-offer of bytes still waiting is queued too, so an upload whose
+    // first settle job was lost with Redis gets another one.
+    if (held.status === "stored") await this.queueSettle(context, sha256);
+    return { created, artifact: held };
+  }
+
+  /** See `ArtifactSettler`: the parse that happens even if the manifest never does. */
+  private async queueSettle(context: TenantContext, sha256: string): Promise<void> {
+    await this.queue.enqueue(SETTLE_JOB, parseJobData(context, sha256), {
+      jobId: settleJobId(context.tenantId, sha256),
+      attempts: 3,
+      delay: settleDelayMs(),
+    });
   }
 
   /**
@@ -104,8 +116,7 @@ export class IngestService {
     // not for the work.
     const queued = [...new Set(manifest.artifacts.map((artifact) => artifact.sha256))];
     for (const sha256 of queued) {
-      const jobId = createHash("sha256").update(`${context.tenantId}:parse:${sha256}`).digest("hex");
-      await this.queue.enqueue("parse", { tenantId: context.tenantId, userId: context.userId, machineId: manifest.machineId, sha256 }, { jobId, attempts: 5 });
+      await this.queue.enqueue("parse", parseJobData(context, sha256, manifest.machineId), { jobId: parseJobId(context.tenantId, sha256), attempts: 5 });
     }
     return {
       batchId: manifest.batchId,
@@ -116,4 +127,5 @@ export class IngestService {
   }
 }
 
-export { DefaultPipelineSeedFactory, fallbackNativeSessionId, IngestPipeline, IngestWorker, SCANNER_ORIGIN, type PipelineSeedFactory } from "./pipeline.js";
+export { DefaultPipelineSeedFactory, fallbackNativeSessionId, IngestPipeline, IngestWorker, SCANNER_ORIGIN, SUPERSEDED_DIAGNOSTIC, type PipelineSeedFactory } from "./pipeline.js";
+export { ArtifactSettler, DEFAULT_SETTLE_DELAY_MS, parseJobId, SETTLE_JOB, settleDelayMs, settleJobId } from "./settle.js";

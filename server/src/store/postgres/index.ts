@@ -58,7 +58,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   }
 
   saveSession(context: TenantContext, session: ArchivedSession): Promise<void> { return this.sessions.saveSession(context, session); }
-  resolveSessionIdentity(context: TenantContext, identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string }, proposedSessionId: string): Promise<string> { return this.sessions.resolveSessionIdentity(context, identity, proposedSessionId); }
+  resolveSessionIdentity(context: TenantContext, identity: { sourceTool: string; sourceVersion: string; nativeSessionId: string }, proposedSessionIds: string | readonly string[]): Promise<string> { return this.sessions.resolveSessionIdentity(context, identity, proposedSessionIds); }
   saveSessionEmbedding(context: TenantContext, sessionId: string, vector: readonly number[]): Promise<void> { return this.sessions.saveSessionEmbedding(context, sessionId, vector); }
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean> { return this.sessions.updateSessionVisibility(context, sessionId, visibility); }
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage> { return this.sessions.listSessions(context, filter); }
@@ -125,6 +125,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   listArtifactHashes(context: TenantContext, hashes: readonly string[]): Promise<Set<string>> { return this.artifacts.listArtifactHashes(context, hashes); }
   countUnparsedArtifactsBySource(context: TenantContext) { return this.artifacts.countUnparsedArtifactsBySource(context); }
   listRawArtifacts(context: TenantContext): Promise<RawArtifactRecord[]> { return this.artifacts.listRawArtifacts(context); }
+  hasNewerCapture(context: TenantContext, sessionId: string, artifact: RawArtifactRecord): Promise<boolean> { return this.artifacts.hasNewerCapture(context, sessionId, artifact); }
 
   saveJob(context: TenantContext, job: JobRecord): Promise<void> { return this.jobs.saveJob(context, job); }
   getJob(context: TenantContext, jobId: string): Promise<JobRecord | null> { return this.jobs.getJob(context, jobId); }

@@ -69,6 +69,15 @@ export class MemoryArtifactStore implements ArtifactStore {
       .filter(([entryKey]) => entryKey.startsWith(`${context.tenantId}:`))
       .map(([, artifact]) => copy(artifact));
   }
+
+  async hasNewerCapture(context: TenantContext, sessionId: string, artifact: RawArtifactRecord): Promise<boolean> {
+    if (!artifact.sourcePath) return false;
+    return (await this.listRawArtifacts(context)).some((other) => other.sha256 !== artifact.sha256
+      && other.status === "parsed"
+      && other.sourcePath === artifact.sourcePath
+      && other.sessionIds.includes(sessionId)
+      && Date.parse(other.capturedAt) > Date.parse(artifact.capturedAt));
+  }
 }
 
 export class MemoryJobStore implements JobStore {

@@ -16,6 +16,9 @@ import { IngestTeamStamp } from "./team-stamp.js";
 /** Names the rows the secret scanner owns, so re-scanning replaces only its own. */
 export const SCANNER_ORIGIN = "secret-scanner";
 
+/** Said on an artifact whose session already holds a later capture of the same file. */
+export const SUPERSEDED_DIAGNOSTIC = "superseded: the session already holds a later capture of this file";
+
 export interface PipelineSeedFactory {
   create(context: TenantContext, artifact: RawArtifactRecord, format: { source: string; version: string }): SessionSeed;
 }
@@ -135,12 +138,29 @@ export class IngestPipeline {
     const findings = this.scanner.scan(bytes, redactionPatterns(settings.redaction));
     // Standing team consent, resolved once per artifact and applied per session.
     const teamStamp = new IngestTeamStamp(this.store, context);
+    let superseded = false;
     for (const [index, parsedSession] of result.sessions.entries()) {
       const canonicalSessionId = await this.store.resolveSessionIdentity(context, {
         sourceTool: parsedSession.source.tool,
         sourceVersion: parsedSession.source.version,
         nativeSessionId: parsedSession.source.nativeSessionId ?? `${fallbackNativeSessionId(context, artifact)}:${index}`,
-      }, artifact.sessionIds[index] ?? parsedSession.id);
+      }, [artifact.sessionIds[index], parsedSession.id].filter((id): id is string => typeof id === "string"));
+      /*
+        An older capture of a file never replaces a newer one.
+
+        The agent uploads a growing transcript again on every append, and the
+        parses run on several workers in whatever order the queue hands them
+        out. A save replaces the session, so the last parse to finish won, not
+        the latest capture. On dev a 65.91 MB capture was archived and then
+        overwritten by the 65.46 MB one taken an hour before it. The stale
+        capture is still linked to its session, because it is one, but its
+        turns are not written.
+      */
+      if (await this.store.hasNewerCapture(context, canonicalSessionId, artifact)) {
+        superseded = true;
+        savedSessionIds.push(canonicalSessionId);
+        continue;
+      }
       /*
         The parser that actually ran, by name and version.
 
@@ -202,7 +222,8 @@ export class IngestPipeline {
       // metrics store is brought down by the service it watches.
       sessionsArchived.inc({ source: session.source.tool });
     }
-    await this.store.updateRawArtifact(context, { ...artifact, sessionIds: savedSessionIds, status: "parsed", diagnostic: null });
+    const diagnostic = superseded ? SUPERSEDED_DIAGNOSTIC : null;
+    await this.store.updateRawArtifact(context, { ...artifact, sessionIds: savedSessionIds, status: "parsed", diagnostic });
     return { status: "parsed", sessionIds: savedSessionIds };
   }
 }

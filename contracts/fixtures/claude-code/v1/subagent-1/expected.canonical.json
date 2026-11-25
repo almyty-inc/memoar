@@ -1,0 +1,113 @@
+{
+  "id": "0191cafe-0000-7000-8000-0000000005c0",
+  "source": {
+    "vendor": "anthropic",
+    "tool": "claude-code",
+    "version": "v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "0191cafe-0000-7000-8000-0000000005a0:agent:a0f1c2d3e4f5a6b7c"
+  },
+  "workspace": {
+    "path": "/workspace/example-subagent",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-20T09:00:00.000Z",
+  "updatedAt": "2026-08-20T09:00:00.000Z",
+  "title": "Claude Code subagent fixture 1",
+  "summary": "Scrubbed subagent session used to verify that a sidechain gets its own identity.",
+  "models": [
+    "claude-sonnet"
+  ],
+  "tokenTotals": {
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "claude-code:v1:subagent-1",
+      "capturedAt": "2026-08-20T09:00:00.000Z",
+      "parserVersion": "0.4.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "ext": {
+    "fixtureSource": "claude-code",
+    "claudeCode": {
+      "parentNativeSessionId": "0191cafe-0000-7000-8000-0000000005a0",
+      "agentId": "a0f1c2d3e4f5a6b7c"
+    }
+  },
+  "turns": [
+    {
+      "id": "0191cafe-0000-7000-8000-0000000005b1",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080005c1",
+          "kind": "text",
+          "text": "Check whether the parser can mint two turns with one id."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000005b2",
+      "ordinal": 1,
+      "parentId": "0191cafe-0000-7000-8000-0000000005b1",
+      "role": "assistant",
+      "createdAt": "2026-08-20T09:00:04.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080005c2",
+          "kind": "text",
+          "text": "I will search for where turn ids are derived."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080005c3",
+          "kind": "tool_call",
+          "name": "Grep",
+          "callId": "toolu_fixture_subagent_1",
+          "data": {
+            "pattern": "turnId",
+            "path": "server/libs/parsers"
+          }
+        }
+      ],
+      "model": "claude-sonnet",
+      "tokens": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-0000000005b3",
+      "ordinal": 2,
+      "parentId": "0191cafe-0000-7000-8000-0000000005b2",
+      "role": "assistant",
+      "createdAt": "2026-08-20T09:00:09.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080005c4",
+          "kind": "text",
+          "text": "Repeated record uuids already become distinct turns."
+        }
+      ],
+      "model": "claude-sonnet",
+      "tokens": {
+        "input": 0,
+        "output": 0
+      }
+    }
+  ]
+}
