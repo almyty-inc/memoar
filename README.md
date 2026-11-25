@@ -36,7 +36,7 @@ This repository is a contracts-first monorepo:
 - `agent/crates/memoar-desktop` contains the desktop application: a native window on macOS, Linux and Windows, drawn with NSH, that signs a machine in, captures on a timer, and reports what it captured and what failed. It drives the same code the CLI runs rather than reimplementing capture. `agent/scripts/test-desktop.sh` tests it and `agent/scripts/package-desktop.sh` packages it (see `docs/install.md`).
 - `packages/npx` contains the launcher for the capture agent. It refuses to download anything until a release channel is decided, so today it runs a locally built binary (`MEMOAR_PREFER_LOCAL=1`, or `MEMOAR_BINARY=<path>`).
 - `skill` contains the agent-facing retrieval instructions and robot-mode reference.
-- `deploy` contains the local Postgres, Redis, MinIO, API, worker, and web stack.
+- `deploy` contains the local Postgres, Redis, S3-compatible object storage (RustFS), API, worker, and web stack.
 
 ## Local setup
 

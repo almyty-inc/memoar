@@ -41,20 +41,40 @@ services:
       timeout: 3s
       retries: 20
 
-  minio:
+  # S3-compatible object storage for this stack only. A deployed instance uses
+  # DigitalOcean Spaces (see .env.example). This was MinIO until its images
+  # stopped being anonymously pullable. RustFS is Apache-2.0, publishes an
+  # immutable tag per release on Docker Hub, and supports what Memoar relies
+  # on: path-style and virtual-hosted addressing, pre-signed GET and PUT,
+  # multipart upload, HEAD, and bucket versioning.
+  #
+  # The old MEMOAR_MINIO_* port variables still work as fallbacks. The data
+  # lives in a new volume, `s3-data`, so RustFS never starts on files MinIO
+  # wrote. `minio-data` stays declared so an existing stack keeps it. See
+  # docs/getting-started.md for carrying old objects across.
+  s3:
     restart: unless-stopped
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: ["server", "/data", "--console-address", ":9001"]
+    image: rustfs/rustfs:1.0.6
     environment:
-      MINIO_ROOT_USER: memoar-local
-      MINIO_ROOT_PASSWORD: memoar-local-secret
+      RUSTFS_ACCESS_KEY: memoar-local
+      RUSTFS_SECRET_KEY: memoar-local-secret
+      RUSTFS_REGION: eu-central-1
+      RUSTFS_CONSOLE_ENABLE: "true"
+      # Hosts that route `<bucket>.<host>` to the bucket, which is what
+      # S3_FORCE_PATH_STYLE=false asks for. Without this only path-style works.
+      RUSTFS_SERVER_DOMAINS: s3:9000,localhost:${MEMOAR_S3_PORT:-${MEMOAR_MINIO_PORT:-59000}}
     ports:
-      - "${MEMOAR_MINIO_PORT:-59000}:9000"
-      - "${MEMOAR_MINIO_CONSOLE_PORT:-59001}:9001"
+      - "${MEMOAR_S3_PORT:-${MEMOAR_MINIO_PORT:-59000}}:9000"
+      - "${MEMOAR_S3_CONSOLE_PORT:-${MEMOAR_MINIO_CONSOLE_PORT:-59001}}:9001"
     volumes:
-      - minio-data:/data
+      - s3-data:/data
+    networks:
+      default:
+        # Resolves the virtual-hosted name of the bucket inside the stack.
+        aliases:
+          - memoar-raw.s3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:9000/health/ready"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -101,19 +121,26 @@ services:
   # content-addressed and immutable, so what they need is protection from
   # deletion rather than a copy of yesterday's copy.
   #
-  # That protection was written down and never turned on. `mc mb` alone leaves
-  # the bucket un-versioned, and an un-versioned delete is final: restoring the
-  # database then gives an archive whose sessions all point at objects that are
-  # gone. Enabling it here costs nothing and makes the stack match the only
+  # That protection was written down and never turned on. Creating the bucket
+  # alone leaves it un-versioned, and an un-versioned delete is final: restoring
+  # the database then gives an archive whose sessions all point at objects that
+  # are gone. Enabling it here costs nothing and makes the stack match the only
   # thing anybody was told about it. Idempotent, like the bucket creation.
-  minio-create-bucket:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+  #
+  # `rc` is the RustFS client that ships in the server image, so this needs no
+  # second image. It reads the alias from RC_HOST_<name>. The last command
+  # prints the versioning status and fails the stack if it is not Enabled.
+  s3-create-bucket:
+    image: rustfs/rustfs:1.0.6
     depends_on:
-      minio:
+      s3:
         condition: service_healthy
+    environment:
+      RC_CONFIG_DIR: /tmp/rc
+      RC_HOST_local: http://memoar-local:memoar-local-secret@s3:9000
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - "mc alias set local http://minio:9000 memoar-local memoar-local-secret && mc mb --ignore-existing local/memoar-raw && mc version enable local/memoar-raw"
+      - "rc bucket create --ignore-existing local/memoar-raw && rc bucket version enable local/memoar-raw && rc bucket version info --json local/memoar-raw | grep -q '\"status\": *\"Enabled\"'"
 
   api:
     restart: unless-stopped
@@ -126,7 +153,11 @@ services:
       DATABASE_URL: postgres://memoar_app:memoar_app@postgres:5432/memoar
       MIGRATION_DATABASE_URL: postgres://memoar:memoar@postgres:5432/memoar
       REDIS_URL: redis://redis:6379
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://s3:9000
+      # Where pre-signed URLs point: the published port, which is what the
+      # agent and the browser reach from the host. The server's own fallback is
+      # port 59000, so without this a moved port signs URLs for the wrong one.
+      S3_PUBLIC_ENDPOINT: http://localhost:${MEMOAR_S3_PORT:-${MEMOAR_MINIO_PORT:-59000}}
       S3_REGION: eu-central-1
       S3_BUCKET: memoar-raw
       S3_ACCESS_KEY: memoar-local
@@ -161,7 +192,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-create-bucket:
+      s3-create-bucket:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
@@ -180,7 +211,11 @@ services:
       DATABASE_URL: postgres://memoar_app:memoar_app@postgres:5432/memoar
       MIGRATION_DATABASE_URL: postgres://memoar:memoar@postgres:5432/memoar
       REDIS_URL: redis://redis:6379
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://s3:9000
+      # Where pre-signed URLs point: the published port, which is what the
+      # agent and the browser reach from the host. The server's own fallback is
+      # port 59000, so without this a moved port signs URLs for the wrong one.
+      S3_PUBLIC_ENDPOINT: http://localhost:${MEMOAR_S3_PORT:-${MEMOAR_MINIO_PORT:-59000}}
       S3_REGION: eu-central-1
       S3_BUCKET: memoar-raw
       S3_ACCESS_KEY: memoar-local
@@ -216,4 +251,7 @@ volumes:
   memoar-state:
   postgres-backups:
   redis-data:
+  # Held by stacks that ran MinIO. Nothing mounts it now. Kept so that
+  # bringing such a stack up again does not orphan the old objects.
   minio-data:
+  s3-data:

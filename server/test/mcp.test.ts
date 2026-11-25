@@ -54,7 +54,7 @@ describe("MCP over Streamable HTTP with the official SDK client", () => {
   it("initializes, lists tools, calls tools, and saves notes through the real SDK client", async () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`));
     const client = new Client({ name: "memoar-sdk-test", version: "0.0.1" });
-    await client.connect(transport as unknown as Parameters<Client["connect"]>[0]);
+    await client.connect(transport);
 
     const serverVersion = client.getServerVersion();
     expect(serverVersion).toMatchObject({ name: "memoar" });
