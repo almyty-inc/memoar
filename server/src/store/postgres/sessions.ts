@@ -3,7 +3,7 @@ import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
-import type { SessionStore } from "../interfaces.js";
+import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld, proposalList } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
 import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
@@ -174,6 +174,20 @@ export class PostgresSessionStore implements SessionStore {
 
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {
     return this.runner.inTenant(context, (manager) => this.getSessionWithManager(manager, context, sessionId));
+  }
+
+  /** Read off the session rows' own columns, never their turns. */
+  async sessionParserVersions(context: TenantContext): Promise<Map<string, SessionParse>> {
+    return this.runner.inTenant(context, async (manager) => {
+      const rows: { id: string; machineId: string | null; parserVersion: string | null }[] = await manager.query(
+        `SELECT id, source->>'machineId' AS "machineId",
+                (SELECT entry->>'parserVersion' FROM jsonb_array_elements(provenance) entry
+                  WHERE entry->>'kind' = 'native' LIMIT 1) AS "parserVersion"
+           FROM sessions WHERE "tenantId" = $1`,
+        [context.tenantId],
+      );
+      return new Map(rows.map((row) => [row.id, { parserVersion: row.parserVersion, machineId: row.machineId }]));
+    });
   }
 
   /** One grouped count for the whole account, not one query per source. */

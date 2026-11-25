@@ -89,5 +89,17 @@ for (const implementation of implementations) {
       await store.updateRawArtifact(context, { ...newer, sessionIds: [session.id], status: "failed" });
       expect(await store.hasNewerCapture(context, session.id, older), "a capture that failed to parse holds nothing").toBe(false);
     });
+
+    it("reads the parser and machine of every session without its turns", async () => {
+      const store = implementation.create();
+      const session = {
+        ...structuredClone(TEST_SESSION),
+        id: id("8"),
+        provenance: [{ kind: "native" as const, capturedAt: "2026-11-25T12:00:00.000Z", parserVersion: "codex:rollout-v1:0.3.0" }],
+      };
+      await store.saveSession(context, session);
+      expect((await store.sessionParserVersions(context)).get(session.id))
+        .toEqual({ parserVersion: "codex:rollout-v1:0.3.0", machineId: session.source.machineId });
+    });
   });
 }

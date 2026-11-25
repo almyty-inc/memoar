@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/require-await -- in-memory store methods intentionally satisfy the asynchronous production port. */
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
-import type { SessionStore } from "../interfaces.js";
+import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
 import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
@@ -92,6 +92,19 @@ export class MemorySessionStore implements SessionStore {
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {
     const session = this.tables.sessions.get(key(context.tenantId, sessionId));
     return session ? copy(session) : null;
+  }
+
+  sessionParserVersions(context: TenantContext): Promise<Map<string, SessionParse>> {
+    const versions = new Map<string, SessionParse>();
+    const prefix = key(context.tenantId, "");
+    for (const [entry, session] of this.tables.sessions) {
+      if (!entry.startsWith(prefix)) continue;
+      versions.set(session.id, {
+        parserVersion: session.provenance.find((item) => item.kind === "native")?.parserVersion ?? null,
+        machineId: session.source.machineId || null,
+      });
+    }
+    return Promise.resolve(versions);
   }
 
   countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]> {
