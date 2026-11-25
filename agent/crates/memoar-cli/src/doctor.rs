@@ -237,6 +237,11 @@ fn machine_state_check(
 /// — but a tool that produces only these is capturing the wrong files, which is
 /// the one way capture fails without failing.
 ///
+/// A file read in full and found to hold no conversation, such as a chat panel
+/// opened and never used, is not counted here. The archive records it as
+/// `parsed` with no session and an `empty:` diagnostic, so every artifact this
+/// check reports is one the archive could not read.
+///
 /// An archive that cannot answer leaves this `null`. It used to leave it green,
 /// with the sentence "everything uploaded became a session" — a claim about
 /// what the archive holds, printed without the archive having said a word. An

@@ -120,10 +120,11 @@ export class CopilotV1Parser implements VersionedParser {
  * `.jsonl` whose single line happens to be valid JSON would otherwise be read
  * by whichever branch the extension chose.
  *
- * A panel with no requests is refused rather than stored as a session with no
- * turns. Most of the files capture matches are exactly that — every one of the
- * 23 on this machine — and an empty session in the archive is worse than a kept
- * artifact saying why: it looks like a conversation that was lost.
+ * A panel with no requests is reported `empty` rather than stored as a session
+ * with no turns. Most of the files capture matches are exactly that — every one
+ * of the 23 on this machine — and an empty session in the archive is worse than
+ * a kept artifact saying why: it looks like a conversation that was lost. It is
+ * not `unknown` either, because nothing about it went unread.
  */
 function parseChatSessions(request: ParseRequest): ParseResult {
   let whole: unknown;
@@ -142,9 +143,20 @@ function parseChatSessions(request: ParseRequest): ParseResult {
   }
   const sessions = chatSessions(envelopes, request.seed).filter((session) => session.turns.length > 0);
   if (sessions.length === 0) {
+    // Every panel said `requests: []`: nothing was ever asked, which is a
+    // finding about the panel and not about this parser.
+    if (envelopes.every((envelope) => (envelope.requests as unknown[]).length === 0)) {
+      return {
+        kind: "empty",
+        parser: parserVersion("copilot"),
+        diagnostic: `copilot v1 chat session holds no requests: ${envelopes.length} panel(s) opened and never used`,
+      };
+    }
+    // Requests are there and none became a turn: the layout moved under the
+    // parser, which is a real refusal.
     return {
       kind: "unknown",
-      diagnostic: `copilot v1 chat session holds no requests: ${envelopes.length} panel(s) opened and never used`,
+      diagnostic: "copilot v1 chat session has requests and none of them could be read",
       raw: request.raw,
     };
   }

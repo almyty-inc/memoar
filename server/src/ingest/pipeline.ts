@@ -19,6 +19,9 @@ export const SCANNER_ORIGIN = "secret-scanner";
 /** Said on an artifact whose session already holds a later capture of the same file. */
 export const SUPERSEDED_DIAGNOSTIC = "superseded: the session already holds a later capture of this file";
 
+/** Begins the diagnostic on an artifact the parser read and found no conversation in. */
+export const EMPTY_DIAGNOSTIC_PREFIX = "empty: ";
+
 export interface PipelineSeedFactory {
   create(context: TenantContext, artifact: RawArtifactRecord, format: { source: string; version: string }): SessionSeed;
 }
@@ -131,6 +134,19 @@ export class IngestPipeline {
     if (result.kind === "unknown") {
       await this.store.updateRawArtifact(context, { ...artifact, status: "unknown_format", diagnostic: result.diagnostic });
       return { status: "unknown_format", sessionIds: [] };
+    }
+    if (result.kind === "empty") {
+      /*
+        Read in full and nothing to archive: an unused Copilot panel, a Codex
+        guardian thread. These were `unknown_format`, which `/ingest/unparsed`
+        counts and `memoar doctor` turned red, so a healthy install reported a
+        capture fault for every chat panel somebody opened and closed. They are
+        `parsed` with no session, the same as a capture superseded by a later
+        one, and the diagnostic says why there is none.
+      */
+      const diagnostic = `${EMPTY_DIAGNOSTIC_PREFIX}${result.diagnostic}`;
+      await this.store.updateRawArtifact(context, { ...artifact, sessionIds: [], status: "parsed", diagnostic });
+      return { status: "parsed", sessionIds: [] };
     }
     // The tenant's own patterns, not the four built-in ones: emailScan and the
     // custom patterns were settings nothing ever read.

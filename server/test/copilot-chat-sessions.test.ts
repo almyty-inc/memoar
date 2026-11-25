@@ -149,17 +149,29 @@ describe("copilot VS Code chatSessions", () => {
     expect(result.sessions[0]!.title).toBe("Renamed after the fact");
   });
 
-  it("refuses an unused panel rather than archiving a session with no turns", () => {
+  it("reports an unused panel as empty rather than archiving a session with no turns", () => {
     // Every chatSessions file on this machine is this: a panel opened and never
     // used. An empty session in the archive reads as a conversation that was
-    // lost; a kept artifact saying why does not.
+    // lost. It is not an unreadable file either: `memoar doctor` counted these
+    // as parse failures and turned red on a healthy install.
     for (const raw of [bytes(envelope([])), Buffer.from(`${JSON.stringify({ kind: 0, v: envelope([]) })}\n`, "utf8")]) {
       const result = parse(raw);
-      expect(result.kind).toBe("unknown");
-      if (result.kind !== "unknown") continue;
+      expect(result.kind).toBe("empty");
+      if (result.kind !== "empty") continue;
       expect(result.diagnostic).toContain("holds no requests");
-      expect(Buffer.from(result.raw).equals(raw), "the bytes are kept so a later parser can read them").toBe(true);
+      expect(result.parser).toMatch(/^copilot:/u);
     }
+  });
+
+  it("refuses a panel whose requests are there and unreadable", () => {
+    // Requests that no longer carry `message` or `response` are a layout this
+    // parser does not know. That is a real refusal, not an empty panel.
+    const raw = bytes(envelope([{ somethingNew: true }]));
+    const result = parse(raw);
+    expect(result.kind).toBe("unknown");
+    if (result.kind !== "unknown") return;
+    expect(result.diagnostic).toContain("none of them could be read");
+    expect(Buffer.from(result.raw).equals(raw), "the bytes are kept so a later parser can read them").toBe(true);
   });
 
   it("still refuses bytes that are neither the session store nor a chat panel", () => {

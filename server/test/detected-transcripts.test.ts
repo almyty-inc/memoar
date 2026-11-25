@@ -99,18 +99,19 @@ describe("codex rollouts as they reached the archive", () => {
     expect(result.sessions[0]!.turns.map((turn) => turn.role)).toEqual(["user", "assistant"]);
   });
 
-  it("still refuses a guardian thread that holds only an encrypted compaction", () => {
+  it("reports a guardian thread that holds only an encrypted compaction as empty", () => {
     // The two newer refusals on dev: session_meta, one `compaction` item whose
     // only content is `encrypted_content`, and a settings event. There is no
-    // readable message in it, so the refusal is correct.
+    // message in it, so no session, and nothing went unread either: it is
+    // empty, not a parse failure for `memoar doctor` to count.
     const { result } = ingest("codex", lines([
       meta,
       item({ type: "compaction", id: "cmp_1", encrypted_content: "b3BhcXVl" }),
       { timestamp: AT, type: "event_msg", payload: { type: "thread_settings_applied", thread_id: "t" } },
     ]));
-    expect(result.kind).toBe("unknown");
-    if (result.kind !== "unknown") return;
-    expect(result.diagnostic).toContain("no readable messages");
+    expect(result.kind).toBe("empty");
+    if (result.kind !== "empty") return;
+    expect(result.diagnostic).toContain("only compactions");
   });
 });
 

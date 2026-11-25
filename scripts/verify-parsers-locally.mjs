@@ -211,6 +211,12 @@ for (const entry of SOURCES) {
   }
 
   const parsed = registry.parse({ source: entry.source, version: entry.version, raw: readFileSync(file), seed });
+  // Read and found to hold no conversation, such as an unused chat panel. Not
+  // a failure, and not evidence that the parser reads a real one either.
+  if (parsed.kind === "empty") {
+    rows.push({ source: entry.source, result: "skipped", detail: `the file holds no conversation: ${parsed.diagnostic}`, todo: entry.todo });
+    continue;
+  }
   if (parsed.kind !== "parsed") {
     failed = true;
     rows.push({ source: entry.source, result: "FAILED", detail: parsed.diagnostic ?? "not parsed" });
