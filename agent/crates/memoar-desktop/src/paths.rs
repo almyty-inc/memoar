@@ -109,10 +109,16 @@ mod tests {
         let paths =
             Paths::resolve_with(|name| (name == CONFIG_DIR_VAR).then(OsString::new)).unwrap();
 
-        assert!(
-            paths.config_dir.ends_with(".config/memoar"),
+        // The CLI's default differs by platform (`~/.config/memoar`, the XDG
+        // directory, or `%APPDATA%\memoar`), so compare with what it resolves
+        // when the variable is absent rather than with one of those spellings.
+        let default = Paths::resolve_with(|_| None).unwrap();
+        assert_eq!(
+            paths.config_dir, default.config_dir,
             "an empty value must fall back to the CLI's default, not the working directory"
         );
+        assert!(paths.config_dir.is_absolute());
+        assert!(paths.config_dir.ends_with("memoar"));
     }
 
     #[test]
