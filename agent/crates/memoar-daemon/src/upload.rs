@@ -2,7 +2,7 @@
 //!
 //! A row usually has no copy of its bytes: they are read from the source file
 //! here and checked against the hash taken at capture. A source that changed
-//! since is not sent under the old hash; the pass queues it again instead.
+//! since is not sent under the old hash. The pass queues it again instead.
 //! Several uploads may be in flight, and a shared pacer keeps them inside the
 //! archive's per-route request budget.
 
@@ -62,7 +62,7 @@ impl Pacer {
 
 /// Uploads `jobs` (indices into `artifacts`) on up to `workers` threads.
 ///
-/// Returns one entry per job, in job order; `None` is a job never started
+/// Returns one entry per job, in job order. `None` is a job never started
 /// because an earlier one stopped the pass. `seen` is told about each outcome
 /// as it arrives, on the calling thread.
 pub(crate) fn upload_all<T: SyncTransport + Sync>(

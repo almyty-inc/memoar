@@ -228,7 +228,7 @@ impl<T: SyncTransport + Sync> SyncEngine<T> {
                     report.bytes_uploaded += bytes;
                 }
                 // One artifact the server will not take must not block the
-                // rest. The queue remembers; the loop carries on.
+                // rest. The queue remembers, and the loop carries on.
                 Outcome::Failed(error) => {
                     queue.mark_retry(
                         &artifact.sha256,
