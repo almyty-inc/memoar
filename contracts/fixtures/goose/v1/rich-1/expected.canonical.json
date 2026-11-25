@@ -1,0 +1,149 @@
+{
+  "id": "0191cafe-0000-7000-8000-000000000442",
+  "source": {
+    "vendor": "goose",
+    "tool": "goose",
+    "version": "v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "rich-goose"
+  },
+  "workspace": {
+    "path": "/workspace/rich",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-05T09:00:00.000Z",
+  "updatedAt": "2026-08-05T09:00:00.000Z",
+  "title": "Goose importer",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "vendor-model"
+  ],
+  "tokenTotals": {
+    "input": 143,
+    "output": 164,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "goose:v1:1",
+      "capturedAt": "2026-08-05T09:00:00.000Z",
+      "parserVersion": "0.4.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "ext": {
+    "fixtureSource": "goose"
+  },
+  "turns": [
+    {
+      "id": "fe3285cd-83d3-5700-8930-02f7d9e14ac6",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "user",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001000443",
+          "kind": "text",
+          "text": "Why does the goose importer lose tool arguments?"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001000444",
+          "kind": "attachment",
+          "mimeType": "image/png",
+          "data": {
+            "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+          }
+        }
+      ]
+    },
+    {
+      "id": "aace7167-65a7-59ab-a23e-0ddade4636a8",
+      "ordinal": 1,
+      "parentId": "fe3285cd-83d3-5700-8930-02f7d9e14ac6",
+      "role": "assistant",
+      "createdAt": "2025-08-20T09:00:01.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001001443",
+          "kind": "thinking",
+          "text": "Goose nests the call under toolCall.value.",
+          "data": {
+            "signature": "R29vc2VTaWduYXR1cmVGaXh0dXJl"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001001444",
+          "kind": "thinking",
+          "data": {
+            "redacted": true,
+            "data": "R29vc2VSZWRhY3RlZFBheWxvYWQ="
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001001445",
+          "kind": "tool_call",
+          "name": "developer__shell",
+          "callId": "goose-call-1",
+          "data": {
+            "command": "rg toolCall src/goose"
+          }
+        }
+      ],
+      "model": "vendor-model",
+      "tokens": {
+        "input": 143,
+        "output": 164
+      }
+    },
+    {
+      "id": "6f67fac8-e952-5b56-acd1-5bbc36781beb",
+      "ordinal": 2,
+      "parentId": "aace7167-65a7-59ab-a23e-0ddade4636a8",
+      "role": "user",
+      "createdAt": "2025-08-20T09:00:02.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001002443",
+          "kind": "tool_result",
+          "text": "src/goose.ts: name read from the wrong level",
+          "callId": "goose-call-1"
+        }
+      ]
+    },
+    {
+      "id": "80f7788e-4489-5121-93eb-d14629848a13",
+      "ordinal": 3,
+      "parentId": "6f67fac8-e952-5b56-acd1-5bbc36781beb",
+      "role": "assistant",
+      "createdAt": "2025-08-20T09:00:03.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001003443",
+          "kind": "text",
+          "text": "The goose importer reads nested tool calls now."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001003444",
+          "kind": "system",
+          "text": "Context limit reached; goose summarised the history.",
+          "name": "contextLengthExceeded"
+        }
+      ],
+      "model": "vendor-model",
+      "tokens": {
+        "input": 143,
+        "output": 164
+      }
+    }
+  ]
+}

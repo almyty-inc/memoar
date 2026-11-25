@@ -1,0 +1,321 @@
+{
+  "id": "0191cafe-0000-7000-8000-0000000003e8",
+  "source": {
+    "vendor": "anthropic",
+    "tool": "claude-code",
+    "version": "v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "rich-claude-session"
+  },
+  "workspace": {
+    "path": "/workspace/rich",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-11T09:00:00.000Z",
+  "updatedAt": "2026-08-11T09:00:00.000Z",
+  "title": "Fix the importer dropping tool output",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "claude-sonnet"
+  ],
+  "tokenTotals": {
+    "input": 134,
+    "output": 155,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "claude-code:v1:1",
+      "capturedAt": "2026-08-11T09:00:00.000Z",
+      "parserVersion": "0.4.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "ext": {
+    "fixtureSource": "claude-code"
+  },
+  "turns": [
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c001",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003e9",
+          "kind": "text",
+          "text": "Please find why the archive importer loses tool output."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c002",
+      "ordinal": 1,
+      "parentId": "0191cafe-0000-7000-8000-00000000c001",
+      "role": "assistant",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003ea",
+          "kind": "thinking",
+          "text": "The importer probably copies only the text field of each block.",
+          "data": {
+            "signature": "RXF1aXZhbGVudFNpZ25hdHVyZUJ5dGVzRm9yVGhlRml4dHVyZQ=="
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003eb",
+          "kind": "thinking",
+          "data": {
+            "redacted": true,
+            "data": "RW5jcnlwdGVkUmVhc29uaW5nUGF5bG9hZEZvclRoZUZpeHR1cmU="
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003ec",
+          "kind": "text",
+          "text": "I will read the parser and run the failing test."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003ed",
+          "kind": "tool_call",
+          "name": "Read",
+          "callId": "toolu_rich_read",
+          "data": {
+            "file_path": "/workspace/rich/src/parser.ts"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003ee",
+          "kind": "tool_call",
+          "name": "Screenshot",
+          "callId": "toolu_rich_shot",
+          "data": {
+            "region": "importer panel"
+          }
+        }
+      ],
+      "model": "claude-sonnet",
+      "tokens": {
+        "input": 134,
+        "output": 155
+      }
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c003",
+      "ordinal": 2,
+      "parentId": "0191cafe-0000-7000-8000-00000000c002",
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003ef",
+          "kind": "tool_result",
+          "text": "export function parseBlock() { return copyTextOnly(); }",
+          "callId": "toolu_rich_read"
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f0",
+          "kind": "tool_result",
+          "text": "The screenshot tool timed out after capturing one frame.",
+          "callId": "toolu_rich_shot",
+          "data": {
+            "isError": true,
+            "content": [
+              {
+                "type": "text",
+                "text": "The screenshot tool timed out after capturing one frame."
+              },
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c004",
+      "ordinal": 3,
+      "parentId": "0191cafe-0000-7000-8000-00000000c003",
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f1",
+          "kind": "text",
+          "text": "Here is the design note and a picture of the bug."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f2",
+          "kind": "attachment",
+          "mimeType": "image/png",
+          "data": {
+            "source": {
+              "type": "base64",
+              "media_type": "image/png",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            }
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f3",
+          "kind": "attachment",
+          "name": "Importer design note",
+          "mimeType": "application/pdf",
+          "data": {
+            "source": {
+              "type": "base64",
+              "media_type": "application/pdf",
+              "data": "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PC9UeXBlL0NhdGFsb2c+PgplbmRvYmoKdHJhaWxlcgo8PC9Sb290IDEgMCBSPj4KJSVFT0YK"
+            }
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f4",
+          "kind": "attachment",
+          "text": "Plain text design note: blocks must keep every field.",
+          "mimeType": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c005",
+      "ordinal": 4,
+      "parentId": "0191cafe-0000-7000-8000-00000000c004",
+      "role": "system",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000090003e9",
+          "kind": "system",
+          "name": "compact_boundary",
+          "text": "Conversation compacted to free context",
+          "data": {
+            "level": "info",
+            "compactMetadata": {
+              "trigger": "auto",
+              "preTokens": 120000
+            }
+          }
+        }
+      ],
+      "ext": {
+        "claudeCode": {
+          "recordType": "system",
+          "subtype": "compact_boundary"
+        }
+      }
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c006",
+      "ordinal": 5,
+      "parentId": "0191cafe-0000-7000-8000-00000000c005",
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f5",
+          "kind": "text",
+          "text": "Summary of the earlier conversation: the importer drops tool output."
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c007",
+      "ordinal": 6,
+      "parentId": "0191cafe-0000-7000-8000-00000000c006",
+      "role": "user",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000090003ea",
+          "kind": "text",
+          "text": "Also check whether thinking text survives the import."
+        }
+      ],
+      "ext": {
+        "claudeCode": {
+          "recordType": "attachment",
+          "attachmentType": "queued_command"
+        }
+      }
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c009",
+      "ordinal": 7,
+      "parentId": "0191cafe-0000-7000-8000-00000000c008",
+      "role": "system",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000090003eb",
+          "kind": "attachment",
+          "name": "notes.md",
+          "artifactRef": "/workspace/rich/notes.md",
+          "text": "Notes file attached with an at-mention by the person."
+        }
+      ],
+      "ext": {
+        "claudeCode": {
+          "recordType": "attachment",
+          "attachmentType": "file"
+        }
+      }
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-00000000c00a",
+      "ordinal": 8,
+      "parentId": "0191cafe-0000-7000-8000-00000000c009",
+      "role": "assistant",
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000080003f6",
+          "kind": "text",
+          "text": "The parser now keeps tool output, thinking and images."
+        }
+      ],
+      "model": "claude-sonnet",
+      "tokens": {
+        "input": 134,
+        "output": 155
+      }
+    },
+    {
+      "id": "06409ebe-60ca-5595-933f-9a5ada450cde",
+      "ordinal": 9,
+      "parentId": "0191cafe-0000-7000-8000-00000000c00a",
+      "role": "system",
+      "createdAt": "2026-08-11T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-0000090003ec",
+          "kind": "system",
+          "name": "summary",
+          "text": "Importer fix for dropped tool output"
+        }
+      ],
+      "ext": {
+        "claudeCode": {
+          "recordType": "summary"
+        }
+      }
+    }
+  ]
+}

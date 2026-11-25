@@ -8,6 +8,8 @@ import { zstdCompressSync } from "node:zlib";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { strToU8, zipSync } from "fflate";
+import { richStoreInputs } from "./rich-stores.mjs";
+import { richTextInputs } from "./rich-transcripts.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -107,8 +109,84 @@ for (const fixture of handwritten) {
     expected: relative(root, expectedPath)
   });
 }
+// Rich fixtures: one synthetic transcript per source holding every content
+// shape the tool writes (tool output as a string and as an array with an
+// image, error flags, thinking and its signature, redacted and encrypted
+// reasoning, images, documents, system, compaction and summary records).
+//
+// Their inputs are invented by rich-transcripts.mjs and rich-stores.mjs to the
+// tool's real shape. Their expected output is what the built parser produces,
+// so it is a record of current behaviour, not an independent oracle. The
+// oracle is server/test/parser-fidelity.test.ts, which checks that every
+// string in these inputs survives into that output.
+//
+// `--refresh-expected` re-parses every fixture's input, kept ones included,
+// and rewrites its expected output. Run it after a deliberate parser change and
+// review the diff. Both need `npm run build --workspace @memoar/server` first.
+const refresh = process.argv.includes("--refresh-expected");
+const richInputs = [...richTextInputs(), ...richStoreInputs()];
+for (const [index, [source, version, inputName, bytes]] of richInputs.entries()) {
+  const directory = resolve(fixturesRoot, source, version, "rich-1");
+  const inputPath = resolve(directory, "input", inputName);
+  const expectedPath = resolve(directory, "expected.canonical.json");
+  if (!existsSync(inputPath) || !existsSync(expectedPath)) {
+    await mkdir(dirname(inputPath), { recursive: true });
+    await writeFile(inputPath, bytes);
+    const seed = makeCanonical({ source, version, index: 1 }, 100 + index);
+    delete seed.turns;
+    seed.title = `${displayName(source)} rich fixture`;
+    seed.source.nativeSessionId = `${source}-rich-1`;
+    await writeFile(expectedPath, `${JSON.stringify(await parsedExpected(source, version, bytes, seed), null, 2)}\n`);
+    console.log(`generated: ${source}/${version}/rich-1`);
+  } else console.log(`kept: ${source}/${version}/rich-1`);
+  manifest.push({
+    source,
+    version,
+    fixture: "rich-1",
+    input: relative(root, inputPath),
+    inputSha256: createHash("sha256").update(await readFile(inputPath)).digest("hex"),
+    expected: relative(root, expectedPath)
+  });
+}
+if (refresh) {
+  // Name fixtures as source/version/slug to refresh only those. Several
+  // session-2 and session-3 fixtures predate their parsers and were never
+  // checked against them, so a blanket refresh would rewrite them into
+  // whatever the parser makes of an input it was never meant to read.
+  const named = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
+  for (const entry of manifest) {
+    if (named.length > 0 && !named.includes(`${entry.source}/${entry.version}/${entry.fixture}`)) continue;
+    const expectedPath = resolve(root, entry.expected);
+    const expected = JSON.parse(await readFile(expectedPath, "utf8"));
+    const seed = { ...expected };
+    delete seed.turns;
+    const parsed = await parsedExpected(entry.source, entry.version, await readFile(resolve(root, entry.input)), seed);
+    // Rewritten only when the content differs, so a refresh does not reorder
+    // the keys of every fixture that did not change.
+    if (sortedJson(parsed) !== sortedJson(expected)) await writeFile(expectedPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  }
+  console.log(`refreshed the expected output of ${manifest.length} fixtures`);
+}
 await writeFile(resolve(fixturesRoot, "manifest.json"), `${JSON.stringify({ version: contractVersion, fixtures: manifest }, null, 2)}\n`);
 console.log(`generated ${manifest.length} scrubbed fixtures`);
+
+function sortedJson(value) {
+  return JSON.stringify(value, (_key, item) => (item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)))
+    : item));
+}
+
+/** The single session the built parser makes of a fixture input. */
+async function parsedExpected(source, version, raw, seed) {
+  const parsers = resolve(root, "server/dist/libs/parsers/src/index.js");
+  if (!existsSync(parsers)) throw new Error("build the server first: npm run build --workspace @memoar/server");
+  const { ParserRegistry } = await import(parsers);
+  const result = new ParserRegistry().parse({ source, version, raw: new Uint8Array(Buffer.from(raw)), seed });
+  if (result.kind !== "parsed" || result.sessions.length !== 1) {
+    throw new Error(`${source}/${version} did not parse to one session: ${result.diagnostic ?? `${result.sessions.length} sessions`}`);
+  }
+  return result.sessions[0];
+}
 
 function versionFor(source) {
   if (source === "codex") return "rollout-v1";

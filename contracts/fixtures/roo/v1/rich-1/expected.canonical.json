@@ -1,0 +1,134 @@
+{
+  "id": "0191cafe-0000-7000-8000-000000000406",
+  "source": {
+    "vendor": "roo",
+    "tool": "roo",
+    "version": "v1",
+    "machineId": "0191cafe-0000-7000-8000-000000000001",
+    "nativeSessionId": "roo-rich-1"
+  },
+  "workspace": {
+    "path": "/workspace/example-1",
+    "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
+    "branch": "main"
+  },
+  "createdAt": "2026-08-14T09:00:00.000Z",
+  "updatedAt": "2026-08-14T09:00:00.000Z",
+  "title": "Roo rich fixture",
+  "summary": "Scrubbed session used to verify canonical normalization.",
+  "models": [
+    "vendor-model"
+  ],
+  "tokenTotals": {
+    "input": 137,
+    "output": 158,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "provenance": [
+    {
+      "kind": "native",
+      "sourceId": "roo:v1:1",
+      "capturedAt": "2026-08-14T09:00:00.000Z",
+      "parserVersion": "0.4.0",
+      "details": {
+        "fixture": true
+      }
+    }
+  ],
+  "visibility": {
+    "scope": "private",
+    "ownerId": "0191cafe-0000-7000-8000-000000000002"
+  },
+  "ext": {
+    "fixtureSource": "roo"
+  },
+  "turns": [
+    {
+      "id": "0191cafe-0000-7000-8000-000000000407",
+      "ordinal": 0,
+      "parentId": null,
+      "role": "user",
+      "createdAt": "2025-08-20T09:00:00.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001000407",
+          "kind": "text",
+          "text": "<task>Make the task importer keep tool output.</task>"
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-000000000408",
+      "ordinal": 1,
+      "parentId": "0191cafe-0000-7000-8000-000000000407",
+      "role": "assistant",
+      "createdAt": "2025-08-20T09:00:01.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001001407",
+          "kind": "thinking",
+          "text": "The task history stores Anthropic blocks verbatim."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001001408",
+          "kind": "thinking",
+          "text": "Tool results arrive as arrays of text and images.",
+          "data": {
+            "signature": "U2lnbmF0dXJlRm9yVGFza0hpc3RvcnlGaXh0dXJl"
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001001409",
+          "kind": "text",
+          "text": "Reading the importer source first."
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-00000100140a",
+          "kind": "tool_call",
+          "name": "read_file",
+          "callId": "toolu_task_read",
+          "data": {
+            "path": "src/task.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "0191cafe-0000-7000-8000-000000000409",
+      "ordinal": 2,
+      "parentId": "0191cafe-0000-7000-8000-000000000408",
+      "role": "user",
+      "createdAt": "2025-08-20T09:00:02.000Z",
+      "blocks": [
+        {
+          "id": "0191cafe-0000-7000-8000-000001002407",
+          "kind": "tool_result",
+          "text": "export const keepOutput = false; // task importer",
+          "callId": "toolu_task_read",
+          "data": {
+            "content": [
+              {
+                "type": "text",
+                "text": "export const keepOutput = false; // task importer"
+              },
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "0191cafe-0000-7000-8000-000001002408",
+          "kind": "text",
+          "text": "<environment_details>Workspace listing for the task importer</environment_details>"
+        }
+      ]
+    }
+  ]
+}

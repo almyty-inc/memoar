@@ -1,0 +1,59 @@
+{
+  "version": 3,
+  "sessionId": "rich-copilot-panel",
+  "creationDate": 1755680400000,
+  "customTitle": "Copilot importer panel",
+  "requests": [
+    {
+      "requestId": "request-rich-1",
+      "timestamp": 1755680400000,
+      "message": {
+        "text": "Explain why the chat importer drops tool results.",
+        "parts": [
+          {
+            "text": "Explain why the chat importer drops tool results."
+          }
+        ]
+      },
+      "response": [
+        {
+          "kind": "thinking",
+          "value": "The importer reads only the invocation message."
+        },
+        {
+          "value": "The chat importer kept the message and dropped the tool's details.",
+          "supportThemeIcons": false
+        },
+        {
+          "kind": "toolInvocationSerialized",
+          "toolId": "run_in_terminal",
+          "toolCallId": "tool-rich-1",
+          "invocationMessage": "Running the importer tests",
+          "pastTenseMessage": "Ran the importer tests",
+          "isConfirmed": true,
+          "isComplete": true,
+          "toolSpecificData": {
+            "kind": "terminal",
+            "command": "npm test -- chat-importer"
+          },
+          "resultDetails": {
+            "output": "4 importer tests failed in the terminal"
+          }
+        },
+        {
+          "kind": "textEditGroup",
+          "uri": {
+            "fsPath": "/workspace/rich/importer.ts"
+          },
+          "edits": [
+            [
+              {
+                "text": "keep every response part in the chat importer"
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","content":"Find out why the step log importer drops errors."}
+{"step_index":1,"source":"SYSTEM","type":"CONVERSATION_HISTORY","status":"DONE","created_at":"2026-08-20T09:00:00.000Z"}
+{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","thinking":"The importer only accepts four named step types.","tool_calls":[{"name":"run_command","args":{"CommandLine":"grep -n GENERIC src/importer.ts","toolSummary":"search the importer"}}],"input_tokens":10,"output_tokens":4,"cache_read_tokens":0}
+{"step_index":3,"source":"MODEL","type":"GENERIC","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","content":"src/importer.ts:12: if (type === 'VIEW_FILE') keep the output"}
+{"step_index":4,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","tool_calls":[{"name":"view_file","args":{"AbsolutePath":"/workspace/rich/missing.ts"}}]}
+{"step_index":5,"source":"MODEL","type":"GENERIC","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","error":"view_file failed: the file does not exist on disk"}
+{"step_index":6,"source":"SYSTEM","type":"ERROR_MESSAGE","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","error":"Model request failed once and was retried by the CLI."}
+{"step_index":7,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","content":"System message injected into the conversation by the CLI."}
+{"step_index":8,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","content":"GENERIC steps and errors are kept now."}
+{"step_index":9,"source":"SYSTEM","type":"CHECKPOINT","status":"DONE","created_at":"2026-08-20T09:00:00.000Z","content":"{{ CHECKPOINT 1 }}"}
