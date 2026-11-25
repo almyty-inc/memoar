@@ -64,11 +64,11 @@ pub(crate) fn listen(args: &ListenArgs, paths: &RuntimePaths) -> Result<CommandO
     // about them leaves the operator with no local record of what changed.
     let stopped;
     loop {
-        if let Some(deadline) = idle_deadline {
-            if Instant::now() >= deadline {
-                stopped = Stop::idle(args.idle_timeout_seconds);
-                break;
-            }
+        if let Some(deadline) = idle_deadline
+            && Instant::now() >= deadline
+        {
+            stopped = Stop::idle(args.idle_timeout_seconds);
+            break;
         }
         let read = match stream.read(&mut chunk) {
             Ok(read) => read,
@@ -248,12 +248,12 @@ fn materialize_from_command(paths: &RuntimePaths, payload: &Value) -> Result<Val
     let bytes = anonymous.send_bytes(anonymous.client.get(url))?;
     let bundle: ConversionBundle = serde_json::from_slice(&bytes)
         .map_err(|error| AppError::network(format!("invalid conversion bundle: {error}")))?;
-    if let Some(session_id) = payload.get("sessionId").and_then(Value::as_str) {
-        if bundle.session_id != session_id {
-            return Err(AppError::network(
-                "downloaded bundle session id did not match the command",
-            ));
-        }
+    if let Some(session_id) = payload.get("sessionId").and_then(Value::as_str)
+        && bundle.session_id != session_id
+    {
+        return Err(AppError::network(
+            "downloaded bundle session id did not match the command",
+        ));
     }
     let result = materialize_bundle(&bundle, &paths.home).map_err(map_materialize_error)?;
     serde_json::to_value(result).map_err(|error| AppError::internal(error.to_string()))

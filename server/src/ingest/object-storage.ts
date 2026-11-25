@@ -37,7 +37,7 @@ export class AwsS3ClientPort implements S3ClientPort {
   /**
    * Path-style addressing, unless the provider wants the other kind.
    *
-   * MinIO needs `bucket/key` in the path. Amazon deprecated that shape, and
+   * A local S3 server takes `bucket/key` in the path. Amazon deprecated that, and
    * DigitalOcean Spaces documents the opposite — its own SDK guidance is to set
    * `forcePathStyle` to false and use the virtual-hosted form,
    * `bucket.fra1.digitaloceanspaces.com`. Hard-coding `true` meant a provider

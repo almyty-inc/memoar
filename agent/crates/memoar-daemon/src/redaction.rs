@@ -121,12 +121,14 @@ pub(crate) fn contains_secret_lossy(bytes: &[u8], config: RedactionConfig) -> bo
 pub(crate) fn contains_secret_utf16(bytes: &[u8], config: RedactionConfig) -> bool {
     [true, false].into_iter().any(|little_endian| {
         let decoded: String = bytes
-            .chunks_exact(2)
-            .map(|pair| {
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&pair| {
                 let unit = if little_endian {
-                    u16::from_le_bytes([pair[0], pair[1]])
+                    u16::from_le_bytes(pair)
                 } else {
-                    u16::from_be_bytes([pair[0], pair[1]])
+                    u16::from_be_bytes(pair)
                 };
                 if unit < 128 { unit as u8 as char } else { ' ' }
             })
