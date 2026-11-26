@@ -1,6 +1,6 @@
 import type { ContentBlock, Turn } from "../../canonical/src/generated.js";
 import { BUILT_IN_CALLS, CODEX_BOOKKEEPING_ITEMS, messageBlocks, outputBlock, reasoningBlock, toolData } from "./codex-items.js";
-import { incrementUuid, isRecord, mostlyJsonLines, stringValue, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mostlyJsonLines, sessionModels, stringValue, withModelAndTokens } from "./common.js";
 import type { ParseRequest, ParseResult, SessionSeed, VersionedParser } from "./types.js";
 import { parserVersion } from "./versions.js";
 
@@ -13,6 +13,9 @@ const RESPONSE_ITEM = "response_item";
  * holds, so it is not read again.
  */
 const COMPACTED = "compacted";
+
+/** `{cwd, model, effort, …}`, written at the start of every turn. */
+const TURN_CONTEXT = "turn_context";
 
 /**
  * Codex writes a rollout as an append-only stream of response items, one per
@@ -42,6 +45,7 @@ export class CodexRolloutV1Parser implements VersionedParser {
     // that field also meant doing arithmetic on it to derive turn ids, which
     // throws for any id that is not hexadecimal.
     const nativeSessionId = stringValue(meta.payload, "id");
+    const eventSet = new Set(events);
     const turns: Turn[] = [];
     let blockOrdinal = 0;
     const mintBlock = () => incrementUuid(request.seed.id, 0x4000000 + (blockOrdinal += 1));
@@ -59,16 +63,24 @@ export class CodexRolloutV1Parser implements VersionedParser {
       return turn;
     };
 
+    // Each turn's model is in the `turn_context` written before it, and it
+    // changes when the person switches model mid-session.
+    let model: string | undefined;
     /** The assistant turn currently being assembled, opened on demand. */
     const openAssistant = (createdAt: string): Turn => {
       const last = turns.at(-1);
       if (last && last.role === "assistant") return last;
-      const turn = withModelAndTokens(newTurn("assistant", createdAt, []), request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
+      const turn = withModelAndTokens(newTurn("assistant", createdAt, []), model ?? request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
       turns[turns.length - 1] = turn;
       return turn;
     };
 
-    for (const record of events) {
+    for (const record of records ?? []) {
+      if (record.type === TURN_CONTEXT && isRecord(record.payload)) {
+        model = stringValue(record.payload, "model") ?? model;
+        continue;
+      }
+      if (!eventSet.has(record)) continue;
       const payload = record.payload as Record<string, unknown>;
       const createdAt = stringValue(record, "timestamp") ?? request.seed.createdAt;
       if (record.type === COMPACTED) {
@@ -151,6 +163,7 @@ export class CodexRolloutV1Parser implements VersionedParser {
       sessions: [{
         ...(request.seed satisfies SessionSeed),
         ...(nativeSessionId ? { source: { ...request.seed.source, nativeSessionId } } : {}),
+        models: sessionModels(request.seed.models, withOrdinals),
         turns: withOrdinals,
       }],
     };

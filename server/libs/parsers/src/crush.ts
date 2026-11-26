@@ -1,5 +1,5 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
-import { epochToIso, incrementUuid, turnId } from "./common.js";
+import { epochToIso, incrementUuid, sessionModels, turnId } from "./common.js";
 import { crushPart } from "./native-parts.js";
 import { parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
@@ -52,6 +52,7 @@ export class CrushV1Parser implements VersionedParser {
             id: sessionId,
             source: { ...request.seed.source, nativeSessionId: sessionRow.id },
             ...(sessionRow.title ? { title: sessionRow.title } : {}),
+            models: sessionModels(request.seed.models, turns),
             turns,
           };
         });

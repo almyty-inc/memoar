@@ -38,30 +38,57 @@ export function chatEnvelopes(value: unknown): Record<string, unknown>[] | null 
 }
 
 /**
- * The `.jsonl` layout: a snapshot, then writes against it.
+ * The `.jsonl` layout: a snapshot, then writes against it, replayed the way
+ * VS Code's own reader does (`objectMutationLog.ts`, `ObjectMutationLog.read`):
  *
- * Only the snapshot and the `kind:1` write are known — every `.jsonl` here is a
- * snapshot, one of them with a single `{"kind":1,"k":["inputState"],…}` after
- * it. A write whose path does not already exist is dropped rather than created,
- * and any other `kind` is ignored, because guessing what an unseen record means
- * is how a parser comes to invent content. The snapshot alone is still the
- * whole envelope, so an unread record costs the session nothing.
+ *   - `{kind:0, v}` replaces the whole state, and VS Code writes one again
+ *     whenever it compacts the log, so the last one wins;
+ *   - `{kind:1, k, v}` sets the value at path `k`, creating the key;
+ *   - `{kind:2, k, v?, i?}` cuts the array at `k` to length `i` when `i` is
+ *     given, then appends `v`, which is how every new request arrives;
+ *   - `{kind:3, k}` deletes the key at `k`.
+ *
+ * Reading only `kind:0` and `kind:1` lost every request a panel appended after
+ * its first snapshot. A write whose parent path does not exist is skipped,
+ * where VS Code would fail the whole file.
  */
 export function chatEnvelopesFromLog(records: readonly Record<string, unknown>[]): Record<string, unknown>[] | null {
-  const snapshot = records.find((record) => record.kind === 0 && isEnvelope(record.v));
-  if (!snapshot) return null;
-  const envelope = structuredClone(snapshot.v) as Record<string, unknown>;
+  let state: Record<string, unknown> | null = null;
   for (const record of records) {
-    if (record.kind !== 1 || !Array.isArray(record.k) || record.k.length === 0) continue;
-    const path = record.k as unknown[];
-    let container: unknown = envelope;
-    for (const segment of path.slice(0, -1)) {
-      container = isRecord(container) ? container[String(segment)] : undefined;
+    if (record.kind === 0) {
+      state = isRecord(record.v) ? structuredClone(record.v) : null;
+      continue;
     }
-    const last = String(path.at(-1));
-    if (isRecord(container) && last in container) container[last] = record.v;
+    if (!state || !Array.isArray(record.k)) continue;
+    applyWrite(state, record);
   }
-  return isEnvelope(envelope) ? [envelope] : null;
+  return state && isEnvelope(state) ? [state] : null;
+}
+
+type Container = Record<string, unknown> | unknown[];
+
+function child(container: Container, key: unknown): unknown {
+  return Array.isArray(container) ? container[Number(key)] : container[String(key)];
+}
+
+function applyWrite(state: Record<string, unknown>, record: Record<string, unknown>): void {
+  const path = record.k as unknown[];
+  if (path.length === 0) return;
+  let container: unknown = state;
+  for (const segment of path.slice(0, -1)) {
+    container = isRecord(container) || Array.isArray(container) ? child(container, segment) : undefined;
+  }
+  if (!isRecord(container) && !Array.isArray(container)) return;
+  const target = container as Record<string, unknown>;
+  const key = String(path.at(-1));
+  if (record.kind === 1) target[key] = record.v;
+  else if (record.kind === 3) delete target[key];
+  else if (record.kind === 2) {
+    const array = Array.isArray(target[key]) ? (target[key] as unknown[]) : [];
+    if (typeof record.i === "number") array.length = Math.min(array.length, record.i);
+    if (Array.isArray(record.v)) array.push(...(record.v as unknown[]));
+    target[key] = array;
+  }
 }
 
 /** `{$mid, fsPath, external, path, scheme}`, as VS Code serialises a URI. */
