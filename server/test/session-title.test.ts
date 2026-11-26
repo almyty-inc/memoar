@@ -40,6 +40,25 @@ describe("session titles", () => {
     ])).toBe("Rename the config loader");
   });
 
+  it("takes the prompt from under the Codex IDE context, and skips Codex's own messages", () => {
+    expect(titleFromTurns([turn(
+      "user",
+      "# Context from my IDE setup:\n\n## Active file: main.tf\n\n## Open tabs:\n- main.tf: main.tf\n\n## My request for Codex:\nAdd a queue for the mailer\n",
+    )])).toBe("Add a queue for the mailer");
+    expect(titleFromTurns([
+      turn("user", "# AGENTS.md instructions\n\nBe brief."),
+      turn("user", "The following is the Codex agent history added since your last turn."),
+      turn("user", "Rename the config loader"),
+    ])).toBe("Rename the config loader");
+  });
+
+  it("counts a stored title made of injected text as no title", () => {
+    expect(isPlaceholderTitle("# AGENTS.md instructions", "codex")).toBe(true);
+    expect(isPlaceholderTitle("# Context from my IDE setup:", "codex")).toBe(true);
+    expect(isPlaceholderTitle("<command-name>/clear</command-name>", "claude-code")).toBe(true);
+    expect(isPlaceholderTitle("# Fix the rate limiter", "codex")).toBe(false);
+  });
+
   it("shortens long prompts at a word", () => {
     const title = titleFromTurns([turn("user", "word ".repeat(40))]);
     expect(title?.length).toBeLessThanOrEqual(80);
