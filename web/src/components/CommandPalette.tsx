@@ -55,7 +55,6 @@ export function CommandPalette({ open, commands, onClose }: {
     if (event.key === 'Enter') { event.preventDefault(); runAt(active); }
   };
 
-  let lastGroup = '';
   return (
     <div className="palette-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div className="palette" role="dialog" aria-modal="true" aria-label="Command palette" onKeyDown={onKeyDown}>
@@ -78,8 +77,7 @@ export function CommandPalette({ open, commands, onClose }: {
         <div className="palette-list" id={listId} role="listbox" ref={listRef} aria-label="Results">
           {results.length === 0 ? <p className="palette-empty">Nothing matches.</p> : null}
           {results.map((command, index) => {
-            const heading = command.group !== lastGroup ? command.group : null;
-            lastGroup = command.group;
+            const heading = index === 0 || results[index - 1]?.group !== command.group ? command.group : null;
             return (
               <div key={command.id} role="presentation">
                 {heading ? <div className="palette-group" role="presentation">{heading}</div> : null}

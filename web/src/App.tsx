@@ -140,7 +140,13 @@ export function App() {
     fetches one, whether a row was chosen, a link was followed, or the page was
     reloaded. A transcript seen before, or prefetched, shows at once.
   */
-  const routeSessionId = route.view === 'session' ? route.sessionId : undefined;
+  const allSessions = useMemo(() => dashboard.timeline.flatMap((group) => group.sessions), [dashboard.timeline]);
+  // With room for both panes, the list opens with its newest session showing
+  // rather than beside an empty pane. The address stays /timeline until the
+  // reader picks one.
+  const routeSessionId = route.view === 'session'
+    ? route.sessionId
+    : view === 'timeline' && wideLayout() ? allSessions[0]?.id : undefined;
   const { load: loadSession } = sessionCache;
   useEffect(() => {
     if (!routeSessionId || !memoarApi.authenticated) return undefined;
@@ -154,15 +160,6 @@ export function App() {
   // Only the session the address names is shown, so moving between sessions
   // never renders the previous one under the new heading.
   const openDetail = sessionCache.peek(routeSessionId) ?? null;
-
-  const allSessions = useMemo(() => dashboard.timeline.flatMap((group) => group.sessions), [dashboard.timeline]);
-
-  // With room for both panes, the list opens with its newest session showing
-  // rather than beside an empty pane.
-  const newest = allSessions[0];
-  useEffect(() => {
-    if (view === 'timeline' && newest && wideLayout()) selectSession(newest);
-  }, [view, newest, selectSession]);
 
   // Escape from a transcript: back to the list. Side by side the list is
   // already there, so focus goes to the selected row instead.

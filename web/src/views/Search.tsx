@@ -105,7 +105,7 @@ export function SearchView({ onOpen, workspaces = [], initialQuery = '' }: {
           type="search"
           value={query}
           onChange={(event) => updateQuery(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); (document.querySelector('.result-row') as HTMLElement | null)?.focus(); } }}
+          onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLElement>('.result-row')?.focus(); } }}
           placeholder="Search every transcript"
           aria-label="Search sessions"
         />

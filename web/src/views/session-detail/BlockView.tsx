@@ -11,7 +11,8 @@ const markdown: Components = {
   pre: ({ children }) => <>{children}</>,
   code: ({ className, children }) => {
     const language = /language-([\w+-]+)/u.exec(className ?? '')?.[1];
-    const source = String(children).replace(/\n$/u, '');
+    const parts: unknown[] = Array.isArray(children) ? children : [children];
+    const source = parts.filter((part): part is string => typeof part === 'string').join('').replace(/\n$/u, '');
     if (!language && !source.includes('\n')) return <code>{children}</code>;
     return <CodeBlock code={source} language={language} />;
   },
