@@ -11,16 +11,20 @@ name = "memoar"
 path = "src/main.rs"
 
 [dependencies]
+base64.workspace = true
 chrono.workspace = true
 clap.workspace = true
 memoar-canonical = { path = "../memoar-canonical" }
 memoar-connectors = { path = "../memoar-connectors" }
 memoar-daemon = { path = "../memoar-daemon" }
 memoar-materializer = { path = "../memoar-materializer" }
+ratatui.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+syntect.workspace = true
 thiserror.workspace = true
+unicode-width.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

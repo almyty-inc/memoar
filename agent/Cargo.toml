@@ -25,6 +25,9 @@ base64 = "0.23"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
+# `memoar tui`. Its crossterm backend is the one the CLI uses, through
+# `ratatui::crossterm`, so the two can never disagree on a version.
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "query", "rustls", "rustls-native-certs"] }
 rusqlite = { version = "0.43", features = ["bundled"] }
@@ -32,6 +35,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
 tempfile = "3"
+# Code blocks in `memoar tui` transcripts. Pure Rust regexes, so no C
+# toolchain on any of the three desktops, and only the grammars: colours come
+# from the terminal's own palette, not a bundled theme.
+syntect = { version = "5.3", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
 thiserror = "2"
+# Already in the tree through ratatui. The TUI wraps transcript text itself, so
+# it needs the same idea of how wide a character is.
+unicode-width = "0.2"
 uuid = { version = "1", features = ["serde", "v4", "v7"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
