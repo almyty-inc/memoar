@@ -17,14 +17,18 @@ pub(crate) fn bar() -> impl IntoElement {
     let l = look();
     set_title_bar(TitleBarStyle::Hidden, Some(px(l.header)));
     let shown = move || title_bar().top.0 > 0.0;
+    // A centred title is centred in the window, so both sides reserve the
+    // wider of the two control areas.
+    let side =
+        move |own: f32, other: f32| px(if l.centred_title { own.max(other) } else { own } + 12.0);
     when(shown, move || {
         let bar = view()
             .window_drag(true)
             .flex_row()
             .items_center()
             .h(move || title_bar().top)
-            .pl(move || px(title_bar().left.0 + 12.0))
-            .pr(move || px(title_bar().right.0 + 12.0))
+            .pl(move || side(title_bar().left.0, title_bar().right.0))
+            .pr(move || side(title_bar().right.0, title_bar().left.0))
             .border_b(px(hair()))
             .border_color(l.line);
         let bar = if l.centred_title {
