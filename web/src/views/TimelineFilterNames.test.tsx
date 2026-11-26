@@ -25,7 +25,6 @@ describe('the timeline filters', () => {
         archived={1}
         asOf={Date.parse('2026-09-02T00:00:00.000Z')}
         onOpen={vi.fn()}
-        onSearch={vi.fn()}
         onConnect={vi.fn()}
         hasMore={false}
         loadingMore={false}
@@ -34,7 +33,7 @@ describe('the timeline filters', () => {
     );
 
     expect(screen.getByLabelText('Filter by source')).toBeInTheDocument();
-    expect(screen.getByLabelText('Filter by workspace')).toBeInTheDocument();
+    expect(screen.getByLabelText('Filter by project')).toBeInTheDocument();
     expect(screen.getByLabelText('Filter by date')).toBeInTheDocument();
   });
 });

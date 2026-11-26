@@ -1,4 +1,3 @@
-import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Button, RedactionBadge } from '../components/ui';
 import type { MemoryDocument } from '../lib/types';
 
@@ -14,8 +13,7 @@ function countKinds(findings: string[]): { kind: string; count: number }[] {
 const KIND_LABELS: Record<string, string> = {
   api_key: 'API key',
   jwt: 'signed token',
-  // No longer produced. Kept so a finding stored before the shared catalogue
-  // still reads as words.
+  // No longer produced. Kept so a finding stored before the shared catalogue reads as words.
   env: 'environment variable',
   private_key: 'private key',
   credential: 'password or credential',
@@ -27,11 +25,7 @@ const KIND_LABELS: Record<string, string> = {
 
 /**
  * What the scanner found in one memory file, and the act of reviewing it.
- *
- * Nothing here is asserted before it has been measured: every word comes from
- * the document the archive returned, and the status only changes when the
- * server hands back a document that says so. A review that fails leaves the
- * status exactly where it was and says why.
+ * The status only changes when the server hands back a document that says so.
  */
 export function MemoryRedactionPanel({ document, busy, error, onReview }: {
   document: MemoryDocument;
@@ -43,38 +37,28 @@ export function MemoryRedactionPanel({ document, busy, error, onReview }: {
   const flagged = document.redactionStatus === 'findings';
 
   return (
-    <div className={`memory-redaction redaction-${document.redactionStatus}`}>
-      <h3>
-        {flagged ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
-        <RedactionBadge status={document.redactionStatus} />
-      </h3>
-
-      {document.redactionFindings.length > 0 ? (
-        <>
-          <p>
-            The scanner matched {document.redactionFindings.length}{' '}
-            {document.redactionFindings.length === 1 ? 'thing' : 'things'} in this file.
-          </p>
-          <ul>
-            {kinds.map(({ kind, count }) => (
-              <li key={kind}>{KIND_LABELS[kind] ?? kind}{count > 1 ? ` ×${count}` : ''}</li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <p>The scanner matched nothing in this file.</p>
-      )}
-
+    <div className="memory-redaction">
+      <p>
+        <RedactionBadge status={document.redactionStatus} />{' '}
+        {document.redactionFindings.length > 0
+          ? <span>The scanner matched {document.redactionFindings.length} {document.redactionFindings.length === 1 ? 'thing' : 'things'} in this file.</span>
+          : <span>The scanner matched nothing in this file.</span>}
+      </p>
+      {kinds.length > 0 ? (
+        <ul className="inline-list">
+          {kinds.map(({ kind, count }) => (
+            <li key={kind}>{KIND_LABELS[kind] ?? kind}{count > 1 ? ` ×${count}` : ''}</li>
+          ))}
+        </ul>
+      ) : null}
       {flagged ? (
         <>
-          <p>
-            Until someone reviews it, this file&rsquo;s text is not served to agents over MCP or to
-            anywhere outside this archive. Read the version below, then say it may go out as it stands.
+          <p className="meta">
+            Until someone reviews it, this file&rsquo;s text is not served to agents over MCP or anywhere outside this
+            archive. Read the version below, then mark it reviewed to let it go out as it stands.
           </p>
           {error ? <p role="alert" className="error-note">{error}</p> : null}
-          <Button size="sm" onClick={onReview} disabled={busy}>
-            {busy ? 'Recording…' : 'Mark reviewed'}
-          </Button>
+          <div><Button size="sm" onClick={onReview} disabled={busy}>{busy ? 'Recording' : 'Mark reviewed'}</Button></div>
         </>
       ) : null}
     </div>

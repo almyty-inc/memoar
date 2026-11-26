@@ -1,4 +1,3 @@
-import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../components/ui';
 
@@ -23,7 +22,7 @@ export function CreateTeamForm({ busy, onCreate }: {
 
   return (
     <form
-      className="create-team-form"
+      className="inline-form"
       onSubmit={(event) => {
         event.preventDefault();
         if (!trimmed) return;
@@ -39,7 +38,7 @@ export function CreateTeamForm({ busy, onCreate }: {
         onChange={(event) => setName(event.target.value)}
       />
       <Button size="sm" variant="primary" type="submit" disabled={busy || trimmed.length === 0}>
-        <Plus size={14} /> Create team
+        Create team
       </Button>
     </form>
   );

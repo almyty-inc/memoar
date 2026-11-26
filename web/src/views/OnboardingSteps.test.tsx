@@ -67,7 +67,7 @@ describe('connecting a machine', () => {
     render(<OnboardingView machines={[]} onComplete={vi.fn()} onRefresh={() => Promise.resolve()} />);
 
     expect(screen.getByText(/No machine has signed in yet/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Open the timeline/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Open sessions/ })).toBeDisabled();
   });
 
   it('asks the archive again while it waits, so the reader does not have to reload', () => {

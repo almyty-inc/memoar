@@ -1,19 +1,6 @@
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Check,
-  Clock3,
-  Link2,
-  Share2,
-  ShieldCheck,
-  Trash2,
-  UserCheck,
-  Users,
-  X,
-} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { SessionSummary, ShareGrant, Transfer } from '../lib/types';
-import { Badge, Button, Modal, cn, formatDate, formatRelative } from '../components/ui';
+import { Button, Modal, PageHeader, cn, formatDate, formatRelative, plural } from '../components/ui';
 
 type StatusFilter = 'all' | ShareGrant['status'];
 
@@ -21,7 +8,7 @@ const STATUS_FILTERS: StatusFilter[] = ['all', 'active', 'revoked', 'expired'];
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfer, onDeclineTransfer, onRevokeGrant, onRequestTransfer }: {
+export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfer, onDeclineTransfer, onRevokeGrant, onRequestTransfer, onTeams }: {
   grants: ShareGrant[];
   transfers: Transfer[];
   sessions: SessionSummary[];
@@ -31,6 +18,7 @@ export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfe
   onDeclineTransfer: (id: string) => Promise<void>;
   onRevokeGrant: (id: string) => Promise<void>;
   onRequestTransfer: (input: { sessionId: string; recipientEmail: string }) => Promise<void>;
+  onTeams?: () => void;
 }) {
   const [tab, setTab] = useState<'links' | 'transfers'>('links');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -43,12 +31,8 @@ export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfe
     [grants, status],
   );
 
-  // Every figure here is derived from the grants on screen. This panel used to
-  // read "16 shared views this month", "1 link expires this week" and "14
-  // sensitive fields masked" as literals, none of which came from anywhere.
-  // View counts are not tracked at all, so that statistic is simply not shown.
-  // asOf is stamped when the dashboard loads, so "expires this week" is
-  // measured against a real moment without reading the clock during render.
+  // Every figure is derived from the grants on screen. View counts are not
+  // tracked, so none is shown.
   const stats = useMemo(() => ({
     active: grants.filter((grant) => grant.status === 'active').length,
     expiringThisWeek: grants.filter((grant) => {
@@ -73,97 +57,78 @@ export function SharingView({ grants, transfers, sessions, asOf, onAcceptTransfe
 
   return (
     <div className="page sharing-page">
-      <section className="page-heading row-heading">
-        <div><div className="eyebrow"><Share2 size={13} /> Controlled portability</div><h1>Sharing</h1><p>Review redactions before a session leaves your private archive.</p></div>
-      </section>
+      <PageHeader title="Shared">
+        {onTeams ? <Button size="sm" variant="ghost" onClick={onTeams}>Teams</Button> : null}
+        {tab === 'transfers' ? <Button size="sm" disabled={sessions.length === 0} onClick={() => setTransferOpen(true)}>Request transfer</Button> : null}
+      </PageHeader>
 
-      {/* Links are created from a session, because the redaction review a link
-          requires belongs to one. */}
-      <section className="privacy-banner">
-        <span><ShieldCheck size={20} /></span>
-        <div><strong>Visibility stays private until review is complete.</strong><p>Open a session and choose Share to review its redactions and mint a link.</p></div>
-      </section>
+      <p className="summary-line">
+        <span>{stats.active} active {stats.active === 1 ? 'link' : 'links'}</span>
+        <span>{stats.expiringThisWeek} {stats.expiringThisWeek === 1 ? 'link expires' : 'links expire'} this week</span>
+        <span>{plural(stats.pendingTransfers, 'pending transfer')}</span>
+      </p>
 
-      {error ? <section className="privacy-banner banner-error" role="alert">
-<span><X size={20} /></span><div><strong>Sharing action failed</strong><p>{error}</p></div></section> : null}
+      {error ? <div className="notice notice-error" role="alert"><p><strong>Sharing action failed.</strong> {error}</p></div> : null}
 
       <div className="tabs" role="tablist" aria-label="Sharing sections">
-        <button role="tab" aria-selected={tab === 'links'} className={cn(tab === 'links' && 'active')} onClick={() => setTab('links')} type="button"><Link2 size={15} /> Share links <Badge>{grants.length}</Badge></button>
-        {/* Both badges count what the tab holds. This one counted pending
-            transfers only, so the tab read "Transfers 0" over a panel listing
-            three of them. How many are pending is said once, in the stats
-            below, where it is labelled. */}
-        <button role="tab" aria-selected={tab === 'transfers'} className={cn(tab === 'transfers' && 'active')} onClick={() => setTab('transfers')} type="button"><Users size={15} /> Transfers <Badge>{transfers.length}</Badge></button>
+        <button role="tab" aria-selected={tab === 'links'} onClick={() => setTab('links')} type="button">Links <span className="count">{grants.length}</span></button>
+        {/* Both counts are what the tab holds. */}
+        <button role="tab" aria-selected={tab === 'transfers'} onClick={() => setTab('transfers')} type="button">Transfers <span className="count">{transfers.length}</span></button>
       </div>
 
       {tab === 'links' ? (
-        <section className="data-panel" role="tabpanel">
-          <header>
-            <div><h2>Active links</h2><p>Viewer and importer access to redacted session copies.</p></div>
-            <label className="field-label inline-filter">Status
-              <select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
-                {STATUS_FILTERS.map((option) => <option key={option} value={option}>{option === 'all' ? 'All statuses' : option}</option>)}
+        <section role="tabpanel" aria-label="Share links">
+          <div className="list-toolbar tab-toolbar">
+            <label>
+              <span className="sr-only">Filter by status</span>
+              <select className="select-plain" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
+                {STATUS_FILTERS.map((option) => <option key={option} value={option}>{option === 'all' ? 'All statuses' : option.charAt(0).toUpperCase() + option.slice(1)}</option>)}
               </select>
             </label>
-          </header>
-          <div className="data-list">
+            <span className="meta">A link is made from a session's Share button, after its redaction review.</span>
+          </div>
+          <div className="row-list">
             {visibleGrants.length === 0 ? <p className="empty-note">No {status === 'all' ? '' : `${status} `}share links.</p> : null}
             {visibleGrants.map((grant) => (
-              <article className="share-row" key={grant.id}>
-                <span className="row-icon"><Link2 size={16} /></span>
-                {/*
-                  No token here on purpose: GET /sharing/links does not return
-                  one. A share token is a bearer secret, shown once when the
-                  link is minted and never listed again, so this row identifies
-                  the grant rather than reproducing the secret.
-                */}
-                <div className="share-main">
-                  <strong>{grant.sessionTitle}</strong>
-                  <small>Created {formatRelative(grant.createdAt)}</small>
-                </div>
-                <div className="share-meta"><Badge className="permission-badge">{grant.permission}</Badge></div>
-                <div className="share-meta"><span>{grant.expiresAt ? `Expires ${formatDate(grant.expiresAt)}` : 'No expiry'}</span></div>
-                <Badge className={cn(grant.status === 'active' && 'status-active')}><span /> {grant.status}</Badge>
-                {grant.status === 'active' ? (
-                  <Button size="sm" variant="ghost" disabled={busy === grant.id} onClick={() => void run(grant.id, () => onRevokeGrant(grant.id))}>
-                    <Trash2 size={14} /> Revoke
-                  </Button>
-                ) : null}
-              </article>
+              // No token here: a share token is shown once, when the link is made.
+              <div className="row share-row" key={grant.id}>
+                <span className={cn('dot', grant.status === 'active' && 'dot-ok')} aria-hidden="true" />
+                <span className="row-main">{grant.sessionTitle}</span>
+                <span className="row-meta">{grant.permission === 'viewer' ? 'Can view' : 'Can import'}</span>
+                <span className="row-meta">{grant.expiresAt ? `Expires ${formatDate(grant.expiresAt)}` : 'No expiry'}</span>
+                <span className="row-meta">Created {formatRelative(grant.createdAt)}</span>
+                <span className="row-meta status-cell">{grant.status.charAt(0).toUpperCase() + grant.status.slice(1)}</span>
+                <span className="row-actions">
+                  {grant.status === 'active' ? (
+                    <Button size="sm" variant="ghost" disabled={busy === grant.id} onClick={() => void run(grant.id, () => onRevokeGrant(grant.id))}>Revoke</Button>
+                  ) : null}
+                </span>
+              </div>
             ))}
           </div>
         </section>
       ) : (
-        <section className="data-panel" role="tabpanel">
-          <header>
-            <div><h2>Session transfers</h2><p>Incoming copies and outgoing ownership handoffs.</p></div>
-            <Button size="sm" disabled={sessions.length === 0} onClick={() => setTransferOpen(true)}>Request transfer</Button>
-          </header>
-          <div className="data-list">
+        <section role="tabpanel" aria-label="Session transfers">
+          <h2 className="sr-only">Session transfers</h2>
+          <div className="row-list tab-list">
             {transfers.length === 0 ? <p className="empty-note">No transfers yet.</p> : null}
             {transfers.map((transfer) => (
-              <article className="transfer-row" key={transfer.id}>
-                <span className={cn('row-icon', transfer.direction === 'incoming' && 'incoming')}>{transfer.direction === 'incoming' ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}</span>
-                <div><strong>{transfer.sessionTitle}</strong><p>{transfer.direction === 'incoming' ? `From ${transfer.senderEmail}` : `To ${transfer.recipientEmail}`}</p></div>
-                <Badge>{transfer.direction}</Badge>
-                <span>{formatRelative(transfer.createdAt)}</span>
+              <div className="row transfer-row" key={transfer.id}>
+                <span className="row-meta direction">{transfer.direction === 'incoming' ? 'From' : 'To'}</span>
+                <span className="row-meta transfer-who">{transfer.direction === 'incoming' ? transfer.senderEmail : transfer.recipientEmail}</span>
+                <span className="row-main">{transfer.sessionTitle}</span>
+                <span className="row-meta">{formatRelative(transfer.createdAt)}</span>
                 {transfer.status === 'pending' && transfer.direction === 'incoming' ? (
-                  <div className="transfer-actions">
-                    <Button size="sm" variant="primary" disabled={busy === transfer.id} onClick={() => void run(transfer.id, () => onAcceptTransfer(transfer.id))}><Check size={14} /> Accept</Button>
-                    <Button size="sm" variant="ghost" disabled={busy === transfer.id} onClick={() => void run(transfer.id, () => onDeclineTransfer(transfer.id))}><X size={14} /> Decline</Button>
-                  </div>
-                ) : <Badge className={cn(transfer.status === 'accepted' && 'status-active')}><UserCheck size={12} /> {transfer.status}</Badge>}
-              </article>
+                  <span className="row-actions">
+                    <Button size="sm" variant="primary" disabled={busy === transfer.id} onClick={() => void run(transfer.id, () => onAcceptTransfer(transfer.id))}>Accept</Button>
+                    <Button size="sm" variant="ghost" disabled={busy === transfer.id} onClick={() => void run(transfer.id, () => onDeclineTransfer(transfer.id))}>Decline</Button>
+                  </span>
+                ) : <span className="row-meta status-cell">{transfer.status.charAt(0).toUpperCase() + transfer.status.slice(1)}</span>}
+              </div>
             ))}
           </div>
         </section>
       )}
-
-      <section className="sharing-stats">
-        <div><Link2 size={17} /><span><strong>{stats.active}</strong> active {stats.active === 1 ? 'link' : 'links'}</span></div>
-        <div><Clock3 size={17} /><span><strong>{stats.expiringThisWeek}</strong> {stats.expiringThisWeek === 1 ? 'link expires' : 'links expire'} this week</span></div>
-        <div><Users size={17} /><span><strong>{stats.pendingTransfers}</strong> pending {stats.pendingTransfers === 1 ? 'transfer' : 'transfers'}</span></div>
-      </section>
 
       <RequestTransferModal
         open={transferOpen}
@@ -191,7 +156,7 @@ function RequestTransferModal({ open, sessions, busy, onClose, onSubmit }: {
   const chosen = sessionId || sessions[0]?.id || '';
 
   return (
-    <Modal open={open} title="Request transfer" description="The recipient receives a redacted copy once they accept." onClose={onClose}>
+    <Modal open={open} title="Request transfer" description="The recipient gets a redacted copy once they accept." onClose={onClose}>
       <div className="modal-body">
         <label className="field-label">Session
           <select value={chosen} onChange={(event) => setSessionId(event.target.value)}>
@@ -205,7 +170,7 @@ function RequestTransferModal({ open, sessions, busy, onClose, onSubmit }: {
       <footer className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy || !chosen || !recipientEmail.includes('@')} onClick={() => onSubmit({ sessionId: chosen, recipientEmail })}>
-          {busy ? 'Requesting…' : 'Request transfer'}
+          {busy ? 'Requesting' : 'Request transfer'}
         </Button>
       </footer>
     </Modal>

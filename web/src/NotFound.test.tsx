@@ -31,9 +31,9 @@ describe('an address with no screen behind it', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: /No screen lives at this address/u })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Nothing lives at this address/u })).toBeInTheDocument();
     expect(screen.getByText('/timelnie')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Pick up where you left off.' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sessions', level: 1 })).not.toBeInTheDocument();
     // And the address is left alone, so it can be corrected or reported.
     expect(window.location.pathname).toBe('/timelnie');
   });
@@ -43,7 +43,7 @@ describe('an address with no screen behind it', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Pick up where you left off.' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /No screen lives at this address/u })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sessions', level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Nothing lives at this address/u })).not.toBeInTheDocument();
   });
 });

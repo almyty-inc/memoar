@@ -1,52 +1,30 @@
-import {
-  ArrowRight,
-  Braces,
-  ChevronDown,
-  Command,
-  Search,
-  SlidersHorizontal,
-  Sparkles,
-  X,
-} from 'lucide-react';
+import { Search as SearchIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, EmptyState, PageHeader, plural } from '../components/ui';
 import { memoarApi } from '../lib/api';
 import { DEFAULT_PACK_TOKEN_BUDGET, formatTokenBudget } from '../lib/limits';
 import type { PackResponse, SearchResponse, SessionSummary } from '../lib/types';
 import { PackPreviewModal } from './search/PackPreviewModal';
 import { SearchFilters } from './search/SearchFilters';
+import { SearchResults } from './search/SearchResults';
 
-import {
-  Button,
-  EmptyState,
-  HighlightText,
-  RedactionBadge,
-  SourceBadge,
-  formatRelative,
-} from '../components/ui';
-
-export function SearchView({ onOpen, workspaces = [] }: {
+export function SearchView({ onOpen, workspaces = [], initialQuery = '' }: {
   onOpen: (session: SessionSummary) => void;
-  /** The account's own workspaces, for starting points that are not invented. */
+  /** The account's own workspaces, offered as starting points. */
   workspaces?: string[];
+  /** What the command palette was asked to search for. */
+  initialQuery?: string;
 }) {
-  // Empty. This opened with `parser` already typed and executed, so the page
-  // presented a developer's test query and its results as if you had searched.
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   /*
-    Null until a query has actually been sent. It used to start as a zeroed
-    SearchResponse and the page reported it: "0 results", "hybrid · 12 ms", and
-    "No matching sessions — try a broader phrase or clear the source filter",
-    for a search nobody had run and a filter nobody had set. A count, a mode
-    and a duration are findings, so they exist only once there is a search to
-    have found them.
+    Null until a query has been sent. A count, a mode and a duration are
+    findings, so they exist only once there is a search to have found them.
   */
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState<'relevance' | 'recent'>('relevance');
   const [packOpen, setPackOpen] = useState(false);
   const [pack, setPack] = useState<PackResponse | null>(null);
@@ -54,18 +32,14 @@ export function SearchView({ onOpen, workspaces = [] }: {
   const [packError, setPackError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  /*
-    Nothing is asked of the archive until there is something to ask. An empty
-    box is not a query, and a rejected query is a state the page has to be able
-    to show: without the catch below, one failed request left `loading` true,
-    `aria-busy` on, and three skeletons shimmering for as long as the tab was
-    open.
-  */
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Nothing is asked until there is something to ask, and a refusal ends the
+  // loading state rather than leaving skeletons up for good.
   useEffect(() => {
     const phrase = query.trim();
     if (!phrase) return undefined;
     let active = true;
-
     const timer = window.setTimeout(() => {
       setLoading(true);
       setSearchError(null);
@@ -88,13 +62,10 @@ export function SearchView({ onOpen, workspaces = [] }: {
       (!activeSource || session.sourceLabel === activeSource)
       && (!activeWorkspace || session.workspace === activeWorkspace)
     ));
-
-    // The server orders by relevance already, so 'relevance' keeps its order
-    // rather than re-sorting on a score the backend may not have supplied.
+    // The server already orders by relevance.
     if (sort === 'relevance') return filtered;
     return [...filtered].sort((left, right) => new Date(right.updatedAt).valueOf() - new Date(left.updatedAt).valueOf());
   }, [activeSource, activeWorkspace, response, sort]);
-
 
   const previewPack = async () => {
     setPackOpen(true);
@@ -102,7 +73,6 @@ export function SearchView({ onOpen, workspaces = [] }: {
     setPackError(null);
     try {
       setPack(await memoarApi.buildPack(query, DEFAULT_PACK_TOKEN_BUDGET, 'mixed'));
-
     } catch (error) {
       setPackError(error instanceof Error ? error.message : 'Pack request failed');
     } finally {
@@ -110,11 +80,7 @@ export function SearchView({ onOpen, workspaces = [] }: {
     }
   };
 
-  /*
-    Emptying the box puts the page back to before any search, now rather than
-    a debounce later. It belongs to the event that emptied it: an effect that
-    sets state as soon as it runs re-renders for nothing.
-  */
+  // Emptying the box puts the page back to before any search, immediately.
   const updateQuery = (value: string) => {
     setQuery(value);
     if (value.trim()) return;
@@ -128,159 +94,89 @@ export function SearchView({ onOpen, workspaces = [] }: {
     inputRef.current?.focus();
   };
 
-
   return (
     <div className="page search-page">
-      <section className="search-hero">
-        <div className="eyebrow"><Sparkles size={13} /> Hybrid retrieval across your archive</div>
-        <h1>Find the work, not the window.</h1>
-        <div className="big-search">
-          <Search size={21} aria-hidden="true" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(event) => updateQuery(event.target.value)}
+      <PageHeader title="Search" />
+      <div className="search-box">
+        <SearchIcon size={15} aria-hidden="true" />
+        <input
+          id="search-input"
+          ref={inputRef}
+          type="search"
+          value={query}
+          onChange={(event) => updateQuery(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); (document.querySelector('.result-row') as HTMLElement | null)?.focus(); } }}
+          placeholder="Search every transcript"
+          aria-label="Search sessions"
+        />
+        {query ? <button type="button" className="icon-button" onClick={clearQuery} aria-label="Clear search"><X size={14} /></button> : null}
+      </div>
 
-            placeholder="Try “how did we fix tenant isolation?”"
-            aria-label="Search sessions"
-          />
-          {query ? <button type="button" onClick={clearQuery} aria-label="Clear search"><X size={17} /></button> : null}
-          <kbd><Command size={11} /> K</kbd>
-        </div>
-        {/* The three suggestions here — "redaction review", "parent reference",
-            "pack freshness" — were fixed strings from a developer's test corpus,
-            offered as if they had come from your archive. Your own workspaces
-            are real, and they are what you would actually search within. */}
-        {workspaces.length > 0 ? (
-          <div className="search-suggestions">
-            <span>In</span>
-            {workspaces.slice(0, 4).map((workspace) => (
-              <button key={workspace} type="button" onClick={() => updateQuery(workspace)}>{workspace}</button>
-
-            ))}
-          </div>
-        ) : null}
-      </section>
+      {!response && !loading && !searchError && workspaces.length > 0 ? (
+        <p className="search-starts">
+          <span>Projects</span>
+          {workspaces.slice(0, 5).map((workspace) => (
+            <button key={workspace} type="button" className="link-button mono" onClick={() => updateQuery(workspace)}>{workspace}</button>
+          ))}
+        </p>
+      ) : null}
 
       <div className="search-layout">
+        <section className="search-results" aria-busy={loading}>
+          {loading || response ? (
+            <div className="results-toolbar">
+              <strong>{loading ? 'Searching' : plural(items.length, 'result')}</strong>
+              {response && !loading ? <span className="results-meta">{response.meta.realizedMode} · {response.meta.tookMs} ms</span> : null}
+              <div role="group" aria-label="Active filters" className="active-filters">
+                {activeSource ? <button type="button" className="chip" onClick={() => setActiveSource(null)}>{activeSource} <X size={11} aria-hidden="true" /></button> : null}
+                {activeWorkspace ? <button type="button" className="chip mono" onClick={() => setActiveWorkspace(null)}>{activeWorkspace} <X size={11} aria-hidden="true" /></button> : null}
+              </div>
+              <label className="sort-control">
+                <span className="sr-only">Sort results</span>
+                <select className="select-plain" value={sort} onChange={(event) => setSort(event.target.value === 'recent' ? 'recent' : 'relevance')}>
+                  <option value="relevance">Best match</option>
+                  <option value="recent">Most recent</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          <div aria-live="polite">
+            {searchError ? <p role="alert" className="error-note">{searchError}</p> : null}
+            {loading ? Array.from({ length: 4 }, (_, index) => (
+              <div className="result-skeleton" key={index}><span className="skeleton" style={{ width: '48%' }} /><span className="skeleton" style={{ width: '78%' }} /></div>
+            )) : null}
+            {!loading && items.length > 0 ? <SearchResults items={items} query={query} onOpen={onOpen} /> : null}
+            {!loading && !searchError && response && items.length === 0 ? (
+              <EmptyState
+                title="No matching sessions"
+                body={activeSource || activeWorkspace ? 'Try a broader phrase, or clear the filters.' : 'Try a broader phrase.'}
+                action={<Button size="sm" onClick={() => { clearQuery(); setActiveSource(null); setActiveWorkspace(null); }}>Clear search</Button>}
+              />
+            ) : null}
+            {!loading && !searchError && !response ? (
+              <EmptyState title="Search your archive" body="Matches words in every captured session, and meaning where this archive has embeddings." />
+            ) : null}
+          </div>
+
+          {!loading && items.length > 0 ? (
+            <div className="notice pack-prompt">
+              <p>Build a cited context pack from these results, within a {formatTokenBudget(DEFAULT_PACK_TOKEN_BUDGET)}-token budget.</p>
+              <Button size="sm" disabled={packLoading} onClick={() => void previewPack()}>Preview pack</Button>
+            </div>
+          ) : null}
+        </section>
+
         <SearchFilters
-          filtersOpen={filtersOpen}
-          setFiltersOpen={setFiltersOpen}
           response={response}
           activeSource={activeSource}
           setActiveSource={setActiveSource}
           activeWorkspace={activeWorkspace}
           setActiveWorkspace={setActiveWorkspace}
         />
-
-        <section className="search-results" aria-busy={loading}>
-          <div className="results-toolbar">
-            <div>
-              <Button className="show-filters" size="sm" onClick={() => setFiltersOpen(true)}><SlidersHorizontal size={14} /> Filters</Button>
-              {/* A count is a finding. Before there is one, the toolbar says
-                  nothing rather than saying zero. */}
-              {loading || response ? (
-                <strong>{loading ? 'Searching…' : `${items.length} result${items.length === 1 ? '' : 's'}`}</strong>
-              ) : null}
-
-              {!loading && response ? <span>for “{query.trim()}”</span> : null}
-            </div>
-            <div className="results-meta">
-              {response ? <span>{response.meta.realizedMode} · {response.meta.tookMs} ms</span> : null}
-
-              <label className="select-control">
-                <select value={sort} onChange={(event) => setSort(event.target.value === 'recent' ? 'recent' : 'relevance')}>
-                  <option value="relevance">Best match</option>
-                  <option value="recent">Most recent</option>
-                </select>
-                <ChevronDown size={13} />
-              </label>
-            </div>
-          </div>
-
-          {/*
-            Named, because these chips are the only way to take a filter off
-            again and a screen reader otherwise announces them as loose buttons
-            repeating a word already on the page.
-          */}
-          <div className="active-filter-row" role="group" aria-label="Active filters">
-            {activeSource ? (
-              <button type="button" onClick={() => setActiveSource(null)}>{activeSource} <X size={12} /></button>
-            ) : null}
-            {activeWorkspace ? (
-              <button type="button" onClick={() => setActiveWorkspace(null)}>{activeWorkspace} <X size={12} /></button>
-            ) : null}
-          </div>
-
-          <div className="results-list" aria-live="polite">
-            {!loading && items.map((session, index) => (
-              <article className="search-result-card" key={session.id}>
-                <button type="button" onClick={() => onOpen(session)} className="search-result-button">
-                  <div className="result-score" title="Hybrid relevance score">
-                    <span>{Math.round((session.score ?? 0.9) * 100)}</span>
-                    <small>match</small>
-                  </div>
-                  <div className="result-content">
-                    <div className="result-topline">
-                      <SourceBadge source={session.source} label={session.sourceLabel} />
-                      <span className="session-path">{session.workspace}</span>
-                      <span>·</span>
-                      <span>{formatRelative(session.updatedAt)}</span>
-                    </div>
-                    <h2><HighlightText text={session.title} query={query} /></h2>
-                    <p><HighlightText text={session.highlight ?? session.summary} query={query} /></p>
-                    <div className="result-foot">
-                      <RedactionBadge status={session.redactionStatus} />
-
-                      <span>{session.turnCount} turns</span>
-                      <span className="result-open">Open session <ArrowRight size={13} /></span>
-                    </div>
-                  </div>
-                </button>
-                {index === 0 ? <div className="best-result-marker"><Sparkles size={12} /> Best match</div> : null}
-              </article>
-            ))}
-            {searchError ? <p role="alert" className="error-note">{searchError}</p> : null}
-            {!loading && !searchError && response && items.length === 0 ? (
-              <EmptyState
-                title="No matching sessions"
-                body={activeSource || activeWorkspace
-                  ? 'Try a broader phrase, or clear the filters. Lexical search remains available if semantic retrieval is offline.'
-                  : 'Try a broader phrase. Lexical search remains available if semantic retrieval is offline.'}
-                action={<Button onClick={() => { clearQuery(); setActiveSource(null); setActiveWorkspace(null); }}>Clear search</Button>}
-              />
-            ) : null}
-            {/* Before a query, the page says what it is for rather than
-                reporting on a search that has not happened. */}
-            {!loading && !searchError && !response ? (
-              <EmptyState
-                title="Search your archive"
-                body="Type a phrase and every captured session is searched — by matching words, and by meaning where this archive has embeddings."
-              />
-            ) : null}
-            {loading ? Array.from({ length: 3 }, (_, index) => <div className="result-skeleton" key={index} />) : null}
-          </div>
-
-          {!loading && items.length > 0 ? (
-            <div className="pack-prompt">
-              <span className="pack-icon"><Braces size={18} /></span>
-              <div><strong>Turn these results into a cited context pack</strong><p>Preview evidence within a {formatTokenBudget(DEFAULT_PACK_TOKEN_BUDGET)}-token budget before sending it to an agent.</p>
-</div>
-
-              <Button variant="primary" disabled={packLoading} onClick={() => void previewPack()}>Preview pack <ArrowRight size={14} /></Button>
-            </div>
-          ) : null}
-        </section>
       </div>
 
-      <PackPreviewModal
-        packOpen={packOpen}
-        setPackOpen={setPackOpen}
-        packLoading={packLoading}
-        packError={packError}
-        pack={pack}
-      />
+      <PackPreviewModal packOpen={packOpen} setPackOpen={setPackOpen} packLoading={packLoading} packError={packError} pack={pack} />
     </div>
   );
 }

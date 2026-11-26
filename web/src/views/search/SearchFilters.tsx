@@ -1,17 +1,11 @@
-import { Bot, CircleGauge, FolderGit2, X } from 'lucide-react';
 import type { SearchResponse } from '../../lib/types';
-import { Button, cn } from '../../components/ui';
+import { cn } from '../../components/ui';
 
 /*
-  There was a third group here, "Date". The archive has never sent a `dates`
-  aggregation — it sends `agents` and `workspaces` — and the wire type is an
-  open record, so nothing compared the two sides. The panel rendered a Date
-  heading above "No values" for every query on every archive, permanently. A
-  facet that cannot populate is worse than an absent one: it reads as "this
-  archive has no dates".
+  Only the facets the archive aggregates: agents and workspaces. A Date facet
+  used to render "No values" for every query because no server sends dates.
 */
 const noAggregations: SearchResponse['aggregations'] = { agents: [], workspaces: [] };
-
 
 const MODE_TITLES: Record<SearchResponse['meta']['realizedMode'], string> = {
   hybrid: 'Hybrid mode',
@@ -25,88 +19,69 @@ const MODE_EXPLANATIONS: Record<SearchResponse['meta']['realizedMode'], string> 
   semantic: 'Ranked by meaning alone.',
 };
 
-export function SearchFilters({ filtersOpen, setFiltersOpen, response, activeSource, setActiveSource, activeWorkspace, setActiveWorkspace }: {
-  filtersOpen: boolean;
-  setFiltersOpen: (open: boolean) => void;
+/**
+ * The facet rail. Each value is a row with its count; pressing it filters,
+ * pressing it again takes the filter off. Below, what the search actually did,
+ * as the server reports it, including why semantic search did not run.
+ */
+export function SearchFilters({ response, activeSource, setActiveSource, activeWorkspace, setActiveWorkspace }: {
   response: SearchResponse | null;
   activeSource: string | null;
   setActiveSource: (value: string | null) => void;
   activeWorkspace: string | null;
   setActiveWorkspace: (value: string | null) => void;
 }) {
+  if (!response) return null;
+  const aggregations = response.aggregations ?? noAggregations;
   return (
-    <aside className={cn('aggregation-sidebar', filtersOpen && 'aggregation-open')} aria-label="Search filters">
-      <div className="aggregation-mobile-head">
-        <strong>Filter results</strong>
-        <Button size="sm" variant="ghost" onClick={() => setFiltersOpen(false)}><X size={14} /> Close</Button>
-      </div>
-      <AggregationGroup
-        icon={<Bot size={14} />}
+    <aside className="facet-rail" aria-label="Search filters">
+      <FacetGroup
         title="Source"
-        items={(response?.aggregations ?? noAggregations).agents}
+        items={aggregations.agents}
         activeValue={activeSource}
         onSelect={(value) => setActiveSource(activeSource === value ? null : value)}
       />
-      {/*
-        Workspace rows were rendered as buttons with no handler: focusable,
-        announced as buttons, and doing nothing when pressed. They now filter
-        the way Source does.
-      */}
-      <AggregationGroup
-        icon={<FolderGit2 size={14} />}
-        title="Workspace"
-        items={(response?.aggregations ?? noAggregations).workspaces}
+      <FacetGroup
+        title="Project"
+        mono
+        items={aggregations.workspaces}
         activeValue={activeWorkspace}
         onSelect={(value) => setActiveWorkspace(activeWorkspace === value ? null : value)}
       />
-
-      {/*
-        What the search actually did, which the server reports. This card
-        said "Hybrid mode — lexical and semantic results are fused with RRF"
-        whatever ran: a deployment with no embedding provider falls back to
-        lexical, and the panel went on describing a fusion that had not
-        happened.
-      */}
-      {response ? (
-        <div className="search-mode-card">
-          <CircleGauge size={17} />
-          <div>
-            <strong>{MODE_TITLES[response.meta.realizedMode]}</strong>
-            <p>
-              {MODE_EXPLANATIONS[response.meta.realizedMode]}
-              {response.meta.semanticFailure
-                ? ` Semantic search was unavailable: ${response.meta.semanticFailure}`
-                : ''}
-            </p>
-          </div>
-        </div>
-      ) : null}
-
+      <section className="facet-mode">
+        <h2>{MODE_TITLES[response.meta.realizedMode]}</h2>
+        <p>
+          {MODE_EXPLANATIONS[response.meta.realizedMode]}
+          {response.meta.semanticFailure ? ` Semantic search was unavailable: ${response.meta.semanticFailure}` : ''}
+        </p>
+      </section>
     </aside>
   );
 }
 
-function AggregationGroup({ icon, title, items, activeValue, onSelect }: {
-  icon: React.ReactNode;
+function FacetGroup({ title, items, activeValue, onSelect, mono = false }: {
   title: string;
   items: SearchResponse['aggregations']['agents'];
-  activeValue?: string | null;
-  onSelect?: (value: string) => void;
+  activeValue: string | null;
+  onSelect: (value: string) => void;
+  mono?: boolean;
 }) {
+  if (items.length === 0) return null;
   return (
-    <section className="aggregation-group">
-      <h2>{icon}{title}</h2>
-      {items.slice(0, 6).map((item) => (
+    <section className="facet-group">
+      <h2>{title}</h2>
+      {items.slice(0, 8).map((item) => (
         <button
           key={item.value}
           type="button"
-          className={cn(activeValue === item.value && 'active')}
-          onClick={() => onSelect?.(item.value)}
+          aria-pressed={activeValue === item.value}
+          className={cn('facet', activeValue === item.value && 'active')}
+          onClick={() => onSelect(item.value)}
         >
-          <span>{item.label}</span><small>{item.count}</small>
+          <span className={cn('facet-label', mono && 'mono')}>{item.label}</span>
+          <span className="facet-count">{item.count}</span>
         </button>
       ))}
-      {!items.length ? <p className="muted-small">No values</p> : null}
     </section>
   );
 }
