@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <!-- The app icon: the memoar Thread mark on almyty's product field.
+       icon.png is this drawn at 1024 by 1024 (rsvg-convert -w 1024). -->
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EAF1FF"/>
+      <stop offset="0.45" stop-color="#E5F8FF"/>
+      <stop offset="1" stop-color="#E6FCF1"/>
+    </linearGradient>
+    <linearGradient id="memoar-thread" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2775F7"/>
+      <stop offset="0.65" stop-color="#26C5CF"/>
+      <stop offset="1" stop-color="#85E5BA"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#field)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" stroke="#D6E2F2"/>
+  <g transform="translate(272 232) scale(20)">
+    <polyline points="3,24 3,4 12,15 21,4 21,24" stroke="url(#memoar-thread)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="3" cy="24" r="2" fill="#2775F7"/>
+    <circle cx="3" cy="4" r="2" fill="#2775F7"/>
+    <circle cx="12" cy="15" r="1.6" fill="#26C5CF"/>
+    <circle cx="21" cy="4" r="2" fill="#26C5CF"/>
+    <circle cx="21" cy="24" r="2" fill="#85E5BA"/>
+  </g>
+</svg>
