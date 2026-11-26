@@ -12,8 +12,9 @@
 # installed app's state.
 #
 # macOS captures the window with screencapture (the runner needs screen
-# recording, which GitHub's macOS runners allow). Linux needs an X display:
-# run it under xvfb-run, with ImageMagick's `import` on PATH. Windows captures
+# recording, which GitHub's macOS runners allow). Linux needs an X display and
+# a session bus: run it under dbus-run-session and xvfb-run, with ImageMagick's
+# `import` and xwininfo on PATH. Windows captures
 # the window's rectangle with agent/scripts/screenshot-window.ps1.
 set -euo pipefail
 
@@ -63,7 +64,11 @@ capture() {
       echo "memoar desktop: no window to capture" >&2
       return 1
       ;;
-    linux) import -window root "$2" ;;
+    linux)
+      local id
+      id=$(xwininfo -name Memoar 2>/dev/null | awk '/Window id:/ { print $4 }')
+      import -window "${id:-root}" "$2"
+      ;;
     windows)
       powershell.exe -NoProfile -ExecutionPolicy Bypass \
         -File "$(native_path "$scripts_dir/screenshot-window.ps1")" \
@@ -98,9 +103,6 @@ for screen in sign-in status; do
       echo "memoar desktop: the window exited before its screenshot" >&2
       cat "$run/app.log" >&2
       exit 1
-    fi
-    if [ "$target" = linux ] && command -v xwininfo >/dev/null 2>&1; then
-      xwininfo -root -tree | head -n 20 >&2
     fi
     capture "$app_pid" "$shot"
     kill "$app_pid" 2>/dev/null || true
