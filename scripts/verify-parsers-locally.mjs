@@ -57,7 +57,8 @@ const SOURCES = [
   {
     source: "opencode",
     version: "v1",
-    stores: [".local/share/opencode", "AppData/Roaming/opencode"],
+    // XDG data on every platform, Windows included (`util/src/global-roots.ts`).
+    stores: [".local/share/opencode"],
     pick: (dir) => (existsSync(join(dir, "opencode.db")) ? join(dir, "opencode.db") : null),
   },
   {
@@ -119,7 +120,7 @@ const SOURCES = [
     pick: (dir) => (existsSync(join(dir, "session-store.db")) ? join(dir, "session-store.db") : null),
     // The schema was read off an installed CLI whose `turns` table was empty,
     // so the columns are right and the mapping of a populated session is not.
-    todo: "Install GitHub Copilot CLI, hold one conversation that records exchanges (~/.copilot/session-store.db must have rows in `turns`), and re-run this. The VS Code side is separate and is read now: the chatSessions envelope has its own branch, checked against six populated sessions — see contracts/fixtures/PROVENANCE.md. What is still open there is a populated chatSessions *file*; every one on this machine is an unused panel.",
+    todo: "Install GitHub Copilot CLI, hold one conversation that records exchanges (~/.copilot/session-store.db must have rows in `turns`, and ~/.copilot/session-state/<id>/events.jsonl must exist), and re-run this and scripts/verify-store-sweep.mjs, which reads every events.jsonl. The VS Code side is separate and is read now: the chatSessions envelope has its own branch, checked against six populated sessions — see contracts/fixtures/PROVENANCE.md. What is still open there is a populated chatSessions *file*; every one on this machine is an unused panel.",
   },
   {
     source: "goose",
@@ -140,6 +141,14 @@ const SOURCES = [
     // the `ui_messages.json` beside it.
     pick: (dir) => newestUnder(dir, (path) => path.endsWith("api_conversation_history.json"), 2),
     todo: "Install Roo Code in VS Code, run one task, and re-run this. Also list one tasks/<id> directory and confirm the history is still written as api_conversation_history.json, the only file the pattern takes.",
+  },
+  {
+    source: "kilo",
+    version: "v1",
+    // Since the rebuild on opencode: opencode's schema, in its own data directory.
+    stores: [".local/share/kilo"],
+    pick: (dir) => (existsSync(join(dir, "kilo.db")) ? join(dir, "kilo.db") : null),
+    todo: "Install Kilo Code (the CLI, or the VS Code extension built on it), run one task, and re-run this. ~/.local/share/kilo/kilo.db must exist. Also run scripts/verify-store-sweep.mjs, which reads every kilo*.db there.",
   },
   {
     source: "kilo",
