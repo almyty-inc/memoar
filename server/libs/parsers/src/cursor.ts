@@ -1,5 +1,6 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
-import { epochToIso, incrementUuid, isRecord, stringValue, turnId, withModelAndTokens } from "./common.js";
+import { epochToIso, incrementUuid, isRecord, sessionModels, stringValue, turnId, withModelAndTokens } from "./common.js";
+import { bubbleModel, bubbleTime, composerNames, unindexedHeaders } from "./cursor-index.js";
 import { cursorBubbleBlocks } from "./cursor-bubble.js";
 import { ensureRecord, parseJsonColumn } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
@@ -41,13 +42,16 @@ export class CursorV3Parser implements VersionedParser {
             // One unreadable bubble must not cost the whole conversation.
           }
         }
+        const names = composerNames(database);
 
         return composerRows.map((row, sessionIndex): Session => {
           const payload = ensureRecord(parseJsonColumn(row.value, row.key), row.key);
           const composerId = stringValue(payload, "composerId") ?? row.key.slice("composerData:".length);
-          const headers = Array.isArray(payload.fullConversationHeadersOnly)
+          // A composer with no index still has its bubbles, in the order they
+          // were written, so they are not lost with the index.
+          const headers = Array.isArray(payload.fullConversationHeadersOnly) && payload.fullConversationHeadersOnly.length > 0
             ? payload.fullConversationHeadersOnly
-            : [];
+            : unindexedHeaders(bubbles, composerId);
 
           let blockOrdinal = 0;
           const mint = () => incrementUuid(request.seed.id, 0x20000000 + (blockOrdinal += 1));
@@ -76,9 +80,10 @@ export class CursorV3Parser implements VersionedParser {
               // Cursor stores a flat ordered index, so order is the chain.
               parentId: previousId,
               role,
-              createdAt: epochToIso(payload.createdAt, request.seed.createdAt),
+              // Each bubble carries its own time and model in Cursor 3.x.
+              createdAt: bubbleTime(bubble.createdAt) ?? epochToIso(payload.createdAt, request.seed.createdAt),
               blocks,
-            }, request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
+            }, bubbleModel(bubble) ?? request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
             previousId = turnId(bubbleId, request.seed.id);
             return [turn];
           }).map((turn, ordinal) => ({ ...turn, ordinal }));
@@ -87,7 +92,10 @@ export class CursorV3Parser implements VersionedParser {
             ...request.seed,
             id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
             source: { ...request.seed.source, nativeSessionId: composerId },
-            ...(typeof payload.name === "string" && payload.name ? { title: payload.name } : {}),
+            ...(typeof payload.name === "string" && payload.name
+              ? { title: payload.name }
+              : names.has(composerId) ? { title: names.get(composerId)! } : {}),
+            models: sessionModels(request.seed.models, turns),
             turns,
           };
         });

@@ -10,18 +10,25 @@
  * line-by-line reading), and 0.3.0 for the rest: the parse keeps tool output,
  * thinking text, redacted and encrypted reasoning, images and documents, and
  * the system, compaction and summary records it used to drop.
+ *
+ * 2026-11-26: codex 0.5.0 records the model of each turn from `turn_context`.
+ * opencode and kilo 0.4.0 read opencode's v2 tables and Kilo's `kilo.db`.
+ * copilot 0.4.0 replays every VS Code log write and reads the CLI's
+ * `events.jsonl`. cursor 0.4.0 dates and attributes each bubble on its own.
+ * crush and goose 0.4.0 name the session's models, goose from
+ * `model_config_json`.
  */
 export const PARSER_VERSIONS: Readonly<Record<string, string>> = {
   "claude-code": "claude-code:v1:0.5.0",
-  codex: "codex:rollout-v1:0.4.0",
+  codex: "codex:rollout-v1:0.5.0",
   "antigravity-cli": "antigravity-cli:v1:0.4.0",
-  cursor: "cursor:v3:0.3.0",
-  goose: "goose:v1:0.3.0",
-  crush: "crush:v1:0.3.0",
+  cursor: "cursor:v3:0.4.0",
+  goose: "goose:v1:0.4.0",
+  crush: "crush:v1:0.4.0",
   zed: "zed:v1:0.3.0",
-  opencode: "opencode:v1:0.3.0",
-  copilot: "copilot:v1:0.3.0",
-  kilo: "kilo:v1:0.3.0",
+  opencode: "opencode:v1:0.4.0",
+  copilot: "copilot:v1:0.4.0",
+  kilo: "kilo:v1:0.4.0",
   roo: "roo:v1:0.3.0",
   "chatgpt-export": "chatgpt-export:2026-08:0.3.0",
   "cass-export": "cass-export:2026-08:0.3.0",

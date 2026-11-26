@@ -129,28 +129,50 @@ async function parserShapes() {
   const texts = new Map();
   for (const entry of files) texts.set(entry.name, await readFile(resolve(PARSER_SRC, entry.name), 'utf8'));
 
+  const ownerOf = (className) => {
+    const owner = [...texts.values()].find((text) => text.includes(`class ${className} `));
+    if (!owner) throw new Error(`a parser constructs ${className} but no parser file declares it`);
+    return owner;
+  };
+  /* A parser that hands its bytes to other parsers accepts what they accept:
+     Kilo reads opencode's database and Roo's task JSON through those classes. */
+  const delegatedShapes = (text) => {
+    const shapes = acceptedShapes(text);
+    for (const used of text.matchAll(/new (\w+Parser)\(/gu)) {
+      for (const shape of acceptedShapes(ownerOf(used[1]))) shapes.add(shape);
+    }
+    return shapes;
+  };
+
   const shapes = new Map();
   for (const [, text] of texts) {
-    const declared = /readonly source = "([a-z0-9-]+)"/u.exec(text)?.[1];
-    if (declared) shapes.set(declared, acceptedShapes(text));
+    const declared = /readonly source = "([a-z0-9-]+)"/u.exec(text)?.[1]
+      // `constructor(readonly source: "opencode" | "kilo" = "opencode")`
+      ?? /constructor\(readonly source:[^=)]*= "([a-z0-9-]+)"\)/u.exec(text)?.[1];
+    if (declared) shapes.set(declared, delegatedShapes(text));
   }
 
-  // Parsers told their source at construction — kilo and roo share one class.
+  // Parsers told their source at construction, as Roo's task parser is.
   const index = texts.get('index.ts') ?? '';
-  for (const shared of index.matchAll(/\[([^\]]*)\]\.map\(\(source\) => new (\w+)\(source\)\)/gu)) {
-    const ids = [...shared[1].matchAll(/"([a-z0-9-]+)"/gu)].map((match) => match[1]);
-    const owner = [...texts.values()].find((text) => text.includes(`class ${shared[2]} `));
-    if (!owner) throw new Error(`index.ts constructs ${shared[2]} but no parser file declares it`);
-    for (const id of ids) shapes.set(id, acceptedShapes(owner));
+  for (const shared of index.matchAll(/new (\w+)\("([a-z0-9-]+)"\)/gu)) {
+    shapes.set(shared[2], delegatedShapes(ownerOf(shared[1])));
   }
   return shapes;
 }
 
+/*
+  Compression the agent undoes before anything else reads the bytes
+  (`agent/crates/memoar-daemon/src/source_bytes.rs`), so the shape is that of
+  the name beneath it: `rollout-*.jsonl.zst` reaches the parser as JSONL.
+*/
+const DECOMPRESSED_BY_THE_AGENT = new Set(['zst']);
+
 /** The shape a pattern promises, by the extension of its last segment. */
 function shapeOf(pattern) {
-  const name = pattern.split('/').pop() ?? '';
-  if (!name.includes('.')) return null;
-  return SHAPE_BY_EXTENSION[name.split('.').pop().toLowerCase()] ?? null;
+  const parts = (pattern.split('/').pop() ?? '').split('.');
+  if (parts.length > 2 && DECOMPRESSED_BY_THE_AGENT.has(parts.at(-1).toLowerCase())) parts.pop();
+  if (parts.length < 2) return null;
+  return SHAPE_BY_EXTENSION[parts.at(-1).toLowerCase()] ?? null;
 }
 
 const sources = await connectorSources();

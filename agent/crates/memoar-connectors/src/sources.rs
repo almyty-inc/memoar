@@ -78,7 +78,17 @@ pub static SOURCES: &[SourceSpec] = &[
         tier: 1,
         format: "typed rollout JSONL",
         stability: Stability::Internal,
-        common_paths: &[".codex/sessions/*/*/*/rollout-*.jsonl"],
+        // Codex compresses a rollout nobody has touched for a while to
+        // `rollout-*.jsonl.zst` and deletes the `.jsonl`
+        // (`codex-rs/rollout/src/compression.rs`). Naming only `.jsonl` lost
+        // 3,405 of the 3,879 rollouts on the machine checked on 2026-11-26.
+        // The agent decompresses before redaction and upload, and tells the
+        // archive the plain name, so a rollout that moves between the two
+        // stays one session.
+        common_paths: &[
+            ".codex/sessions/*/*/*/rollout-*.jsonl",
+            ".codex/sessions/*/*/*/rollout-*.jsonl.zst",
+        ],
         linux_paths: NONE,
         macos_paths: NONE,
         windows_paths: NONE,
@@ -99,9 +109,13 @@ pub static SOURCES: &[SourceSpec] = &[
         // On the machine that runs this tool the conversation databases are one
         // level up, in `.gemini/antigravity-cli/conversations/*.db`, and
         // `brain/<id>/` holds only `.system_generated` and `.user_uploaded`.
-        // Pointing the pattern at the real databases would not help while the
-        // parser cannot open one; that is a server-side gap, recorded in
-        // contracts/fixtures/PROVENANCE.md rather than papered over here.
+        // Those databases hold each step as a protobuf blob with no published
+        // schema. Checked on 2026-11-26 against all 655 conversations on one
+        // machine: every `.db` has its `transcript.jsonl`, the newest included,
+        // and every transcript step is a `steps` row at the same index. The
+        // rows the transcript leaves out are 519 model errors (HTTP 429
+        // details) and 40 cancelled tool calls. So the transcript stays the
+        // capture, and the databases stay on the machine.
         //
         // `brain/*/*.md` matched nothing on that machine either, and markdown
         // is not a transcript: the parser refuses anything that is not JSONL.
@@ -112,28 +126,7 @@ pub static SOURCES: &[SourceSpec] = &[
         environment_override: None,
         environment_roots: NONE,
     },
-    SourceSpec {
-        id: "cursor",
-        display_name: "Cursor",
-        tier: 1,
-        format: "VS Code state SQLite",
-        stability: Stability::ReverseEngineered,
-        common_paths: NONE,
-        linux_paths: &[
-            ".config/Cursor/User/globalStorage/state.vscdb",
-            ".config/Cursor/User/workspaceStorage/*/state.vscdb",
-        ],
-        macos_paths: &[
-            "Library/Application Support/Cursor/User/globalStorage/state.vscdb",
-            "Library/Application Support/Cursor/User/workspaceStorage/*/state.vscdb",
-        ],
-        windows_paths: &[
-            "AppData/Roaming/Cursor/User/globalStorage/state.vscdb",
-            "AppData/Roaming/Cursor/User/workspaceStorage/*/state.vscdb",
-        ],
-        environment_override: None,
-        environment_roots: NONE,
-    },
+    crate::sources_editors::CURSOR,
     SourceSpec {
         id: "opencode",
         display_name: "OpenCode",
@@ -149,60 +142,23 @@ pub static SOURCES: &[SourceSpec] = &[
             // also the only thing the parser accepts: it refuses anything that
             // is not native SQLite. Collecting the JSON uploaded a config file
             // on every sync and produced an `unknown_format` artifact each time.
+            //
+            // opencode names the file in `packages/cli/src/database-path.ts`:
+            // `opencode.db` for a released channel, `opencode-<channel>.db`
+            // otherwise. Its data directory is XDG_DATA_HOME or
+            // `~/.local/share` on every platform (`util/src/global-roots.ts`),
+            // so `AppData/Roaming/opencode` was never written on Windows, and
+            // `OPENCODE_DATA_DIR` is not a variable opencode reads.
             ".local/share/opencode/opencode.db",
+            ".local/share/opencode/opencode-*.db",
         ],
         linux_paths: NONE,
         macos_paths: NONE,
-        windows_paths: &["AppData/Roaming/opencode/opencode.db"],
-        environment_override: Some("OPENCODE_DATA_DIR"),
-        environment_roots: &[".local/share/opencode", "AppData/Roaming/opencode"],
+        windows_paths: NONE,
+        environment_override: Some("XDG_DATA_HOME"),
+        environment_roots: &[".local/share"],
     },
-    SourceSpec {
-        id: "copilot",
-        display_name: "GitHub Copilot",
-        tier: 2,
-        format: "VS Code JSON or CLI SQLite",
-        stability: Stability::Internal,
-        // The CLI's session store, which is the only thing its parser opens.
-        //
-        // The four `*.json` patterns that stood here named directories the CLI
-        // does not write JSON into. Checked against GitHub Copilot CLI 1.0.59
-        // with a recorded session on disk: `~/.copilot/session-state/` holds one
-        // directory per session — `workspace.yaml`, `checkpoints/index.md`, and
-        // empty `files/` and `research/` — and no `.json` at any depth, while
-        // `~/.copilot/history-session-state/` does not exist at all. The only
-        // JSON under `~/.copilot` is `config.json` and
-        // `command-history-state.json` at the top level, which are settings and
-        // which those patterns never named anyway. So the patterns could only
-        // ever have collected something that is not a session, and the parser
-        // refuses everything that is not native SQLite.
-        //
-        // The VS Code `chatSessions` below are a different store: Copilot Chat
-        // in the editor, which the parser reads through its own branch now.
-        //
-        // Both extensions are named because VS Code has written the same
-        // envelope two ways. `<id>.json` is one whole envelope, and `<id>.jsonl`
-        // is a `{kind:0, v:<envelope>}` snapshot followed by writes against it,
-        // which is what it writes today: of the 23 files under `chatSessions`
-        // on the machine this was checked on, 18 are `.jsonl` and every one of
-        // them was newer than every `.json`. Taking only `.json` collected the
-        // layout VS Code has stopped writing.
-        common_paths: &[".copilot/session-store.db"],
-        linux_paths: &[
-            ".config/Code/User/workspaceStorage/*/chatSessions/*.json",
-            ".config/Code/User/workspaceStorage/*/chatSessions/*.jsonl",
-        ],
-        macos_paths: &[
-            "Library/Application Support/Code/User/workspaceStorage/*/chatSessions/*.json",
-            "Library/Application Support/Code/User/workspaceStorage/*/chatSessions/*.jsonl",
-        ],
-        windows_paths: &[
-            "AppData/Roaming/Code/User/workspaceStorage/*/chatSessions/*.json",
-            "AppData/Roaming/Code/User/workspaceStorage/*/chatSessions/*.jsonl",
-        ],
-        environment_override: None,
-        environment_roots: NONE,
-    },
+    crate::sources_editors::COPILOT,
     SourceSpec {
         id: "goose",
         display_name: "Goose",
@@ -235,65 +191,7 @@ pub static SOURCES: &[SourceSpec] = &[
         environment_override: None,
         environment_roots: NONE,
     },
-    SourceSpec {
-        id: "roo",
-        display_name: "Roo Code",
-        tier: 2,
-        format: "task JSON",
-        stability: Stability::Internal,
-        common_paths: NONE,
-        // The one file per task the parser reads. `*.json` also took
-        // `ui_messages.json` and `task_metadata.json`, refused every time.
-        linux_paths: &[
-            ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json",
-        ],
-        macos_paths: &[
-            "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json",
-        ],
-        windows_paths: &[
-            "AppData/Roaming/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json",
-        ],
-        environment_override: None,
-        environment_roots: NONE,
-    },
-    SourceSpec {
-        id: "kilo",
-        display_name: "Kilo Code",
-        tier: 2,
-        format: "Cline-family task JSON",
-        stability: Stability::Internal,
-        common_paths: NONE,
-        // The same single file as Roo, for the same reason.
-        linux_paths: &[
-            ".config/Code/User/globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json",
-        ],
-        macos_paths: &[
-            "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json",
-        ],
-        windows_paths: &[
-            "AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json",
-        ],
-        environment_override: None,
-        environment_roots: NONE,
-    },
-    SourceSpec {
-        id: "zed",
-        display_name: "Zed",
-        tier: 3,
-        format: "Zstd-compressed SQLite threads",
-        stability: Stability::ReverseEngineered,
-        common_paths: NONE,
-        // The thread databases, not the write-ahead logs, lock files and
-        // whatever else lives in a database directory.
-        // `db/` is the editor's own state — panes, terminals, breakpoints,
-        // keybindings. The agent threads are a separate database, and the
-        // parser reads exactly one table, `threads`, which only that one has.
-        // Pointed at `db/` this captured the editor's terminal history and
-        // never captured a single session.
-        linux_paths: &[".local/share/zed/threads/threads*.db"],
-        macos_paths: &["Library/Application Support/Zed/threads/threads*.db"],
-        windows_paths: NONE,
-        environment_override: None,
-        environment_roots: NONE,
-    },
+    crate::sources_editors::ROO,
+    crate::sources_editors::KILO,
+    crate::sources_editors::ZED,
 ];
