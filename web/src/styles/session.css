@@ -3,7 +3,9 @@
 .main-content:has(> .split) { padding: 0; }
 .split {
   display: grid;
-  grid-template-columns: minmax(380px, 38%) minmax(0, 1fr);
+  /* 46% gives the list room for project from a 1280px window and for turns
+     from 1440px, and still leaves the transcript about 660px. */
+  grid-template-columns: minmax(380px, 46%) minmax(0, 1fr);
   height: calc(100vh - var(--topbar-h));
 }
 .split-list { min-width: 0; min-height: 0; border-right: 1px solid var(--line); }

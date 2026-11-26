@@ -11,14 +11,13 @@ import type { CurrentUser, DashboardState, SessionSummary, ViewId } from './lib/
 import { pathForRoute, routeForPath, type Route } from './lib/routes';
 import { CollectionsView } from './views/Collections';
 import { ConnectionError } from './views/ConnectionError';
-import { MemoryView } from './views/Memory';
+import { MemoryView, SessionPane, preloadViews } from './app/lazy-views';
 import { ImportView } from './views/Import';
 import { MachinesView } from './views/Machines';
 import { NotFoundPage } from './views/NotFoundPage';
 import { SignInView } from './views/Onboarding';
 import { OnboardingView } from './views/OnboardingSteps';
 import { SearchView } from './views/Search';
-import { SessionPane } from './views/SessionPane';
 import { ListSkeleton } from './views/timeline/ListSkeleton';
 import { SessionsSplit, TranscriptSkeleton, wideLayout } from './views/SessionsSplit';
 import { SettingsView } from './views/Settings';
@@ -74,6 +73,7 @@ export function App() {
       setDashboard(nextDashboard);
       setLoadedAt(Date.now());
       setLoading(false);
+      preloadViews();
     }).catch((error: unknown) => {
       if (!active) return;
       setConnectionError(error instanceof Error ? error.message : 'Archive connection failed');

@@ -47,10 +47,25 @@
 .col-time { grid-area: time; }
 .col-turns { grid-area: turns; text-align: right; }
 
-@container sessions (max-width: 720px) {
-  .session-cols { grid-template-columns: 84px minmax(0, 1fr) 40px; grid-template-areas: "source title time"; gap: var(--sp-3); }
-  .session-cols .col-project, .session-cols .col-machine, .session-cols .col-turns { display: none; }
+/*
+  Columns leave as the list narrows: machine first, then turns, then project.
+  Beside a transcript the list is 497px wide in a 1280px window and 571px in a
+  1440px one, which is where project and turns come back.
+*/
+@container sessions (max-width: 760px) {
+  .session-cols { grid-template-columns: 76px minmax(0, 1fr) minmax(80px, 120px) 40px 60px; grid-template-areas: "source title project time turns"; gap: var(--sp-3); }
+  .session-cols .col-machine { display: none; }
   .col-time { text-align: right; }
+}
+
+@container sessions (max-width: 560px) {
+  .session-cols { grid-template-columns: 76px minmax(0, 1fr) minmax(80px, 120px) 40px; grid-template-areas: "source title project time"; }
+  .session-cols .col-turns { display: none; }
+}
+
+@container sessions (max-width: 480px) {
+  .session-cols { grid-template-columns: 76px minmax(0, 1fr) 40px; grid-template-areas: "source title time"; }
+  .session-cols .col-project { display: none; }
 }
 
 .session-head { height: 28px; padding: 0 var(--sp-5); color: var(--text-2); font-size: var(--fs-2); border-bottom: 1px solid var(--line); }
