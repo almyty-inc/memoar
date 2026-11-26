@@ -147,18 +147,22 @@ fn read_verified(artifact: &QueuedArtifact) -> Result<Vec<u8>, Outcome> {
         }
     }
     let path = std::path::Path::new(&artifact.source_path);
+    // A compressed source is smaller on disk than what was queued, so only its
+    // hash can say whether it changed.
+    let compressed = crate::source_bytes::is_compressed(path);
     match std::fs::metadata(path) {
         Err(error) if error.kind() == ErrorKind::NotFound => return Err(Outcome::Vanished),
-        Ok(metadata) if metadata.len() != artifact.size => return Err(Outcome::Changed),
+        Ok(metadata) if !compressed && metadata.len() != artifact.size => {
+            return Err(Outcome::Changed);
+        }
         _ => {}
     }
-    match std::fs::read(path) {
+    match crate::source_bytes::read_source(path) {
         Ok(bytes) if sha256_bytes(&bytes) == artifact.sha256 => Ok(bytes),
         Ok(_) => Err(Outcome::Changed),
-        Err(error) if error.kind() == ErrorKind::NotFound => Err(Outcome::Vanished),
-        Err(source) => Err(Outcome::Failed(DaemonError::Io {
-            path: path.to_path_buf(),
-            source,
-        })),
+        Err(DaemonError::Io { source, .. }) if source.kind() == ErrorKind::NotFound => {
+            Err(Outcome::Vanished)
+        }
+        Err(error) => Err(Outcome::Failed(error)),
     }
 }

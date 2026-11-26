@@ -12,6 +12,9 @@ memoar-connectors = { path = "../memoar-connectors" }
 regex.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
+# Codex compresses cold rollouts with zstd. A pure-Rust decoder, so every
+# platform builds it without a C toolchain. Its encoder writes the test frames.
+ruzstd = "0.9"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

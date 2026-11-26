@@ -1,5 +1,6 @@
 import { isStaleParserVersion } from "../libs/parsers/src/versions.js";
 import type { RawArtifactRecord } from "./archive-store.js";
+import { isPlaceholderTitle } from "./ingest/session-title.js";
 import type { SessionParse } from "./store/interfaces.js";
 
 export interface ReprocessSelection {
@@ -20,7 +21,14 @@ export interface ReprocessSelection {
    * the run acts for, so a run per machine keeps every session where it was.
    */
   staleParser?: { sessions: ReadonlyMap<string, SessionParse>; machineId?: string | null } | null;
+  /**
+   * Like `staleParser`, but selects sessions still titled with the seed's
+   * placeholder, so a re-parse can name them after their first prompt.
+   */
+  placeholderTitles?: { sessions: ReadonlyMap<string, SessionParse>; machineId?: string | null } | null;
 }
+
+type SessionFilter = NonNullable<ReprocessSelection["staleParser"]>;
 
 /** The newest capture of each session, by capture time. */
 function newestCaptures(artifacts: readonly RawArtifactRecord[]): Set<string> {
@@ -34,13 +42,21 @@ function newestCaptures(artifacts: readonly RawArtifactRecord[]): Set<string> {
   return new Set([...newest.values()].map((artifact) => artifact.sha256));
 }
 
-function isStale(artifact: RawArtifactRecord, stale: NonNullable<ReprocessSelection["staleParser"]>): boolean {
+function matches(artifact: RawArtifactRecord, filter: SessionFilter, wanted: (session: SessionParse) => boolean): boolean {
   if (artifact.status !== "parsed" || artifact.sessionIds.length === 0) return false;
-  const sessions = artifact.sessionIds.map((sessionId) => stale.sessions.get(sessionId));
+  const sessions = artifact.sessionIds.map((sessionId) => filter.sessions.get(sessionId));
   // Every session the artifact wrote has to belong to the machine, or the run
   // would move the others onto it.
-  if (stale.machineId && !sessions.every((session) => session?.machineId === stale.machineId)) return false;
-  return sessions.some((session) => session !== undefined && isStaleParserVersion(session.parserVersion, artifact.source));
+  if (filter.machineId && !sessions.every((session) => session?.machineId === filter.machineId)) return false;
+  return sessions.some((session) => session !== undefined && wanted(session));
+}
+
+function isStale(artifact: RawArtifactRecord, stale: SessionFilter): boolean {
+  return matches(artifact, stale, (session) => isStaleParserVersion(session.parserVersion, artifact.source));
+}
+
+function hasPlaceholderTitle(artifact: RawArtifactRecord, filter: SessionFilter): boolean {
+  return matches(artifact, filter, (session) => isPlaceholderTitle(session.title ?? undefined, session.tool ?? artifact.source));
 }
 
 /**
@@ -74,9 +90,11 @@ export function mergedSessionIds(artifacts: readonly RawArtifactRecord[]): Set<s
 export function selectForReprocess(artifacts: readonly RawArtifactRecord[], selection: ReprocessSelection): RawArtifactRecord[] {
   const merged = selection.mergedSessions ? mergedSessionIds(artifacts) : null;
   const stale = selection.staleParser ?? null;
-  const newest = stale ? newestCaptures(artifacts.filter((artifact) => artifact.status === "parsed")) : null;
+  const titles = selection.placeholderTitles ?? null;
+  const newest = stale || titles ? newestCaptures(artifacts.filter((artifact) => artifact.status === "parsed")) : null;
   return artifacts
     .filter((artifact) => !stale || (isStale(artifact, stale) && newest!.has(artifact.sha256)))
+    .filter((artifact) => !titles || (hasPlaceholderTitle(artifact, titles) && newest!.has(artifact.sha256)))
     .filter((artifact) => !selection.sha256 || artifact.sha256 === selection.sha256)
     .filter((artifact) => !selection.status || artifact.status === selection.status)
     .filter((artifact) => !merged || artifact.sessionIds.some((sessionId) => merged.has(sessionId)))

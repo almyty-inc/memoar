@@ -23,6 +23,8 @@ import type {
 export interface SessionParse {
   parserVersion: string | null;
   machineId: string | null;
+  title: string | null;
+  tool: string | null;
 }
 
 export interface SessionStore {

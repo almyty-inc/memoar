@@ -206,6 +206,18 @@ export function derivedBlockId(_turnId: string, index: number, seedId: string, o
   return incrementUuid(seedId, FALLBACK_BASE + ordinal * FALLBACK_STRIDE + index);
 }
 
+/**
+ * The models a session ran, read off its turns and anything else the store
+ * says, where the seed does not already name them. The ingest pipeline seeds
+ * `models: []`, so without this every captured session said it used none.
+ */
+export function sessionModels(seeded: readonly string[], turns: readonly Turn[], ...more: (string | null | undefined)[]): string[] {
+  if (seeded.length > 0) return [...seeded];
+  const named = [...turns.map((turn) => turn.model), ...more]
+    .filter((model): model is string => typeof model === "string" && model.length > 0);
+  return [...new Set(named)];
+}
+
 export function withModelAndTokens(turn: Turn, model: string | undefined, input: number, output: number): Turn {
   if (turn.role !== "assistant") return turn;
   return {

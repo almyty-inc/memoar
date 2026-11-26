@@ -90,7 +90,7 @@ for (const implementation of implementations) {
       expect(await store.hasNewerCapture(context, session.id, older), "a capture that failed to parse holds nothing").toBe(false);
     });
 
-    it("reads the parser and machine of every session without its turns", async () => {
+    it("reads the parser, machine, title and tool of every session without its turns", async () => {
       const store = implementation.create();
       const session = {
         ...structuredClone(TEST_SESSION),
@@ -99,7 +99,7 @@ for (const implementation of implementations) {
       };
       await store.saveSession(context, session);
       expect((await store.sessionParserVersions(context)).get(session.id))
-        .toEqual({ parserVersion: "codex:rollout-v1:0.3.0", machineId: session.source.machineId });
+        .toEqual({ parserVersion: "codex:rollout-v1:0.3.0", machineId: session.source.machineId, title: session.title, tool: session.source.tool });
     });
   });
 }

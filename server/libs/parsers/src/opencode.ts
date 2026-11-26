@@ -1,21 +1,9 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
-import { blockId, incrementUuid, isRecord, mapParent, stringValue, turnId } from "./common.js";
+import { blockId, incrementUuid, isRecord, mapParent, sessionModels, stringValue, turnId } from "./common.js";
+import { storedSessions } from "./opencode-store.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { parserVersion } from "./versions.js";
-
-interface PartRow {
-  id: string;
-  message_id: string;
-  time_created: number;
-  data: string;
-}
-
-interface MessageRow {
-  id: string;
-  time_created: number;
-  data: string;
-}
 
 function turnRole(role: string | null): Turn["role"] {
   return role === "assistant" || role === "tool" || role === "system" ? role : "user";
@@ -111,43 +99,30 @@ function fileBlock(part: Record<string, unknown>, id: string): ContentBlock {
  * shape of a part evolves.
  */
 export class OpencodeV1Parser implements VersionedParser {
-  readonly source = "opencode";
   readonly versions = ["v1"] as const;
+
+  /** Kilo Code was rebuilt on opencode and writes the same schema. */
+  constructor(readonly source: "opencode" | "kilo" = "opencode") {}
 
   parse(request: ParseRequest): ParseResult {
     if (!isSqliteBytes(request.raw)) {
-      return { kind: "unknown", diagnostic: "opencode v1 requires a native SQLite database", raw: request.raw };
+      return { kind: "unknown", diagnostic: `${this.source} v1 requires a native SQLite database`, raw: request.raw };
     }
     try {
       const sessions = withSqlite(request.raw, (database) => {
-        const sessionRows = database
-          .prepare("SELECT id, title, directory FROM session ORDER BY id")
-          .all() as unknown as { id: string; title: string | null; directory: string | null }[];
-        if (sessionRows.length === 0) throw new Error("database has no sessions");
+        const stored = storedSessions(database);
+        if (stored.length === 0) throw new Error("database has no sessions");
 
-        const messagesFor = database
-          .prepare("SELECT id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created, id");
-        const partsFor = database
-          .prepare("SELECT id, message_id, time_created, data FROM part WHERE session_id = ? ORDER BY time_created, id");
-
-        return sessionRows.map((sessionRow, sessionIndex): Session => {
-          const partsByMessage = new Map<string, PartRow[]>();
-          for (const part of partsFor.all(sessionRow.id) as unknown as PartRow[]) {
-            const bucket = partsByMessage.get(part.message_id);
-            if (bucket) bucket.push(part);
-            else partsByMessage.set(part.message_id, [part]);
-          }
-
-          const messages = messagesFor.all(sessionRow.id) as unknown as MessageRow[];
-          const turns = messages.map((message, ordinal): Turn => {
-            const data = JSON.parse(message.data) as Record<string, unknown>;
-            const blocks = (partsByMessage.get(message.id) ?? [])
+        return stored.map((sessionRow, sessionIndex): Session => {
+          const turns = sessionRow.messages.map((message, ordinal): Turn => {
+            const data = message.data;
+            const blocks = message.parts
               // Block ids are a uuid column too, and a part id is opencode's
               // own, so it is derived rather than trusted. A tool part becomes
               // two blocks — the call and what it returned — so the result gets
               // its own derived id rather than colliding with the call's.
               .flatMap((part) => partsToBlocks(
-                JSON.parse(part.data) as Record<string, unknown>,
+                part.data,
                 blockId(part.id, request.seed.id),
                 blockId(`${part.id}:result`, request.seed.id),
               ));
@@ -160,7 +135,7 @@ export class OpencodeV1Parser implements VersionedParser {
               ordinal,
               parentId: mapParent(stringValue(data, "parentID"), request.seed.id),
               role: turnRole(stringValue(data, "role")),
-              createdAt: new Date(message.time_created).toISOString(),
+              createdAt: new Date(message.timeCreated).toISOString(),
               blocks,
             };
             if (model) turn.model = model;
@@ -173,12 +148,14 @@ export class OpencodeV1Parser implements VersionedParser {
             return turn;
           });
 
+          const models = sessionModels(request.seed.models, turns, sessionRow.model);
           return {
             ...request.seed,
             id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
             source: { ...request.seed.source, nativeSessionId: sessionRow.id },
             ...(sessionRow.title ? { title: sessionRow.title } : {}),
             ...(sessionRow.directory ? { workspace: { ...request.seed.workspace, path: sessionRow.directory } } : {}),
+            models,
             turns,
           };
         });
@@ -187,7 +164,7 @@ export class OpencodeV1Parser implements VersionedParser {
     } catch (error) {
       return {
         kind: "unknown",
-        diagnostic: `opencode v1 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`,
+        diagnostic: `${this.source} v1 sqlite decode failed: ${error instanceof Error ? error.message : String(error)}`,
         raw: request.raw,
       };
     }

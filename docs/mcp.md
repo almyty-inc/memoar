@@ -266,7 +266,44 @@ the same content in bounded chunks) and `GET /convert/{id}/download` (a signed
 URL an MCP client cannot consume) are all shaped for a browser or for the
 capture agent's own credential, not for a tool call.
 
+## Local stdio server
+
+On a computer where `memoar login` has run, `memoar mcp` serves the same tools
+over stdio. It reads newline-delimited JSON-RPC on standard input, sends each
+message to `https://<memoar-host>/mcp` with the stored API key in
+`X-Memoar-Key`, and writes the archive's answers to standard output. The
+archive answers every request on its own, so the proxy keeps no session state
+beyond repeating the negotiated `MCP-Protocol-Version` header. A JSON body and
+an event stream are both relayed. When the archive cannot be reached, each
+request in the message gets a JSON-RPC error carrying the reason, and
+diagnostics go to standard error.
+
+This is the zero-configuration path: an agent that prefers stdio, or that
+cannot send a custom header, starts `memoar mcp` and needs nothing else.
+`memoar integrate <agent>` writes that entry into the agent's config. See
+[agent-integration.md](agent-integration.md).
+
+`memoar login` asks for `mcp:use` alongside the capture scopes so that this key
+opens `/mcp`. A key minted by an older `memoar login` lacks it, and the proxy
+answers with an error saying to run `memoar login` again.
+
+`memoar mcp tools` and `memoar mcp call <tool> '<json>'` reach the same tools
+from a shell, for an agent that has the skill but no MCP client.
+
+The proxy forwards bytes and does not model the protocol, so it is a small
+JSON-RPC relay rather than a dependency on an MCP SDK. The official Rust SDK
+(`rmcp`) is built on an async runtime and generated schemas, and the CLI's
+HTTP client is blocking. Pulling both in to relay messages unchanged would add
+a large dependency tree to the half of memoar that runs on other people's
+machines.
+
 ## Claude Code
+
+```sh
+memoar integrate claude-code
+```
+
+Or, against the HTTP endpoint with a key of its own:
 
 ```sh
 claude mcp add --transport http memoar https://<memoar-host>/mcp \
@@ -275,8 +312,11 @@ claude mcp add --transport http memoar https://<memoar-host>/mcp \
 
 ## Codex
 
-Codex takes a bearer token from an environment variable and no custom header,
-so use the handshake above:
+`memoar integrate codex` registers the stdio server in
+`$CODEX_HOME/config.toml`, which needs no token at all.
+
+Over HTTP, Codex takes a bearer token from an environment variable and no
+custom header, so use the handshake above:
 
 ```sh
 export MEMOAR_MCP_TOKEN=...   # accessToken from the handshake
@@ -286,7 +326,9 @@ codex mcp add memoar --url https://<memoar-host>/mcp \
 
 ## Other clients
 
-Any client that can send `X-Memoar-Key` uses the key directly; any client that
+Any client that launches local servers can run `memoar mcp`.
+`memoar integrate` lists the agents whose config it writes. Any client that can
+send `X-Memoar-Key` uses the key directly; any client that
 can send a bearer token uses the handshake. Both paths are exercised by
 `server/test/mcp-handshake.test.ts`, and what a revoked key does to a token
 minted from it by `server/test/browser-token-revocation.test.ts`.

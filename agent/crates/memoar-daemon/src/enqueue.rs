@@ -173,11 +173,9 @@ pub(crate) fn stat_within_limit(path: &Path) -> Result<Metadata, DaemonError> {
     Ok(metadata)
 }
 
+/// The bytes the parser reads: a compressed rollout comes back decompressed.
 pub(crate) fn read_source(path: &Path) -> Result<Vec<u8>, DaemonError> {
-    fs::read(path).map_err(|source| DaemonError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
+    crate::source_bytes::read_source(path)
 }
 
 /// A source file's modification time as the queue records it.

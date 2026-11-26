@@ -12,6 +12,7 @@ import type { QueueJob } from "./queues.js";
 import type { ObjectStorage } from "./object-storage.js";
 import { FormatDetector, SecretScanner } from "./detection.js";
 import { IngestTeamStamp } from "./team-stamp.js";
+import { isPlaceholderTitle, titleFromTurns } from "./session-title.js";
 
 /** Names the rows the secret scanner owns, so re-scanning replaces only its own. */
 export const SCANNER_ORIGIN = "secret-scanner";
@@ -190,6 +191,9 @@ export class IngestPipeline {
       const parsed: ArchivedSession = {
         ...parsedSession,
         id: canonicalSessionId,
+        title: isPlaceholderTitle(parsedSession.title, parsedSession.source.tool)
+          ? titleFromTurns(parsedSession.turns) ?? parsedSession.title
+          : parsedSession.title,
         provenance: parsedSession.provenance.map((entry) => (
           entry.kind === "native" ? { ...entry, parserVersion: result.parser } : entry
         )),

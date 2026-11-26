@@ -18,7 +18,7 @@ one with somebody after reviewing exactly what leaves your archive.
 - [Supported sources](docs/sources.md) — every tool with a tested parser.
   Anything not listed is not supported.
 - [Sharing, transfer, conversion](docs/sharing-and-convert.md) ·
-  [MCP](docs/mcp.md) · [Deploying](docs/install.md) ·
+  [MCP](docs/mcp.md) · [Agent integration](docs/agent-integration.md) · [Deploying](docs/install.md) ·
   [Backups](docs/backup.md) · [Password reset](docs/password-reset.md) · [Observability](docs/observability.md) ·
   [Architecture](docs/architecture.md)
 
