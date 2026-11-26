@@ -1,4 +1,3 @@
-import { AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { memoarApi } from '../../lib/api';
 import type { TeamMember } from '../../lib/types';
@@ -41,7 +40,7 @@ export function MemberRoster({ teamId, teamName }: {
 
   return (
     <section className="member-roster" aria-label={`Members of ${teamName}`}>
-      {error ? <p role="alert" className="error-note"><AlertCircle size={15} /> {error}</p> : null}
+      {error ? <p role="alert" className="error-note">{error}</p> : null}
       {members && members.length === 0 ? <p className="empty-note">The archive returned nobody for this team.</p> : null}
       {members?.map((member) => (
         <div className="member-row" key={member.userId}>

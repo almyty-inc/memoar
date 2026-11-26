@@ -1,5 +1,4 @@
 export type ViewId =
-  | 'workspace'
   | 'timeline'
   | 'search'
   | 'collections'

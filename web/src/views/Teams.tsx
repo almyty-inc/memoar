@@ -1,4 +1,4 @@
-import { AlertCircle, Users, X } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 import { useEffect, useState } from 'react';
 import { memoarApi } from '../lib/api';
 import type { CurrentUser, Team, TeamInvitation } from '../lib/types';
@@ -84,21 +84,13 @@ export function TeamsView({ user }: { user: CurrentUser | null }) {
 
   return (
     <div className="page teams-page">
-      <section className="page-heading row-heading">
-        <div>
-          <div className="eyebrow"><Users size={13} /> Shared archives</div>
-          <h1>Teams</h1>
-          <p>A team is who else can read the sessions and collections its members widen to it. Nobody is added to one: they are invited, and they join by accepting.</p>
-        </div>
-      </section>
+      <PageHeader title="Teams" />
+      <p className="page-intro">A team can read the sessions and collections its members widen to it. People join by accepting an invitation.</p>
 
-      {loadError ? <p role="alert" className="error-note"><AlertCircle size={15} /> {loadError}</p> : null}
+      {loadError ? <p role="alert" className="error-note">{loadError}</p> : null}
 
       {actionError ? (
-        <section className="privacy-banner banner-error" role="alert">
-          <span><X size={20} /></span>
-          <div><strong>That did not go through</strong><p>{actionError}</p></div>
-        </section>
+        <div className="notice notice-error" role="alert"><p><strong>That did not go through.</strong> {actionError}</p></div>
       ) : null}
 
       {invitations ? (

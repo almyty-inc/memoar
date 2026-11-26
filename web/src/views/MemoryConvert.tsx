@@ -1,4 +1,3 @@
-import { ArrowLeftRight } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui';
 import { memoarApi } from '../lib/api';
@@ -45,8 +44,8 @@ export function MemoryConvertPanel({ document }: { document: MemoryDocument }) {
 
   return (
     <div className="memory-convert">
-      <h3><ArrowLeftRight size={14} /> Port to another tool</h3>
-      <p>
+      <h3>Port to another tool</h3>
+      <p className="meta">
         The same text, at the path {target} reads. Nothing is rewritten and nothing is written to
         a machine here.
       </p>
@@ -69,7 +68,7 @@ export function MemoryConvertPanel({ document }: { document: MemoryDocument }) {
           </select>
         </label>
         <Button size="sm" onClick={() => void preview()} disabled={busy}>
-          {busy ? 'Preparing…' : 'Show the port'}
+          {busy ? 'Preparing' : 'Show the port'}
         </Button>
       </div>
 

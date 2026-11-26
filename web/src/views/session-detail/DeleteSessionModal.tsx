@@ -1,4 +1,3 @@
-import { AlertTriangle } from 'lucide-react';
 import { memoarApi } from '../../lib/api';
 import type { SessionSummary } from '../../lib/types';
 import { Button, Modal } from '../../components/ui';
@@ -13,8 +12,10 @@ export function DeleteSessionModal({ deleteOpen, setDeleteOpen, deleting, setDel
   onDeleted: () => void;
 }) {
   return (
-    <Modal open={deleteOpen} title="Delete this session?" description="Captured data and raw artifacts enter the configured 30-day recovery window." onClose={() => setDeleteOpen(false)}>
-      <div className="modal-body warning-body"><AlertTriangle size={22} /><p>This removes the session from search, collections, share links, and agent memory. Existing exports are not recalled.</p></div>
+    <Modal open={deleteOpen} title="Delete this session?" description="It can be recovered for 30 days." onClose={() => setDeleteOpen(false)}>
+      <div className="modal-body">
+        <p>The session leaves search, collections, share links and agent memory. Exports already made are not recalled.</p>
+      </div>
       <footer className="modal-actions">
         <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
         <Button
@@ -28,7 +29,7 @@ export function DeleteSessionModal({ deleteOpen, setDeleteOpen, deleting, setDel
               .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Session could not be deleted'))
               .finally(() => setDeleting(false));
           }}
-        >{deleting ? 'Deleting…' : 'Delete session'}</Button>
+        >{deleting ? 'Deleting' : 'Delete session'}</Button>
       </footer>
     </Modal>
   );

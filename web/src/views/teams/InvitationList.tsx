@@ -1,15 +1,10 @@
-import { Check, MailPlus, X } from 'lucide-react';
 import type { TeamInvitation } from '../../lib/types';
-import { Badge, Button } from '../../components/ui';
+import { Button } from '../../components/ui';
 
 /**
- * Teams this account has been asked to join.
- *
- * Kept in its own panel, above the teams it belongs to and never mixed into
- * them. Membership used to begin the moment somebody typed an address, which
- * changed who could read this account's sessions without anything to agree to;
- * the row therefore says in words that nothing has happened yet, and the only
- * way out of this list is Accept or Decline.
+ * Teams this account has been asked to join, kept apart from the ones it is
+ * in. The only way out of this list is Accept or Decline, and the row says
+ * that nothing has happened yet.
  */
 export function InvitationList({ invitations, busy, onAccept, onDecline }: {
   invitations: TeamInvitation[];
@@ -18,42 +13,23 @@ export function InvitationList({ invitations, busy, onAccept, onDecline }: {
   onDecline: (teamId: string) => void;
 }) {
   return (
-    <section className="data-panel" aria-labelledby="team-invitations-heading">
-      <header>
-        <div>
-          <h2 id="team-invitations-heading">Invitations</h2>
-          <p>Teams that have asked you to join. You are not a member of any of them.</p>
-        </div>
-      </header>
-      <div className="data-list">
+    <section className="section" aria-labelledby="team-invitations-heading">
+      <div className="section-head">
+        <h2 id="team-invitations-heading" className="section-title">Invitations</h2>
+        <p>You are not a member of these teams until you accept.</p>
+      </div>
+      <div className="row-list">
         {invitations.length === 0 ? <p className="empty-note">No pending invitations.</p> : null}
         {invitations.map((invitation) => (
-          <article className="invitation-row" key={invitation.teamId}>
-            <span className="row-icon"><MailPlus size={16} /></span>
-            <div className="invitation-main">
-              <strong>{invitation.teamName}</strong>
-              <p>Accepting is what makes you a member, and what lets the other members read anything you widen to this team.</p>
-            </div>
-            <Badge className="invitation-badge">Invitation</Badge>
-            <div className="transfer-actions">
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={busy === invitation.teamId}
-                onClick={() => onAccept(invitation.teamId)}
-              >
-                <Check size={14} /> Accept
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy === invitation.teamId}
-                onClick={() => onDecline(invitation.teamId)}
-              >
-                <X size={14} /> Decline
-              </Button>
-            </div>
-          </article>
+          <div className="row" key={invitation.teamId}>
+            <strong className="row-name">{invitation.teamName}</strong>
+            <span className="row-meta text-warning">Invitation</span>
+            <span className="row-text meta">Accepting is what makes you a member, and what lets the other members read anything you widen to this team.</span>
+            <span className="row-actions">
+              <Button size="sm" variant="primary" disabled={busy === invitation.teamId} onClick={() => onAccept(invitation.teamId)}>Accept</Button>
+              <Button size="sm" variant="ghost" disabled={busy === invitation.teamId} onClick={() => onDecline(invitation.teamId)}>Decline</Button>
+            </span>
+          </div>
         ))}
       </div>
     </section>

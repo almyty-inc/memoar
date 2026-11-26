@@ -104,7 +104,8 @@ describe('agent memory', () => {
 
     render(<MemoryView />);
     // The status is on the file in the list, before it has been opened.
-    expect(await screen.findByText('Needs review')).toBeInTheDocument();
+    // Named for what was found. "Needs review" said something was wrong and not what.
+    expect(await screen.findByText('Possible secrets')).toBeInTheDocument();
 
     await userEvent.click(screen.getByText('AGENTS.md'));
     expect(await screen.findByText('The scanner matched 3 things in this file.')).toBeInTheDocument();
@@ -116,8 +117,8 @@ describe('agent memory', () => {
     // the request lands.
     expect(review).toHaveBeenCalledWith('doc-1', 'a'.repeat(64));
     // Both where the file is listed and where it was read: one document, one status.
-    expect(await screen.findAllByText('Reviewed')).toHaveLength(2);
-    expect(screen.queryByText('Needs review')).not.toBeInTheDocument();
+    expect(await screen.findAllByText('Mask reviewed')).toHaveLength(2);
+    expect(screen.queryByText('Possible secrets')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark reviewed' })).not.toBeInTheDocument();
   });
 
@@ -137,8 +138,8 @@ describe('agent memory', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Mark reviewed' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('captured again');
-    expect(screen.queryByText('Reviewed')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Needs review').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Mask reviewed')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Possible secrets').length).toBeGreaterThan(0);
   });
 
   it('removes a file and reloads the list', async () => {

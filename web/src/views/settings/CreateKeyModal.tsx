@@ -1,4 +1,3 @@
-import { Eye, Fingerprint, KeyRound } from 'lucide-react';
 import { Button, CopyButton, Modal } from '../../components/ui';
 
 /**
@@ -41,14 +40,14 @@ export function CreateKeyModal({ createOpen, setCreateOpen, createdSecret, setCr
         <>
           <div className="modal-body form-stack">
             <label className="field-label">Key name<input value={keyName} onChange={(event) => setKeyName(event.target.value)} autoFocus /></label>
-            <fieldset className="scope-options"><legend>Scopes</legend>{KEY_SCOPES.map(({ scope, purpose }) => <label key={scope}><input type="checkbox" checked={keyScopes.includes(scope)} onChange={(event) => setKeyScopes((current) => event.target.checked ? [...current, scope] : current.filter((value) => value !== scope))} /><span><code>{scope}</code><small>{purpose}</small></span></label>)}</fieldset>
+            <fieldset className="scope-options"><legend className="field-label">Scopes</legend><div className="choice-list">{KEY_SCOPES.map(({ scope, purpose }) => <label className="choice" key={scope}><input type="checkbox" checked={keyScopes.includes(scope)} onChange={(event) => setKeyScopes((current) => event.target.checked ? [...current, scope] : current.filter((value) => value !== scope))} /><code>{scope}</code><small>{purpose}</small></label>)}</div></fieldset>
             {keyError ? <p role="alert" className="error-note">{keyError}</p> : null}
           </div>
-          <footer className="modal-actions"><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button variant="primary" disabled={keySaving || !keyName.trim() || !keyScopes.length} onClick={() => void createKey()}><Fingerprint size={15} /> {keySaving ? 'Creating…' : 'Create key'}</Button></footer>
+          <footer className="modal-actions"><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button variant="primary" disabled={keySaving || !keyName.trim() || !keyScopes.length} onClick={() => void createKey()}>{keySaving ? 'Creating' : 'Create key'}</Button></footer>
         </>
       ) : (
         <>
-          <div className="modal-body created-key"><span><KeyRound size={22} /></span><div><small>API key</small><code>{createdSecret}</code></div><CopyButton value={createdSecret} label="Copy secret" /><div className="key-warning"><Eye size={15} /><p>Store this secret in your client now. Closing this dialog hides it permanently.</p></div></div>
+          <div className="modal-body"><div className="command"><code>{createdSecret}</code><CopyButton value={createdSecret} label="Copy secret" /></div><p className="field-hint">Store it in your client now. Closing this dialog hides it for good.</p></div>
           <footer className="modal-actions"><Button variant="primary" onClick={() => { setCreateOpen(false); setCreatedSecret(null); }}>I saved this key</Button></footer>
         </>
       )}

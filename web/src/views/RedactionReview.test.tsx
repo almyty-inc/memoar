@@ -118,12 +118,12 @@ describe('redaction review before sharing', () => {
     expect(screen.getByText(/flagged nothing/)).toBeInTheDocument();
   });
 
-  it('draws the token bars from the token counts', () => {
-    // They were fixed at 62% and 39% whatever the session used — two rectangles
-    // that looked like a measurement — and cache read had no bar at all.
+  it('states the token counts as numbers, not as bars', () => {
+    // There were bars fixed at 62% and 39% whatever the session used. The
+    // details list says the counts themselves.
     vi.spyOn(memoarApi, 'listAnnotations').mockResolvedValue({ items: [] });
 
-    const { container } = render(
+    render(
       <SessionDetailView
         detail={{ ...detail(), tokenTotals: { input: 800, output: 400, cacheRead: 200 } }}
         collections={[]}
@@ -137,8 +137,7 @@ describe('redaction review before sharing', () => {
       />,
     );
 
-    const widths = [...container.querySelectorAll('.token-bar > span')].map((bar) => (bar as HTMLElement).style.width);
-    expect(widths, 'each bar is its share of the largest').toEqual(['100%', '50%', '25%']);
+    expect(screen.getByText('800 in, 400 out, 200 cache read')).toBeInTheDocument();
   });
 
   it('reports a failure to read the findings rather than showing none', async () => {

@@ -1,17 +1,12 @@
-import { AlertCircle, ArrowRight, CheckCircle2, FileArchive, Info, ShieldCheck, UploadCloud } from 'lucide-react';
-
 import { useState, type FormEvent } from 'react';
-import { Badge, Button } from '../components/ui';
+import { Button, PageHeader } from '../components/ui';
 import type { ImportProgress, ImportSource } from '../lib/api';
 import type { Machine, SessionSummary } from '../lib/types';
 
 /**
- * Every entry here must have a parser registered server-side. Offering a format
- * we cannot parse does not fail: the upload succeeds, the artifact is stored as
- * unknown_format, and the user watches a progress bar until it times out with
- * nothing to show. claude-ai, gemini, mistral, and perplexity exports were
- * listed here without parsers and did exactly that — they return when the
- * parsers land, not before.
+ * Every entry here has a parser registered server-side. A format without one
+ * uploads, is stored as unknown_format, and never becomes a session, so it is
+ * not offered until its parser lands.
  */
 const sources: Array<{ value: ImportSource; label: string }> = [
   { value: 'canonical', label: 'Memoar canonical bundle' },
@@ -52,37 +47,31 @@ export function ImportView({ machines, onImport, onOpen }: {
   };
 
   return (
-    <div className="page import-page">
-      <section className="page-heading row-heading">
-        <div><div className="eyebrow"><FileArchive size={13} /> Portable archive intake</div><h1>Import sessions</h1><p>Preserve native bytes first, then parse them into branch-aware canonical sessions.</p></div>
-        <Badge><ShieldCheck size={12} /> Private by default</Badge>
-      </section>
+    <div className="page narrow-page import-page">
+      <PageHeader title="Import" />
+      <p className="page-intro">Upload a session file or an export. The raw file is kept as uploaded, then parsed into sessions.</p>
 
-      <section className="settings-section import-panel">
-        <header><div><h2>Choose an archive</h2><p>Native stores, Memoar bundles, cass exports, and consumer ZIPs use the same raw-first ingest path.</p></div></header>
-        <form className="form-stack" onSubmit={(event) => void submit(event)}>
-          <label className="field-label">Format<select value={source} onChange={(event) => setSource(event.target.value as ImportSource)}>{sources.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-          <label className="field-label">Capture machine<select value={machineId} onChange={(event) => setMachineId(event.target.value)} disabled={!machines.length}><option value="">Select a registered machine</option>{machines.map((machine) => <option key={machine.id} value={machine.id}>{machine.name} · {machine.platform}</option>)}</select></label>
-          <label className="field-label import-file">Archive file<input aria-label="Archive file" type="file" accept=".zip,.json,.jsonl,.db,.md,application/zip,application/json" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span><UploadCloud size={18} />{file ? `${file.name} · ${file.size.toLocaleString()} bytes` : 'Select an archive file'}</span></label>
-          {/*
-            A hint beside the control it explains, not an error. This was a
-            red role="alert" rendered on arrival, before the reader had done
-            anything: the page opened by telling them they had made a mistake.
-            Nothing here can fail yet — the submit stays disabled until a
-            machine is chosen — so nothing here is announced as a failure.
-          */}
-          {!machines.length ? <p className="field-hint"><Info size={14} aria-hidden="true" /> Register a machine before importing; the capture agent's sign-in does it.</p> : null}
+      <form className="form-stack form-narrow" onSubmit={(event) => void submit(event)}>
+        <label className="field-label">Format<select value={source} onChange={(event) => setSource(event.target.value as ImportSource)}>{sources.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        <label className="field-label">Capture machine<select value={machineId} onChange={(event) => setMachineId(event.target.value)} disabled={!machines.length}><option value="">Select a registered machine</option>{machines.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}, {machine.platform}</option>)}</select></label>
+        <label className="field-label">File
+          <input aria-label="Archive file" className="file-input" type="file" accept=".zip,.json,.jsonl,.db,.md,application/zip,application/json" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+        </label>
+        {file ? <p className="field-hint">{file.name}, {file.size.toLocaleString('en')} bytes</p> : null}
+        {/* A hint beside the control it explains, not an error: nothing has
+            failed, the button is simply not ready yet. */}
+        {!machines.length ? <p className="field-hint">Register a machine before importing. Running <code>memoar login</code> on it does that.</p> : null}
+        <div className="actions"><Button type="submit" variant="primary" size="sm" disabled={!file || !machineId || busy}>{busy ? 'Importing' : 'Import archive'}</Button></div>
+      </form>
 
-          <Button type="submit" variant="primary" disabled={!file || !machineId || busy}>{busy ? 'Importing…' : 'Import archive'} <ArrowRight size={14} /></Button>
-        </form>
-      </section>
-
-      {progress ? <section className="privacy-banner" role="status" aria-label="Import progress"><span>{progress.stage === 'ready' ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}</span><div><strong>{progress.stage}</strong><p>{progress.detail}</p></div></section> : null}
-      {/* A failure wears the failure surface. This was the same neutral chrome
-          as the privacy notice above it, so "Import failed" read as news. */}
-      {error ? <section className="privacy-banner banner-error" role="alert"><span><AlertCircle size={20} /></span><div><strong>Import failed</strong><p>{error}</p></div></section> : null}
-
-      {imported ? <section className="settings-section"><header><div><h2>{imported.title}</h2><p>{imported.sourceLabel} · {imported.workspace}</p></div><Button variant="primary" onClick={() => onOpen(imported)}>Open imported session <ArrowRight size={14} /></Button></header></section> : null}
+      {progress ? <div className="notice" role="status" aria-label="Import progress"><p><strong>{progress.stage}</strong> {progress.detail}</p></div> : null}
+      {error ? <div className="notice notice-error" role="alert"><p><strong>Import failed.</strong> {error}</p></div> : null}
+      {imported ? (
+        <div className="notice">
+          <p><strong>{imported.title}</strong> {imported.sourceLabel}, <span className="mono">{imported.workspace}</span></p>
+          <Button size="sm" variant="primary" onClick={() => onOpen(imported)}>Open session</Button>
+        </div>
+      ) : null}
     </div>
   );
 }

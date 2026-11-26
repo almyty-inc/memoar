@@ -56,9 +56,9 @@ describe("the redaction statuses server, agent and web agree on", () => {
     expect(known).toEqual(CANONICAL);
 
     const ui = await read("../web/src/components/ui.tsx");
-    const labels = /const labels: Record<RedactionStatus, string> = \{([^}]*)\}/u.exec(ui);
+    const labels = /const REDACTION: Record<RedactionStatus, [^=]+= \{([\s\S]*?)\n\};/u.exec(ui);
     expect(labels, "RedactionBadge should map every status to a label").not.toBeNull();
-    const labelled = [...labels![1]!.matchAll(/^\s*([a-z_]+):/gmu)].map((match) => match[1]!);
+    const labelled = [...labels![1]!.matchAll(/^ {2}([a-z_]+):/gmu)].map((match) => match[1]!);
     expect([...labelled].sort(), "a status with no label renders as an empty badge").toEqual([...CANONICAL].sort());
   });
 });

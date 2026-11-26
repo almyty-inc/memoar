@@ -1,8 +1,7 @@
-import { Link2, ScanSearch, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { memoarApi } from '../../lib/api';
 import type { Annotation, ShareGrant } from '../../lib/types';
-import { Badge, Button, CopyButton, Modal } from '../../components/ui';
+import { Button, CopyButton, Modal, plural } from '../../components/ui';
 
 /** Turns the chosen expiry option into the timestamp the contract expects. */
 function expiresAt(option: string): string | null {
@@ -38,12 +37,7 @@ export function ShareReviewModal({ open, approved, link, busy, error, sessionId,
   approved: boolean;
   link: string | null;
   busy: boolean;
-  /**
-   * Why the last attempt did not work. Approving and minting both wrote their
-   * failure to a page-level banner this dialog covers, so pressing "Approve
-   * redactions" against a refusal left the reader looking at an unchanged
-   * dialog with nothing to read and nothing to do.
-   */
+  /** Why the last attempt did not work, said inside the dialog that covers the page. */
   error: string | null;
   sessionId: string;
   onApprove: () => void;
@@ -52,9 +46,7 @@ export function ShareReviewModal({ open, approved, link, busy, error, sessionId,
 }) {
   /*
     What the scanner actually found, read from the session's redaction masks.
-
-    This is the gate that decides whether a session may leave the archive, so
-    anything other than the real findings would make the review worthless.
+    This is the gate that decides whether a session may leave the archive.
   */
   const [findings, setFindings] = useState<RedactionFinding[] | null>(null);
   const [findingsError, setFindingsError] = useState<string | null>(null);
@@ -68,81 +60,67 @@ export function ShareReviewModal({ open, approved, link, busy, error, sessionId,
       });
     return () => { cancelled = true; };
   }, [open, approved, sessionId]);
-  // These drive the request. They were uncontrolled inputs whose values were
-  // read by nothing, so every choice offered here was discarded.
   const [permission, setPermission] = useState<ShareGrant['permission']>('viewer');
   const [expiry, setExpiry] = useState('7');
+
   return (
     <Modal
       open={open}
       title={approved ? 'Create share link' : 'Review what leaves your archive'}
-      description={approved ? 'The reviewed redaction mask will be applied to every view and import.' : 'Visibility cannot widen until each finding has a decision.'}
+      description={approved ? 'The reviewed mask applies to every view and import through this link.' : 'Every finding below is masked for anyone you share with.'}
       onClose={onClose}
     >
       {!approved ? (
         <>
           <div className="modal-body">
-            <div className="review-summary">
-              <ScanSearch size={20} />
-              <div>
-                <strong>
-                  {findings === null ? 'Reading findings…' : `${findings.length} ${findings.length === 1 ? 'finding' : 'findings'} in this session`}
-                </strong>
-                <p>
-                  {findings === null
-                    ? 'From the secret scan performed when this session was archived.'
-                    : findings.length
-                      ? 'Every one of these is masked for anyone you share with. The mask is snapshotted against the session as it stands now.'
-                      : 'The scan flagged nothing. Approving records that decision against the session as it stands now.'}
-                </p>
-              </div>
-              <Badge className="redaction-findings">{findings?.length ? 'Review required' : 'Review'}</Badge>
-            </div>
+            <p>
+              <strong>{findings === null ? 'Reading findings' : `${plural(findings.length, 'finding')} in this session`}</strong>{' '}
+              <span className="muted">
+                {findings === null
+                  ? 'From the secret scan made when the session was archived.'
+                  : findings.length
+                    ? 'The mask is recorded against the session as it stands now.'
+                    : 'The scan flagged nothing. Approving records that decision against the session as it stands now.'}
+              </span>
+            </p>
             {findingsError ? <p role="alert" className="error-note">{findingsError}</p> : null}
             {error ? <p role="alert" className="error-note">{error}</p> : null}
-
-            {/*
-              Read-only on purpose: the server masks every finding and the
-              review carries no per-finding decision, so a checkbox here would
-              be a choice that goes nowhere.
-            */}
-            <div className="finding-list">
-              {(findings ?? []).map((finding) => (
-                <div key={finding.id}>
-                  <span><strong>{findingLabel(finding.kind)}</strong><code>{finding.preview}</code></span>
-                  <Badge>Mask</Badge>
-                </div>
-              ))}
-            </div>
+            {/* Read-only on purpose: the server masks every finding and the
+                review carries no per-finding decision. */}
+            {findings && findings.length > 0 ? (
+              <div className="row-list">
+                {findings.map((finding) => (
+                  <div className="row" key={finding.id}>
+                    <span className="row-main">{findingLabel(finding.kind)}</span>
+                    <code className="meta">{finding.preview}</code>
+                    <span className="row-meta">Masked</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
-          <footer className="modal-actions"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onApprove}><ShieldCheck size={15} /> Approve redactions</Button></footer>
+          <footer className="modal-actions"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onApprove}>Approve redactions</Button></footer>
         </>
       ) : (
         <>
           <div className="modal-body">
-            <div className="permission-row">
-              <label><input type="radio" name="permission" checked={permission === 'viewer'} onChange={() => setPermission('viewer')} /><span><strong>Viewer</strong><small>Read the redacted session</small></span></label>
-              <label><input type="radio" name="permission" checked={permission === 'importer'} onChange={() => setPermission('importer')} /><span><strong>Importer</strong><small>Copy it into another archive</small></span></label>
+            <div className="choice-list" role="radiogroup" aria-label="Permission">
+              <label className="choice"><input type="radio" name="permission" checked={permission === 'viewer'} onChange={() => setPermission('viewer')} /><strong>Viewer</strong><small>Read the redacted session</small></label>
+              <label className="choice"><input type="radio" name="permission" checked={permission === 'importer'} onChange={() => setPermission('importer')} /><strong>Importer</strong><small>Copy it into another archive</small></label>
             </div>
             <label className="field-label">Link expires
               <select value={expiry} onChange={(event) => setExpiry(event.target.value)}>
                 <option value="7">In 7 days</option><option value="30">In 30 days</option><option value="never">Never</option>
               </select>
             </label>
-            {/*
-              Redactions are applied by the server for the life of the link, so
-              this states a guarantee rather than offering a choice. It was a
-              toggle wired to nothing, which read as an option to turn it off.
-            */}
-            <p className="redaction-safe"><ShieldCheck size={15} /><span>The reviewed redaction mask is applied for as long as this link is active.</span></p>
             {error ? <p role="alert" className="error-note">{error}</p> : null}
-            {link ? <div className="share-link-result"><CopyButton value={link} label="Copy share link" /><code>{link}</code></div> : null}
+            {link ? <div className="command"><code>{link}</code><CopyButton value={link} label="Copy share link" /></div> : null}
           </div>
           <footer className="modal-actions">
             <Button variant="ghost" onClick={onClose}>{link ? 'Done' : 'Cancel'}</Button>
             {link ? null : (
               <Button variant="primary" disabled={busy} onClick={() => onCreate(permission, expiresAt(expiry))}>
-                <Link2 size={15} /> {busy ? 'Creating…' : 'Create secure link'}
+                {busy ? 'Creating' : 'Create secure link'}
               </Button>
             )}
           </footer>

@@ -20,10 +20,10 @@ export function DistillationTab({ distillation, setDistillation, distillationErr
       <header>
         <div>
           <h2>Distillation</h2>
-          <p>Read sessions with a language model and keep the decisions as notes. Your key, your provider, your bill.</p>
+          <p>Reads sessions with a language model and keeps the decisions as notes. It runs on your own provider key.</p>
         </div>
         <Badge className={distillation?.enabled && distillation.keySet ? 'status-active' : undefined}>
-          <span /> {distillation?.enabled && distillation.keySet ? 'Active' : 'Off'}
+          <span className={distillation?.enabled && distillation.keySet ? 'dot dot-ok' : 'dot'} aria-hidden="true" /> {distillation?.enabled && distillation.keySet ? 'Active' : 'Off'}
         </Badge>
       </header>
 
@@ -51,7 +51,7 @@ export function DistillationTab({ distillation, setDistillation, distillationErr
               void persistDistillation(provider === 'none' ? { provider, apiKey: null } : { provider });
             }}
           >
-            <option value="none">None — distillation off</option>
+            <option value="none">None, distillation off</option>
             <option value="anthropic">Anthropic</option>
           </select>
         </label>
@@ -70,7 +70,7 @@ export function DistillationTab({ distillation, setDistillation, distillationErr
 
       <div className="form-grid">
         <label className="field-label">
-          {distillation?.keySet ? `API key — a key ending ${distillation.keyHint ?? '••••'} is stored` : 'API key'}
+          {distillation?.keySet ? `API key (one ending ${distillation.keyHint ?? '••••'} is stored)` : 'API key'}
           <input
             type="password"
             autoComplete="off"

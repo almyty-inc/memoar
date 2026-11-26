@@ -5,71 +5,61 @@ const email = process.env.MEMOAR_E2E_EMAIL ?? 'owner@memoar.local';
 const password = process.env.MEMOAR_E2E_PASSWORD ?? 'local-stack-password-change-me';
 
 async function signIn(page: Page): Promise<void> {
-  await page.goto('/#/timeline');
-  const heading = page.getByRole('heading', { name: 'Open your archive.' });
+  await page.goto('/timeline');
+  const heading = page.getByRole('heading', { name: 'Sign in' });
   if (await heading.isVisible()) {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: /^Sign in/ }).click();
   }
-  await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
 }
 
 /**
  * Text that does not fit is text nobody can read.
  *
- * The capture column of the machines table was a fixed 40px track, sized for
- * the switch that used to sit in it. When that switch became a "Capture on" /
- * "Capture off" badge — because the switch set nothing — the badge overflowed
- * the card and the column rendered as "Captur".
- *
- * Nothing caught it, and the way it was missed is the point: the change was
- * checked by grepping the deployed JavaScript for the string "Capture on",
- * which proves the text shipped and says nothing about whether it is legible.
- * Every other gate here reads source or markup; none of them lays anything out.
- * This is the one that opens a browser.
+ * The capture column of the machines table was once a fixed 40px track, and
+ * the "Capture on" label in it rendered as "Captur". Every other gate here
+ * reads source or markup; this is the one that lays anything out.
  */
 test.describe('what the layout actually renders', () => {
   test('never clips a cell, and never scrolls the page sideways', async ({ page }) => {
     await signIn(page);
-    await page.goto('/#/machines');
-    await expect(page.getByRole('heading', { name: 'Machines & sources' })).toBeVisible();
+    await page.goto('/machines');
+    await expect(page.getByRole('heading', { name: 'Machines', level: 1 })).toBeVisible();
 
-    // Only the first two cards open by default, so open the rest: the row this
-    // checks lives inside one, and an archive with several machines would
-    // otherwise hide every row this test is about.
-    //
-    // Waited for rather than collected in one go — the cards arrive from the
-    // archive after the heading does, and reading the list too early returns
-    // nothing and clicks nothing, which then looks like "this archive has no
-    // sources" rather than "the page had not finished loading".
+    // Machines open by default. Open any the reader may have closed, waiting
+    // for them to arrive rather than reading an empty list too early.
+    await expect(page.locator('.machine').first(), 'no machines rendered').toBeVisible();
     const collapsed = page.getByRole('button', { name: /^Expand / });
-    await expect(collapsed.first(), 'no machine cards rendered').toBeVisible();
-    // One at a time, re-querying: each click re-renders the list, so handles
-    // taken before it are stale.
     for (let remaining = await collapsed.count(); remaining > 0; remaining -= 1) {
       await collapsed.first().click();
     }
 
-    // A row is only present when a machine has reported sources. Without one
-    // this test would pass by checking nothing, which is the failure mode it
-    // exists to prevent, so say so rather than go quiet.
-    const badges = page.locator('.source-row .badge');
+    // Without a source row this test would pass by checking nothing.
+    const badges = page.locator('.source-row:not(.source-head) .badge');
     await expect(badges.first(), 'no source rows rendered, so nothing was checked').toBeVisible();
 
     for (const badge of await badges.all()) {
       const clipped = await badge.evaluate((node) => {
         const cell = node as HTMLElement;
-        // scrollWidth exceeding clientWidth is the browser saying the content
-        // did not fit the box it was given.
         return { text: cell.textContent ?? '', overflow: cell.scrollWidth - cell.clientWidth };
       });
       expect(clipped.overflow, `"${clipped.text}" is cut off by ${clipped.overflow}px`).toBeLessThanOrEqual(1);
     }
 
-    // And the table as a whole stays inside the page: a column that grows past
-    // the viewport pushes the document sideways instead of clipping one cell.
     const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(sideways, 'the page scrolls horizontally, so a column is wider than the window').toBeLessThanOrEqual(1);
+  });
+
+  test('fits a phone without sideways scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signIn(page);
+    for (const path of ['/timeline', '/search', '/machines', '/settings']) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(sideways, `${path} scrolls sideways at phone width`).toBeLessThanOrEqual(1);
+    }
   });
 });

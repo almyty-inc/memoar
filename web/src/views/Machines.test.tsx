@@ -41,8 +41,8 @@ describe('machines overview', () => {
     ];
     const { container } = render(<MachinesView machines={[machine({ sources })]} onConnect={vi.fn()} />);
 
-    const disabled = container.querySelector('.source-state-disabled svg');
-    const attention = container.querySelector('.source-state-attention svg');
+    const disabled = container.querySelector('.source-state-disabled .dot');
+    const attention = container.querySelector('.source-state-attention .dot');
     expect(disabled?.getAttribute('class')).not.toMatch(/alert/u);
     expect(attention?.getAttribute('class')).toMatch(/alert/u);
     expect(screen.getByText('Disabled')).toBeInTheDocument();
@@ -62,8 +62,7 @@ describe('machines overview', () => {
     // suspected something was wrong.
     render(<MachinesView machines={[machine(), machine({ id: 'm-2', name: 'laptop', status: 'offline' })]} onConnect={vi.fn()} />);
 
-    const tile = screen.getByText('1 not reporting').parentElement;
-    expect(tile, 'and names the one that has not').toHaveTextContent('laptop');
+    expect(screen.getByText(/^1 not reporting/u), 'and names the one that has not').toHaveTextContent('laptop');
   });
 
   it('says so plainly when every machine has checked in', () => {
@@ -77,7 +76,8 @@ describe('machines overview', () => {
     render(<MachinesView machines={[machine(), machine({ id: 'm-2', name: 'laptop' })]} onConnect={vi.fn()} />);
 
     expect(screen.getByText('6 sessions')).toBeInTheDocument();
-    expect(screen.getByText('1 sources')).toBeInTheDocument();
+    // One source is "1 source", not "1 sources".
+    expect(screen.getByText('1 source')).toBeInTheDocument();
     expect(screen.getByText('2 online')).toBeInTheDocument();
   });
 });
