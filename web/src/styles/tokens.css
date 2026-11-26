@@ -1,66 +1,102 @@
 /*
-  The scales. Nothing outside this file invents a number.
+  The scales, in almyty's design system v1. Nothing outside this file invents
+  a number.
 
-  One neutral palette and one accent. The accent marks focus, selection and the
-  primary action, and nothing else. Hierarchy comes from weight and grey level.
+  The app sits on the product field (a soft blue to mint gradient) and the
+  working surface floats on it as a white card. The gradient is only ever the
+  field, the logo and thin accents: never a button, never text.
 */
 :root {
   color-scheme: light;
 
-  --bg: #ffffff;
-  --subtle: #f7f7f8;
-  --hover: #f0f0f2;
-  --line: #e6e6e9;
-  --text: #1a1a1d;
-  --text-2: #5c5c66;
-  /* Only for text at 13px or larger that the reader can do without. */
-  --text-3: #8a8a94;
-  --accent: #3b5bdb;
+  --bg: #ffffff;              /* canvas: cards, panels, popovers */
+  --surround: linear-gradient(135deg, #eaf1ff, #e5f8ff 45%, #e6fcf1);
+  --surround-flat: #eef6fd;   /* the field's average, for things that cannot take a gradient */
+  --side: rgb(255 255 255 / 55%);
+  --subtle: #eff3f8;          /* inset */
+  --hover: #f1f6fd;
+  --row-hover: rgb(255 255 255 / 45%);
+  --line: #e6ebf2;            /* rule */
+  --control: #c9d3e1;
+  --text: #141e30;
+  --text-2: #5c6980;
+  --text-3: #69778e;          /* placeholder */
+  --accent: #1469ec;
+  --accent-hover: #105bd0;
   --accent-text: #ffffff;
-  /* What a primary button is filled with. The same as the accent in light; in
-     dark the accent is too light to carry white text at 4.5:1. */
-  --accent-bg: #3b5bdb;
-  --accent-soft: rgb(59 91 219 / 10%);
-  --accent-softer: rgb(59 91 219 / 6%);
-  --danger: #c92a2a;
-  --warning: #a6620a;
-  --ok: #2b8a3e;
-  --diff-old: rgb(201 42 42 / 8%);
-  --diff-new: rgb(43 138 62 / 9%);
-  --mark: rgb(240 165 65 / 35%);
-  /* Syntax: muted, so code reads as code without turning the page into a
-     second palette. */
+  --accent-bg: #1469ec;
+  --accent-soft: #ebf3ff;     /* selection surface */
+  --accent-softer: #f4f8ff;
+  --sel-text: #185fca;
+  --danger: #b72e35;
+  --danger-bg: #fff0f0;
+  --warning: #8e651f;
+  --warning-bg: #fff6e5;
+  --ok: #276c52;
+  --ok-bg: #eaf9f1;
+  --dot-ok: #2fbf8f;
+  --dot-danger: #e5484d;
+  --dot-warning: #e3a32b;
+  --diff-old: #fff0f0;
+  --diff-new: #eaf9f1;
+  --mark: rgb(20 105 236 / 14%);
+
+  --card-shadow: 0 20px 50px rgb(20 50 110 / 12%), 0 0 0 1px var(--line);
+  --row-shadow: 0 6px 20px rgb(20 50 110 / 10%), 0 0 0 1px var(--line);
+  --pill-shadow: 0 1px 3px rgb(20 30 48 / 8%);
+  --primary-shadow: 0 4px 14px rgb(20 105 236 / 30%);
+  --shadow-pop: 0 24px 60px rgb(20 50 110 / 18%), 0 0 0 1px var(--line);
+
+  /* Agent colours: marks, filter dots, the agent tag on a session. */
+  --agent-claude: #e0865f;
+  --agent-claude-2: #c2552f;
+  --agent-claude-tag: #fbe9e1;
+  --agent-claude-tag-text: #a2441f;
+  --agent-codex: #3a3f48;
+  --agent-codex-2: #15181d;
+  --agent-codex-dot: #2b2f36;
+  --agent-antigravity: #5b8def;
+  --agent-antigravity-2: #3a5bd9;
+  --agent-cursor: #8a94a6;
+  --agent-cursor-2: #5d6676;
+  --agent-opencode: #2fbf8f;
+  --agent-opencode-2: #178a66;
+  --agent-copilot: #c26be0;
+  --agent-copilot-2: #9443b3;
+  --agent-goose: #d9a52b;
+  --agent-goose-2: #a9781a;
+  --agent-other: #6f86a8;
+  --agent-other-2: #4b5f7d;
+
+  /* Syntax: muted, so code reads as code without a second palette. */
   --syn-keyword: #8b3fb3;
-  --syn-string: #2b7a3d;
-  --syn-number: #a8550f;
-  --syn-comment: #8a8a94;
-  --syn-title: #2f55c8;
-  --syn-attr: #a03d63;
-  --terminal-bg: #f7f7f8;
+  --syn-string: #276c52;
+  --syn-number: #b56316;
+  --syn-comment: #69778e;
+  --syn-title: #185fca;
+  --syn-attr: #b43a55;
+  --terminal-bg: #eff3f8;
 
-  /* Inter and JetBrains Mono ship with the app, so every platform renders the
-     same metrics. The system stack is only the fallback while they load. */
-  --font: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  --font: "Manrope Variable", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
   --ease: cubic-bezier(.2, .8, .2, 1);
-  --t-fast: 120ms;
-  --t-med: 160ms;
-  --ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);
-  --shadow-pop: 0 0 0 1px var(--line), 0 8px 24px rgb(0 0 0 / 8%), 0 2px 6px rgb(0 0 0 / 4%);
+  --t-fast: 150ms;
+  --t-med: 180ms;
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 
-  /* Type: meta, secondary, base UI, transcript, page title. */
-  --fs-meta: 11px;
-  --fs-2: 12px;
-  --fs-base: 13px;
-  --fs-prose: 14px;
-  --fs-title: 16px;
+  /* Type. Never below 12px. */
+  --fs-meta: 12px;
+  --fs-2: 13px;
+  --fs-base: 14px;
+  --fs-prose: 15.5px;
+  --fs-title: 26px;
   --fw-normal: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
-  --lh: 1.45;
-  --lh-prose: 1.6;
+  --fw-bold: 700;
+  --lh: 1.5;
+  --lh-prose: 1.7;
 
-  /* Spacing ladder. */
   --sp-0: 2px;
   --sp-1: 4px;
   --sp-2: 6px;
@@ -70,89 +106,75 @@
   --sp-6: 24px;
   --sp-7: 32px;
 
-  --r-control: 4px;
-  --r-popover: 6px;
+  --r-control: 10px;
+  --r-popover: 14px;
+  --r-card: 18px;
+  --r-pill: 999px;
 
-  --row-h: 32px;
-  --control-h: 28px;
-  --sidebar-w: 200px;
-  --topbar-h: 44px;
-  --measure: 820px;
-  --gutter: var(--sp-6);
-  --content-max: 1200px;
+  --row-h: 36px;
+  --control-h: 36px;
+  --sidebar-w: 236px;
+  --topbar-h: 0px;
+  --measure: 720px;
+  --gutter: 28px;
+  --content-max: 1180px;
 
   font-family: var(--font);
   font-size: var(--fs-base);
   line-height: var(--lh);
   color: var(--text);
-  background: var(--bg);
+  background: var(--surround-flat);
   font-synthesis: none;
-  font-feature-settings: "cv11", "ss01", "calt";
-  font-optical-sizing: auto;
+  font-feature-settings: "calt", "tnum" 0;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dark, for the system setting unless the reader chose light in Settings. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+/* Dark, set by lib/theme.ts from the system setting or the reader's choice. */
+:root[data-mode="dark"] {
+  & {
     color-scheme: dark;
-    --bg: #111113;
-    --subtle: #18181b;
-    --hover: #202024;
-    --line: #2a2a2f;
-    --text: #ececf0;
-    --text-2: #a0a0ab;
-    --text-3: #6e6e78;
-    --accent: #5c7cfa;
-    --accent-text: #ffffff;
-    --accent-bg: #4263eb;
-    --accent-soft: rgb(92 124 250 / 18%);
-    --accent-softer: rgb(92 124 250 / 10%);
-    --danger: #ff6b6b;
-    --warning: #f0a541;
-    --ok: #51cf66;
-    --diff-old: rgb(255 107 107 / 12%);
-    --diff-new: rgb(81 207 102 / 11%);
-    --mark: rgb(240 165 65 / 30%);
-    --syn-keyword: #c792ea;
-    --syn-string: #9ece6a;
-    --syn-number: #f0a541;
-    --syn-comment: #6e6e78;
-    --syn-title: #82aaff;
-    --syn-attr: #f78c9c;
-    --terminal-bg: #0c0c0e;
+    --bg: #162235;
+    --surround: linear-gradient(135deg, #172d53, #173b4b 45%, #17382e);
+    --surround-flat: #101827;
+    --side: rgb(16 24 39 / 55%);
+    --subtle: #1d2b42;
+    --hover: #203149;
+    --row-hover: rgb(255 255 255 / 4%);
+    --line: #2a3a52;
+    --control: #4a5d78;
+    --text: #edf3fc;
+    --text-2: #acbad0;
+    --text-3: #a3b2ca;
+    --accent: #7ab5ff;
+    --accent-hover: #9cc8ff;
+    --accent-text: #0d2440;
+    --accent-bg: #7ab5ff;
+    --accent-soft: #203a5f;
+    --accent-softer: #1a2c47;
+    --sel-text: #b7d5ff;
+    --danger: #ffb3bc;
+    --danger-bg: #47232a;
+    --warning: #f0cf85;
+    --warning-bg: #463719;
+    --ok: #86dbb4;
+    --ok-bg: #15392e;
+    --diff-old: #47232a;
+    --diff-new: #15392e;
+    --mark: rgb(122 181 255 / 22%);
+    --card-shadow: 0 20px 50px rgb(0 0 0 / 30%), 0 0 0 1px var(--line);
+    --row-shadow: 0 6px 20px rgb(0 0 0 / 25%), 0 0 0 1px var(--line);
+    --pill-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+    --primary-shadow: 0 4px 14px rgb(122 181 255 / 22%);
+    --shadow-pop: 0 24px 60px rgb(0 0 0 / 45%), 0 0 0 1px var(--line);
+    --agent-claude-tag: #4a2a1f;
+    --agent-claude-tag-text: #f5b79c;
+    --agent-codex-dot: #9aa3b5;
+    --syn-keyword: #d4a5ff;
+    --syn-string: #86dbb4;
+    --syn-number: #f2be8d;
+    --syn-comment: #8596b0;
+    --syn-title: #9cc8ff;
+    --syn-attr: #f89bb1;
+    --terminal-bg: #1d2b42;
   }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #111113;
-  --subtle: #18181b;
-  --hover: #202024;
-  --line: #2a2a2f;
-  --text: #ececf0;
-  --text-2: #a0a0ab;
-  --text-3: #6e6e78;
-  --accent: #5c7cfa;
-  --accent-text: #ffffff;
-  --accent-bg: #4263eb;
-  --accent-soft: rgb(92 124 250 / 18%);
-  --accent-softer: rgb(92 124 250 / 10%);
-  --danger: #ff6b6b;
-  --warning: #f0a541;
-  --ok: #51cf66;
-  --diff-old: rgb(255 107 107 / 12%);
-  --diff-new: rgb(81 207 102 / 11%);
-  --mark: rgb(240 165 65 / 30%);
-  --syn-keyword: #c792ea;
-  --syn-string: #9ece6a;
-  --syn-number: #f0a541;
-  --syn-comment: #6e6e78;
-  --syn-title: #82aaff;
-  --syn-attr: #f78c9c;
-  --terminal-bg: #0c0c0e;
-}
-
-@media (max-width: 720px) {
-  :root { --gutter: var(--sp-5); }
 }
