@@ -49,10 +49,17 @@ describe("choosing what an older parser wrote", () => {
   const machine = "0191cafe-0000-7000-8000-00000000aaaa";
   const other = "0191cafe-0000-7000-8000-00000000bbbb";
   const sessions = new Map([
-    ["merged", { parserVersion: "claude-code:v1:0.4.0", machineId: machine }],
-    ["alone", { parserVersion: "claude-code:v1:0.5.0", machineId: machine }],
-    ["upload", { parserVersion: "claude-code:v1:0.3.0", machineId: other }],
+    ["merged", { parserVersion: "claude-code:v1:0.4.0", machineId: machine, title: "Real title", tool: "claude-code" }],
+    ["alone", { parserVersion: "claude-code:v1:0.5.0", machineId: machine, title: "claude-code imported session", tool: "claude-code" }],
+    ["upload", { parserVersion: "claude-code:v1:0.3.0", machineId: other, title: null, tool: "claude-code" }],
   ]);
+
+  it("selects the newest capture of each session still under the placeholder title", () => {
+    const selected = selectForReprocess(all, { placeholderTitles: { sessions, machineId: machine } });
+    // "alone" has the placeholder and two captures, so only the newer one.
+    // "merged" has a real title, and the untitled upload is another machine's.
+    expect(selected.map((record) => record.sha256)).toEqual([growing[1]!.sha256]);
+  });
 
   it("selects the newest parsed capture of each session an older parser wrote, on this machine only", () => {
     const selected = selectForReprocess(all, { staleParser: { sessions, machineId: machine } });
