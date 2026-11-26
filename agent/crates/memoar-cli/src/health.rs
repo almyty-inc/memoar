@@ -142,11 +142,13 @@ pub(crate) fn assess(inputs: &HealthInputs) -> Health {
                 None,
             );
         }
+        // The service is optional. Without it, capture happens when somebody
+        // runs `memoar sync`, which is a choice and not a fault.
         return health(
             "not_running",
-            false,
+            true,
             format!(
-                "background capture is not running: no service is installed for this configuration and no sync holds its queue, so new sessions are not captured{}",
+                "no background service is installed, so sessions are captured when you run `memoar sync`{}",
                 backlog()
             ),
             Some(INSTALL_HINT.to_owned()),

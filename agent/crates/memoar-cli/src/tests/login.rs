@@ -67,13 +67,13 @@ fn login_trades_the_hour_long_token_for_a_capture_key() {
         Credential::ApiKey("memoar_test-capture-key".to_owned()),
         "the stored credential must be the key, not the hour-long token"
     );
-    // Every check passes but one: signing in does not start a capture, and
-    // `doctor` says so until something is running.
+    // Every check passes. Signing in does not install the service, and the
+    // service is optional, so its absence is reported without failing.
     let report = doctor(&paths).unwrap().data;
     for check in report["checks"].as_array().unwrap() {
-        let expected = check["name"] != "background_capture";
-        assert_eq!(check["ok"], expected, "{check}");
+        assert_eq!(check["ok"], true, "{check}");
     }
+    assert_eq!(report["ok"], true);
     assert_eq!(report["backgroundCapture"]["state"], "not_running");
     server.join().unwrap();
     let requests = requests.lock().unwrap();

@@ -124,8 +124,10 @@ It refuses `--json` and a pipe. Scripts use `search`, `view` and `convert`.
 ### Capture runs only while something runs it
 
 Nothing reaches the archive unless a sync runs on the machine. A
-`memoar sync --watch` started in a terminal stops when the terminal closes, so
-run it as a service:
+The service is optional. Without it, sessions are captured whenever you run
+`memoar sync`. `memoar sync --watch` started in a terminal stops when the
+terminal closes. To keep capture running without a terminal, install the
+service:
 
 ```sh
 memoar service install
@@ -145,9 +147,9 @@ of these:
 | `retrying` | Running, and waiting out an error such as a lost network. |
 | `stale` | Artifacts have waited more than 24 hours and nothing has uploaded in that time. |
 | `stopped` | The service is installed and not running, or the last watch ended on a refusal. The reason is in `summary`. |
-| `not_running` | No service is installed and no sync is running. |
+| `not_running` | No service is installed and no sync is running. Capture happens when you run `memoar sync`. |
 
-The last three are not `ok`. In a terminal, `status` and `doctor` also print
+`stale` and `stopped` are not `ok`. `not_running` is `ok`, because the service is optional. In a terminal, `status` and `doctor` also print
 `background capture stopped:` and the reason as the last lines on stderr.
 `memoar service logs` shows what the service last did.
 
