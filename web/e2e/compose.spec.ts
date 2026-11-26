@@ -7,7 +7,8 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 const email = process.env.MEMOAR_E2E_EMAIL ?? 'owner@memoar.local';
 const password = process.env.MEMOAR_E2E_PASSWORD ?? 'local-stack-password-change-me';
 const apiBase = process.env.MEMOAR_E2E_API_URL ?? 'http://127.0.0.1:4000/v1';
-const fixtureTitle = process.env.MEMOAR_E2E_FIXTURE_TITLE ?? 'claude-code imported session';
+// The archive names a session after its first prompt when the source gives no title.
+const fixtureTitle = process.env.MEMOAR_E2E_FIXTURE_TITLE ?? 'Find the cause of the failing archive test.';
 const fixturePath = fileURLToPath(new URL('../../contracts/fixtures/claude-code/v1/session-1/input/session.jsonl', import.meta.url));
 const fixtureCount = 35;
 
