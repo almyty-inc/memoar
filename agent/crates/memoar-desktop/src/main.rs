@@ -42,7 +42,7 @@ fn main() -> impl std::process::Termination {
             title: "memoar".to_owned(),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             app_id: "dev.memoar.desktop".to_owned(),
-            size: (560, 720),
+            size: (560, 680),
             appearance: appearance(),
             data_dir: std::env::var_os("MEMOAR_DESKTOP_STATE_DIR").map(Into::into),
             ..Default::default()

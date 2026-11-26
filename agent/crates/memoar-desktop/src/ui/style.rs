@@ -12,7 +12,7 @@ pub(crate) const SMALL: f32 = 12.0;
 pub(crate) const BASE: f32 = 13.0;
 
 /// The height of a row in a list.
-const ROW: f32 = 40.0;
+const ROW: f32 = 36.0;
 /// The width of a fact's name.
 const LABEL: f32 = 124.0;
 

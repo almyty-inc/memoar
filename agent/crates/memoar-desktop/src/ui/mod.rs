@@ -92,13 +92,20 @@ pub(crate) fn root(ctl: Controller) -> impl IntoElement {
         .child(
             scroll().flex_1().child(
                 view()
-                    .min_h(px(520.0))
                     .px(px(32.0))
-                    .pt(px(28.0))
-                    .pb(px(20.0))
-                    .child(content(ctl))
-                    .child(below_all(brand::endorsement())),
+                    .pt(px(26.0))
+                    .pb(px(16.0))
+                    .child(content(ctl)),
             ),
+        )
+        // The endorsement stays at the foot of the card while the screen
+        // above it scrolls.
+        .child(
+            view()
+                .py(px(10.0))
+                .border_t(px(look::hair()))
+                .border_color(l.rule)
+                .child(brand::endorsement()),
         );
     view()
         .flex_1()
@@ -118,9 +125,4 @@ pub(crate) fn root(ctl: Controller) -> impl IntoElement {
                 .pt(move || px(if title_bar().top.0 > 0.0 { 0.0 } else { 14.0 }))
                 .child(card),
         )
-}
-
-/// The endorsement, pushed to the bottom of the card.
-fn below_all(child: impl IntoElement) -> impl IntoElement {
-    view().mt(px(28.0)).child(child)
 }
