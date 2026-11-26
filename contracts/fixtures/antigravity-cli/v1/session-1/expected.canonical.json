@@ -94,8 +94,8 @@
       ],
       "model": "gemini-pro",
       "tokens": {
-        "input": 41,
-        "output": 62
+        "input": 0,
+        "output": 0
       }
     }
   ]

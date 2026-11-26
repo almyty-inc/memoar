@@ -101,8 +101,8 @@
       ],
       "model": "vendor-model",
       "tokens": {
-        "input": 143,
-        "output": 164
+        "input": 0,
+        "output": 0
       }
     },
     {
@@ -141,8 +141,8 @@
       ],
       "model": "vendor-model",
       "tokens": {
-        "input": 143,
-        "output": 164
+        "input": 0,
+        "output": 0
       }
     }
   ]

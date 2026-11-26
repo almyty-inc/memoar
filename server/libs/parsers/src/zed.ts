@@ -4,6 +4,7 @@ import { derivedBlockId, incrementUuid, isRecord, stringValue, turnId } from "./
 import { ensureRecord } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
+import { zedWorkspace, ZedUsage } from "./zed-context.js";
 import { parserVersion } from "./versions.js";
 
 /**
@@ -122,9 +123,11 @@ export class ZedV1Parser implements VersionedParser {
     }
     try {
       const sessions = withSqlite(request.raw, (database) => {
+        // Every column, so `folder_paths`, which newer Zed writes and older Zed
+        // does not have, is read where it exists.
         const rows = database
-          .prepare("SELECT id, summary, data_type, data FROM threads ORDER BY id")
-          .all() as unknown as { id: string; summary: string | null; data_type: string; data: Uint8Array | string }[];
+          .prepare("SELECT * FROM threads ORDER BY id")
+          .all() as unknown as { id: string; summary: string | null; data_type: string; data: Uint8Array | string; folder_paths?: string | null }[];
         if (!rows.length) throw new Error("database has no thread rows");
 
         return rows.map((row, sessionIndex): Session => {
@@ -134,6 +137,7 @@ export class ZedV1Parser implements VersionedParser {
           if (!Array.isArray(thread.messages)) throw new Error(`thread ${row.id} has no messages array`);
 
           let previousId: string | null = null;
+          const usage = new ZedUsage(thread.request_token_usage);
           const turns = thread.messages.flatMap((message, ordinal): Turn[] => {
             const tagged = variant(message);
             if (!tagged || !isRecord(tagged.body)) return [];
@@ -142,6 +146,10 @@ export class ZedV1Parser implements VersionedParser {
             // refuse the whole thread at the uuid column, so it is derived.
             const nativeId = stringValue(body, "id");
             const id = nativeId ? turnId(nativeId, request.seed.id) : incrementUuid(request.seed.id, ordinal + 1);
+            const role = turnRole(tagged.tag);
+            // Before the empty check, so a request whose reply held nothing
+            // readable does not move its usage onto the next one.
+            const tokens = usage.next(role, nativeId);
             const content = Array.isArray(body.content) ? body.content : [];
             const blocks = content
               .map((item, index) => contentBlock(item, derivedBlockId(id, index + 1, request.seed.id, ordinal)))
@@ -154,9 +162,10 @@ export class ZedV1Parser implements VersionedParser {
               ordinal: 0,
               // Zed stores a flat list, so the thread order is the parent chain.
               parentId: previousId,
-              role: turnRole(tagged.tag),
+              role,
               createdAt: stringValue(thread, "updated_at") ?? request.seed.createdAt,
               blocks,
+              ...(tokens ? { tokens } : {}),
             };
             previousId = id;
             return [turn];
@@ -169,6 +178,7 @@ export class ZedV1Parser implements VersionedParser {
             ...request.seed,
             id: sessionIndex === 0 ? request.seed.id : incrementUuid(request.seed.id, sessionIndex),
             source: { ...request.seed.source, nativeSessionId: row.id },
+            workspace: zedWorkspace(row.folder_paths, thread.initial_project_snapshot, request.seed.workspace),
             ...(title ? { title } : {}),
             ...(model ? { models: [model] } : {}),
             // Zed's own summary of the thread, written by the model.

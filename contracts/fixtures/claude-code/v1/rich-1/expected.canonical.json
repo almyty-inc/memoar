@@ -107,8 +107,8 @@
       ],
       "model": "claude-sonnet",
       "tokens": {
-        "input": 134,
-        "output": 155
+        "input": 0,
+        "output": 0
       }
     },
     {
@@ -293,8 +293,8 @@
       ],
       "model": "claude-sonnet",
       "tokens": {
-        "input": 134,
-        "output": 155
+        "input": 0,
+        "output": 0
       }
     },
     {

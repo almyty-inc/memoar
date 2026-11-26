@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { TokenTotals } from "../../canonical/src/generated.js";
 import { isRecord, stringValue } from "./common.js";
+import { tokenTotals } from "./tokens.js";
 
 /**
  * What Cursor 3.x keeps about a conversation outside `composerData`.
@@ -51,6 +53,18 @@ export function bubbleModel(bubble: Record<string, unknown>): string | undefined
   const info = isRecord(bubble.modelInfo) ? bubble.modelInfo : null;
   const name = info ? stringValue(info, "modelName") : null;
   return name && name !== "default" ? name : undefined;
+}
+
+/**
+ * `tokenCount: {inputTokens, outputTokens}`, which Cursor writes on a bubble,
+ * often as zeros. Cursor does not say whether its input count includes cached
+ * tokens, so it is read as input and nothing is put under the cache fields.
+ * Not checked against a Cursor install: none is on the machine this was
+ * written on, and the shape is the one the community exporters read.
+ */
+export function bubbleTokens(bubble: Record<string, unknown>): TokenTotals {
+  const count = isRecord(bubble.tokenCount) ? bubble.tokenCount : {};
+  return tokenTotals(count.inputTokens, count.outputTokens);
 }
 
 /**
