@@ -48,6 +48,13 @@ it("offers every argument skill/SKILL.md tells an agent to send", () => {
     pack: ["maxTokens", "maxEvidence", "maxSessions", "freshnessPolicy"],
     save_note: ["sessionId", "markdown", "topic"],
     get_excerpt: ["sessionId", "turnStart", "turnEnd"],
+    get_session: ["chunkSize"],
+    get_memory: ["topic"],
+    export_project_memory: ["workspace"],
+    list_annotations: ["sessionId"],
+    add_annotation: ["kind", "turnId", "blockId"],
+    list_memory_documents: ["workspacePath", "scope", "pathPattern"],
+    get_memory_document: ["documentId"],
   };
   for (const [name, fields] of Object.entries(promised)) {
     const properties = schemaOf(name);
