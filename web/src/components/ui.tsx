@@ -1,18 +1,22 @@
-import { Check, Copy, Search, X } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import {
-  useEffect,
   useId,
-  useRef,
   useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
-  type InputHTMLAttributes,
   type ReactNode,
 } from 'react';
-import type { RedactionStatus, SourceId } from '../lib/types';
+import type { RedactionStatus } from '../lib/types';
+
+export { Modal } from './Modal';
 
 export function cn(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ');
+}
+
+/** "1 turn", "2 turns". The plural is the singular plus s unless given. */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${count.toLocaleString('en')} ${count === 1 ? singular : pluralForm}`;
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -44,44 +48,38 @@ export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) 
   return <span className={cn('badge', className)} {...props} />;
 }
 
-const sourceClass: Record<SourceId, string> = {
-  'claude-code': 'source-claude',
-  codex: 'source-codex',
-  'antigravity-cli': 'source-antigravity',
-  cursor: 'source-cursor',
-  goose: 'source-goose',
+/**
+ * What the secret scan found, in words a reader can act on. "Needs review"
+ * said something was wrong and not what, so the label names the finding and
+ * the title says what follows from it.
+ */
+const REDACTION: Record<RedactionStatus, { label: string; title: string; tone?: string }> = {
+  clear: { label: 'Scan clear', title: 'The secret scan matched nothing.' },
+  findings: {
+    label: 'Possible secrets',
+    title: 'The secret scan matched something. It is masked in anything you share, and you confirm the mask before sharing.',
+    tone: 'text-warning',
+  },
+  reviewed: { label: 'Mask reviewed', title: 'Someone confirmed the redaction mask.' },
 };
 
-export function SourceBadge({ source, label }: { source: SourceId; label: string }) {
-  return (
-    <span className={cn('source-badge', sourceClass[source])}>
-      <span className="source-mark" aria-hidden="true" />
-      {label}
-    </span>
-  );
+export function RedactionBadge({ status }: { status: RedactionStatus }) {
+  const entry = REDACTION[status];
+  return <Badge className={entry.tone} title={entry.title}>{entry.label}</Badge>;
 }
 
-export function RedactionBadge({ status }: { status: RedactionStatus }) {
-  const labels: Record<RedactionStatus, string> = {
-    clear: 'Scan clear',
-    findings: 'Needs review',
-    reviewed: 'Reviewed',
-  };
-  return <Badge className={`redaction-${status}`}>{labels[status]}</Badge>;
+export function redactionSentence(status: RedactionStatus): string {
+  return REDACTION[status].title;
 }
+
+const MACHINE_DOT: Record<'online' | 'offline' | 'never_connected', string> = {
+  online: 'dot-ok',
+  offline: 'dot-warning',
+  never_connected: '',
+};
 
 export function StatusDot({ status }: { status: 'online' | 'offline' | 'never_connected' }) {
-  return <span className={cn('status-dot', `status-${status}`)} aria-label={status.replace('_', ' ')} />;
-}
-
-export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <label className={cn('search-field', className)}>
-      <Search size={16} aria-hidden="true" />
-      <input type="search" {...props} />
-      <kbd aria-hidden="true">⌘ K</kbd>
-    </label>
-  );
+  return <span className={cn('dot', MACHINE_DOT[status])} aria-hidden="true" />;
 }
 
 export function Toggle({ checked, onChange, label, hint }: {
@@ -129,96 +127,15 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
   };
   return (
     <Button size="sm" variant="ghost" onClick={() => void copy()} aria-label={`${label}: ${value}`}>
-      {copied ? <Check size={14} /> : <Copy size={14} />}
-      {copied ? 'Copied' : label}
+      {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+      {copied ? 'Copied' : 'Copy'}
     </Button>
-  );
-}
-
-const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
-export function Modal({ open, title, description, children, onClose }: {
-  open: boolean;
-  title: string;
-  description?: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  const titleId = useId();
-  const descriptionId = useId();
-  const cardRef = useRef<HTMLElement>(null);
-  // Held in a ref so the effect below depends on `open` alone: every caller
-  // passes a fresh arrow function, and re-running the focus work on each render
-  // would keep snatching the caret back.
-  const closeRef = useRef(onClose);
-  useEffect(() => { closeRef.current = onClose; }, [onClose]);
-
-  /*
-    Focus goes into the dialog and comes back out where it started.
-
-    It used to do neither. Opening one left the caret on the button behind it,
-    so a keyboard or screen-reader user was told a dialog had appeared and then
-    tabbed through the page underneath it; closing one dropped focus on the
-    body, which is nowhere. Tab is kept inside for the same reason `aria-modal`
-    is set: the rest of the page is not available while this is up.
-  */
-  useEffect(() => {
-    if (!open) return undefined;
-    const returnTo = document.activeElement as HTMLElement | null;
-    const card = cardRef.current;
-    // An `autoFocus` field inside has already claimed focus; do not take it.
-    if (card && !card.contains(document.activeElement)) card.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { closeRef.current(); return; }
-      if (event.key !== 'Tab' || !card) return;
-      const stops = [...card.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((node) => !node.hasAttribute('disabled'));
-      const first = stops[0];
-      const last = stops.at(-1);
-      if (!first || !last) { event.preventDefault(); card.focus(); return; }
-      const active = document.activeElement;
-      const leavingForward = !event.shiftKey && (active === last || !card.contains(active));
-      const leavingBackward = event.shiftKey && (active === first || active === card || !card.contains(active));
-      if (leavingForward) { event.preventDefault(); first.focus(); }
-      if (leavingBackward) { event.preventDefault(); last.focus(); }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      returnTo?.focus();
-    };
-  }, [open]);
-
-  if (!open) return null;
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <section
-        className="modal-card"
-        ref={cardRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
-      >
-        <header>
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            {description ? <p id={descriptionId}>{description}</p> : null}
-          </div>
-          <IconButton label="Close dialog" onClick={onClose}><X size={18} /></IconButton>
-        </header>
-        {children}
-      </section>
-    </div>
   );
 }
 
 /**
  * Highlights each search term separately. Matching the whole query as one
- * phrase meant a multi-word search only highlighted when that exact phrase
- * appeared, which for real queries was almost never.
+ * phrase only highlighted when that exact phrase appeared.
  */
 export function HighlightText({ text, query }: { text: string; query: string }) {
   const terms = [...new Set(query.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [])]
@@ -239,14 +156,24 @@ export function HighlightText({ text, query }: { text: string; query: string }) 
   );
 }
 
-export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
+/** One sentence saying what to do, and maybe the control that does it. */
+export function EmptyState({ title, body, action }: { title: string; body?: ReactNode; action?: ReactNode }) {
   return (
     <div className="empty-state">
-      <Search size={24} aria-hidden="true" />
-      <h3>{title}</h3>
-      <p>{body}</p>
+      <p><strong>{title}</strong>{body ? <> {body}</> : null}</p>
       {action}
     </div>
+  );
+}
+
+/** A page's one heading line: title, an inline count, and its actions. */
+export function PageHeader({ title, count, children }: { title: string; count?: ReactNode; children?: ReactNode }) {
+  return (
+    <header className="page-header">
+      <h1>{title}</h1>
+      {count === undefined || count === null ? null : <span className="page-count">{count}</span>}
+      {children ? <div className="page-actions">{children}</div> : null}
+    </header>
   );
 }
 
@@ -255,16 +182,8 @@ export function formatNumber(value: number): string {
 }
 
 /**
- * How long ago, against the actual clock.
- *
- * This measured from `new Date('2026-08-17T16:20:00.000Z')` — a literal, frozen
- * in the source. Everything captured after that instant produced a negative
- * difference, which the `Math.max(1, …)` clamped to one, so every session,
- * machine and key in the archive reported "1m ago" for as long as the build
- * lived. A session from six days back sat under a date heading that said so and
- * a timestamp that said it had just happened.
- *
- * `now` is a parameter so tests can fix it without freezing it for everybody.
+ * How long ago, against the actual clock. `now` is a parameter so tests can
+ * fix it without freezing it for everybody.
  */
 export function formatRelative(iso: string | null, now: number = Date.now()): string {
   if (!iso) return 'Never';
@@ -284,4 +203,11 @@ export function formatRelative(iso: string | null, now: number = Date.now()): st
 
 export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(iso));
+}
+
+/** The clock time, for rows already grouped under their day. */
+export function formatTime(iso: string): string {
+  const at = new Date(iso);
+  if (!Number.isFinite(at.valueOf())) return '';
+  return new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
 }

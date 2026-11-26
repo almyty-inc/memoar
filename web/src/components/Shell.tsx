@@ -1,110 +1,59 @@
-import {
-  Archive,
-  BookMarked,
-  ChevronsUpDown,
-  CircleHelp,
-  LibraryBig as Collection,
-  Command,
-  Cpu,
-  KeyRound,
-  LayoutGrid,
-  Menu,
-  Plus,
-  Search,
-  Settings,
-  Share2,
-  Upload,
-  Users,
-  X,
-} from 'lucide-react';
-import { MemoarMark } from './MemoarMark';
-import { useEffect, useState, type ReactNode } from 'react';
-import { accountInitials } from '../lib/account';
-import type { CurrentUser, Machine, ViewId } from '../lib/types';
-import { Badge, Button, IconButton, cn } from './ui';
+import { ChevronsUpDown, Menu as MenuIcon, Search, X } from 'lucide-react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { shortcutLabel } from '../lib/platform';
+import { pathForRoute } from '../lib/routes';
+import type { CurrentUser, ViewId } from '../lib/types';
+import { Menu } from './Menu';
+import { IconButton, cn } from './ui';
 
-const navGroups: Array<{
-  label: string;
-  items: Array<{ view: ViewId; label: string; icon: typeof Archive }>;
-}> = [
-  {
-    label: 'Archive',
-    items: [
-      { view: 'workspace', label: 'Overview', icon: LayoutGrid },
-      { view: 'timeline', label: 'Timeline', icon: Archive },
-      { view: 'search', label: 'Search', icon: Search },
-      { view: 'import', label: 'Import', icon: Upload },
-      { view: 'collections', label: 'Collections', icon: Collection },
-      { view: 'memory', label: 'Agent memory', icon: BookMarked },
-    ],
-  },
-  {
-    label: 'Manage',
-    items: [
-      // No badge here: the count was hardcoded to '1', so the nav claimed one
-      // pending item forever regardless of what was actually pending. It also
-      // silently became part of the button's accessible name ("Sharing 1"),
-      // which is how it broke navigation for anyone matching on the name. A
-      // real count needs real data, and needs to reach the name deliberately.
-      { view: 'sharing', label: 'Sharing', icon: Share2 },
-      { view: 'teams', label: 'Teams', icon: Users },
-      { view: 'machines', label: 'Machines & sources', icon: Cpu },
-      { view: 'settings', label: 'Settings', icon: Settings },
-    ],
-  },
+/** The destinations, and the screens each one stays lit for. */
+const NAV: Array<{ view: ViewId; label: string; also?: ViewId[] }> = [
+  { view: 'timeline', label: 'Sessions', also: ['session', 'import'] },
+  { view: 'search', label: 'Search' },
+  { view: 'memory', label: 'Memory' },
+  { view: 'collections', label: 'Collections' },
+  { view: 'sharing', label: 'Shared', also: ['teams'] },
+  { view: 'machines', label: 'Machines', also: ['onboarding'] },
+  { view: 'settings', label: 'Settings' },
 ];
 
-const titles: Partial<Record<ViewId, string>> = {
-  workspace: 'Overview',
-  timeline: 'Timeline',
-  search: 'Search',
-  import: 'Import',
-  collections: 'Collections',
-  memory: 'Agent memory',
-  sharing: 'Sharing',
-  teams: 'Teams',
-  machines: 'Machines & sources',
-  settings: 'Settings',
-  onboarding: 'Connect a machine',
-  signin: 'Account',
-  session: 'Session',
-  'not-found': 'Not found',
-};
+/** Whether a key press landed in something the reader is typing into. */
+export function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
 
+/** A plain click on a link, as opposed to one meant for a new tab. */
+export function isPlainClick(event: MouseEvent): boolean {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
 
-export function Shell({ view, user, machines, reachable, children, onNavigate }: {
+export function Shell({ view, user, children, onNavigate, onOpenPalette }: {
   view: ViewId;
   user: CurrentUser | null;
-  machines: Machine[];
-  /** Whether the last exchange with the archive succeeded. */
-  reachable: boolean;
   children: ReactNode;
   onNavigate: (view: ViewId) => void;
+  /** Cmd-K, or Ctrl-K off Apple platforms. Without it, Cmd-K goes to search. */
+  onOpenPalette?: () => void;
 }) {
-  /*
-    Setup is three steps, and the bar measures those: signed in, a machine that
-    has actually reported, something captured.
-
-    It used to be the share of registered machines that had archived anything —
-    a ratio presented as progress. Every machine archiving is not a goal, and a
-    registration that never connected held the bar below full for good.
-  */
-  const reporting = machines.filter((machine) => machine.status !== 'never_connected');
-  const capturing = reporting.filter((machine) => machine.sources.some((source) => source.sessionCount > 0));
-  const setupSteps = 1 + Number(reporting.length > 0) + Number(capturing.length > 0);
-  const setupProgress = Math.round((setupSteps / 3) * 100);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Cmd-K and Ctrl-K open the palette everywhere. / goes to transcript search
+  // unless it is being typed.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
-        event.preventDefault();
-        onNavigate('search');
-      }
+      const commandK = (event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k';
+      const slash = event.key === '/' && !event.metaKey && !event.ctrlKey && !isTyping(event.target);
+      if (!commandK && !slash) return;
+      if (slash && document.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      if (commandK && onOpenPalette) { onOpenPalette(); return; }
+      if (view === 'search') document.querySelector<HTMLInputElement>('#search-input')?.focus();
+      else onNavigate('search');
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onNavigate]);
+  }, [onNavigate, onOpenPalette, view]);
 
   const navigate = (next: ViewId) => {
     onNavigate(next);
@@ -115,67 +64,48 @@ export function Shell({ view, user, machines, reachable, children, onNavigate }:
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to content</a>
       <aside className={cn('sidebar', menuOpen && 'sidebar-open')} aria-label="Primary navigation">
-        <div className="brand-row">
-          <button className="brand" type="button" onClick={() => navigate('timeline')} aria-label="Memoar home">
-            <span className="brand-mark" aria-hidden="true"><MemoarMark size={17} /></span>
-            <span>memoar</span>
-          </button>
+        <div className="sidebar-brand">
+          <a href="/timeline" className="brand" onClick={(event) => { if (isPlainClick(event)) { event.preventDefault(); navigate('timeline'); } }}>memoar</a>
           <IconButton className="sidebar-close" label="Close navigation" onClick={() => setMenuOpen(false)}>
-            <X size={18} />
+            <X size={16} />
           </IconButton>
         </div>
 
-        <Button className="new-session-button" variant="primary" onClick={() => navigate('onboarding')}>
-          <Plus size={16} /> Connect a machine
-        </Button>
-
-        <nav className="sidebar-nav">
-          {navGroups.map((group) => (
-            <section key={group.label}>
-              <p className="nav-label">{group.label}</p>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = view === item.view || (view === 'session' && item.view === 'timeline');
-                return (
-                  <button
-                    key={item.view}
-                    type="button"
-                    className={cn('nav-item', active && 'nav-item-active')}
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => navigate(item.view)}
-                  >
-                    <Icon size={17} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </section>
-          ))}
+        <nav className="sidebar-nav" aria-label="Sections">
+          {NAV.map((item) => {
+            const active = view === item.view || (item.also?.includes(view) ?? false);
+            return (
+              <a
+                key={item.view}
+                href={pathForRoute({ view: item.view })}
+                className={cn('nav-item', active && 'nav-item-active')}
+                aria-current={active ? 'page' : undefined}
+                onClick={(event) => {
+                  if (!isPlainClick(event)) return;
+                  event.preventDefault();
+                  navigate(item.view);
+                }}
+              >
+                {item.label}
+              </a>
+            );
+          })}
         </nav>
 
-        <div className="sidebar-foot">
-          <button className="help-card" type="button" onClick={() => navigate('onboarding')}>
-            <span><CircleHelp size={16} /> Setup guide</span>
-            <small>
-              {reporting.length === 0
-                ? 'No machine has connected yet'
-                : capturing.length === 0
-                  ? 'Connected — nothing captured yet'
-                  : `Archiving from ${capturing.length} ${capturing.length === 1 ? 'machine' : 'machines'}`}
-            </small>
-            <span className="mini-progress"><span style={{ width: `${setupProgress}%` }} /></span>
-          </button>
-          <button className="user-switcher" type="button" onClick={() => navigate('signin')}>
-            <span className="avatar">{user ? accountInitials(user.displayName) : '·'}</span>
-            {/* An account whose display name is its email printed the address
-                twice, one above the other. */}
-            <span>
-              <strong>{user?.displayName ?? 'Account'}</strong>
-              {user && user.email !== user.displayName ? <small>{user.email}</small> : null}
-              {user ? null : <small>Not signed in</small>}
-            </span>
-            <ChevronsUpDown size={14} />
-          </button>
+        <div className="sidebar-account">
+          {/* One line: who is signed in, and a menu. An account whose display
+              name is its email shows it once. */}
+          <Menu
+            label="Account"
+            up
+            triggerClassName="account-button"
+            trigger={<><span className="ellipsis">{user?.displayName ?? 'Not signed in'}</span><ChevronsUpDown size={13} aria-hidden="true" /></>}
+            header={user && user.email !== user.displayName ? user.email : null}
+            items={[
+              { label: 'Settings', onSelect: () => navigate('settings') },
+              { label: user ? 'Switch account' : 'Sign in', onSelect: () => navigate('signin') },
+            ]}
+          />
         </div>
       </aside>
 
@@ -183,46 +113,17 @@ export function Shell({ view, user, machines, reachable, children, onNavigate }:
 
       <div className="workspace-shell">
         <header className="topbar">
-          <div className="topbar-title">
-            <IconButton className="menu-button" label="Open navigation" onClick={() => setMenuOpen(true)}>
-              <Menu size={19} />
-            </IconButton>
-            <span className="crumb">Archive</span>
-            <span className="crumb-separator">/</span>
-            <strong>{titles[view] ?? 'Memoar'}</strong>
-          </div>
-          <div className="topbar-actions">
-            <button className="command-search" type="button" onClick={() => navigate('search')}>
-              <Search size={15} />
-              <span>Search your archive</span>
-              <kbd><Command size={11} /> K</kbd>
-            </button>
-            {/* This was the literal string "Connected", rendered unconditionally
-                — including while the archive was unreachable. It reports the
-                last exchange with the archive or it says nothing. */}
-            {reachable ? <Badge className="live-badge"><span className="status-dot status-online" />Connected</Badge> : null}
-            <IconButton label="API keys" onClick={() => navigate('settings')}><KeyRound size={17} /></IconButton>
-          </div>
+          <IconButton className="menu-button" label="Open navigation" onClick={() => setMenuOpen(true)}>
+            <MenuIcon size={16} />
+          </IconButton>
+          <button className="topbar-search" type="button" aria-keyshortcuts="Meta+K Control+K" onClick={() => (onOpenPalette ? onOpenPalette() : navigate('search'))}>
+            <Search size={13} aria-hidden="true" />
+            <span>Search or run a command</span>
+            <kbd aria-hidden="true">{shortcutLabel('K')}</kbd>
+          </button>
         </header>
         <main id="main-content" tabIndex={-1} className="main-content">{children}</main>
       </div>
-
-      <nav className="bottom-nav" aria-label="Mobile navigation">
-        {navGroups.flatMap((group) => group.items).slice(0, 5).map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.view}
-              type="button"
-              className={cn(view === item.view && 'active')}
-              onClick={() => navigate(item.view)}
-              aria-label={item.label}
-            >
-              <Icon size={19} /><span>{item.label.split(' ')[0]}</span>
-            </button>
-          );
-        })}
-      </nav>
     </div>
   );
 }
