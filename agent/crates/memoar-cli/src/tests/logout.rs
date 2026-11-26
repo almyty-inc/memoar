@@ -44,7 +44,7 @@ fn a_re_login_revokes_the_key_it_replaces() {
 
     let result = login(
         &LoginArgs {
-            endpoint,
+            endpoint: Some(endpoint),
             email: Some("person@example.com".to_owned()),
             password: Some("correct horse battery staple".to_owned()),
             token: None,
@@ -91,7 +91,7 @@ fn a_re_login_keeps_sources_and_redaction() {
 
     login(
         &LoginArgs {
-            endpoint,
+            endpoint: Some(endpoint),
             email: Some("person@example.com".to_owned()),
             password: Some("correct horse battery staple".to_owned()),
             token: None,

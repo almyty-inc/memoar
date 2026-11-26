@@ -12,7 +12,7 @@ use crate::machine::resolve_machine_name;
 
 fn login_args(endpoint: &str) -> LoginArgs {
     LoginArgs {
-        endpoint: endpoint.to_owned(),
+        endpoint: Some(endpoint.to_owned()),
         email: Some("person@example.com".to_owned()),
         password: Some("correct horse battery staple".to_owned()),
         token: None,
@@ -48,7 +48,7 @@ fn login_trades_the_hour_long_token_for_a_capture_key() {
     fs::create_dir_all(&paths.home).unwrap();
     let result = login(
         &LoginArgs {
-            endpoint,
+            endpoint: Some(endpoint),
             email: Some("person@example.com".to_owned()),
             password: Some("correct horse battery staple".to_owned()),
             token: None,
@@ -138,7 +138,13 @@ fn logging_in_again_reuses_the_machine_this_computer_already_registered() {
 
     let first = login(&login_args(&endpoint), &paths).unwrap();
     let enrolled = load_config(&paths).unwrap().installation_id;
-    let second = login(&login_args(&endpoint), &paths).unwrap();
+    // No --endpoint: signing in again goes back to the archive in the config,
+    // not to localhost.
+    let again = LoginArgs {
+        endpoint: None,
+        ..login_args(&endpoint)
+    };
+    let second = login(&again, &paths).unwrap();
 
     server.join().unwrap();
     let requests = requests.lock().unwrap();

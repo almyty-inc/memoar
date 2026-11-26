@@ -48,7 +48,7 @@ fn login_rewrites_a_damaged_config_and_credential() {
     fs::write(paths.credentials_file(), "xx").unwrap();
     login(
         &LoginArgs {
-            endpoint,
+            endpoint: Some(endpoint),
             email: Some("person@example.com".to_owned()),
             password: Some("correct horse battery staple".to_owned()),
             token: None,
@@ -120,7 +120,7 @@ fn the_queue_and_config_directories_are_owner_only() {
     let paths = fixture_paths(&temp);
     login(
         &LoginArgs {
-            endpoint,
+            endpoint: Some(endpoint),
             email: Some("person@example.com".to_owned()),
             password: Some("correct horse battery staple".to_owned()),
             token: None,

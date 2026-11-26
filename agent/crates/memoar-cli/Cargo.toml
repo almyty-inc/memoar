@@ -30,6 +30,7 @@ syntect.workspace = true
 thiserror.workspace = true
 unicode-width.workspace = true
 uuid.workspace = true
+rpassword = "7"
 
 [dev-dependencies]
 tempfile.workspace = true

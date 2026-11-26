@@ -14,8 +14,22 @@ use crate::machine::{
 };
 use crate::revoke::{MINTED_KEY_NAME, revocation_report, revoke_key};
 
+/// Where a first login goes when nobody names an archive.
+const DEFAULT_ENDPOINT: &str = "http://localhost:4000/v1";
+
 pub(crate) fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
-    let endpoint = validated_endpoint(&args.endpoint)?;
+    // A config this cannot read must not stop the login that rewrites it:
+    // refusing here left `login`, the one command that fixes it, broken too.
+    let existing = load_config_optional(paths).ok().flatten();
+    // Signing in again goes back to the archive this computer already uses.
+    // It used to default to localhost, so a bare `memoar login` on a machine
+    // set up for a hosted archive failed against a server that is not there.
+    let endpoint = validated_endpoint(
+        args.endpoint
+            .as_deref()
+            .or(existing.as_ref().map(|config| config.endpoint.as_str()))
+            .unwrap_or(DEFAULT_ENDPOINT),
+    )?;
     let endpoint = endpoint.as_str();
     // What the user handed us, or what a password buys: either way it is only
     // good enough to register the machine and mint the credential that lasts.
@@ -27,9 +41,6 @@ pub(crate) fn login(args: &LoginArgs, paths: &RuntimePaths) -> Result<CommandOut
         "login",
     )?;
     let api = ApiClient::new(endpoint, Some(&account));
-    // A config this cannot read must not stop the login that rewrites it:
-    // refusing here left `login`, the one command that fixes it, broken too.
-    let existing = load_config_optional(paths).ok().flatten();
     let kept = existing
         .as_ref()
         .map(|config| config.redaction)
