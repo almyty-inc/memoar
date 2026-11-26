@@ -39,7 +39,7 @@ interface SerializedBundle {
 }
 
 /** Reads one row per table out of a database held as bytes. */
-function inspectDatabase(contents: Uint8Array): { tables: string[]; trajectory: unknown; conversion: unknown } {
+function inspectDatabase(contents: Uint8Array): { tables: string[]; trajectory: unknown; version: unknown; steps: unknown } {
   const directory = mkdtempSync(join(tmpdir(), "memoar-parity-"));
   const path = join(directory, "brain.db");
   writeFileSync(path, contents);
@@ -49,7 +49,8 @@ function inspectDatabase(contents: Uint8Array): { tables: string[]; trajectory: 
       tables: (database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[])
         .map((row) => row.name),
       trajectory: database.prepare("SELECT trajectory_id, cascade_id FROM trajectory_meta").get(),
-      conversion: database.prepare("SELECT id, workspace_path, title, contract_version FROM memoar_conversion").get(),
+      version: database.prepare("PRAGMA user_version").get(),
+      steps: database.prepare("SELECT idx, step_type, status FROM steps ORDER BY idx").all(),
     };
   } finally {
     database.close();
@@ -75,7 +76,7 @@ describe("the targets a session may be converted into", () => {
 });
 
 describe("the directory a Claude Code conversion lands in", () => {
-  it("is the one the materializer's encoder computes", async () => {
+  it("is the one the committed name table records", async () => {
     const { cases } = JSON.parse(await read(WORKSPACE_NAMES)) as { cases: { workspace: string; encoded: string }[] };
     expect(cases.length).toBeGreaterThan(4);
     for (const example of cases) {
@@ -174,6 +175,9 @@ describe("the Antigravity bundle the archive writes", () => {
       .toEqual(inspectDatabase(Buffer.from(fixture.files.find((file) => file.path.endsWith(".db"))!.base64, "base64")).tables);
     expect(observed.tables).toContain("trajectory_meta");
     expect(observed.trajectory).toMatchObject({ trajectory_id: TEST_SESSION.id, cascade_id: TEST_SESSION.id });
-    expect(observed.conversion).toMatchObject({ id: TEST_SESSION.id, workspace_path: TEST_SESSION.workspace.path });
+    // Antigravity skips a database whose user_version is 0, and the
+    // materializer refuses one.
+    expect(observed.version).toEqual({ user_version: 1 });
+    expect(observed.steps).toEqual([{ idx: 0, step_type: 14, status: 3 }, { idx: 1, step_type: 15, status: 3 }]);
   });
 });

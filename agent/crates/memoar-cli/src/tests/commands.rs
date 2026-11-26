@@ -182,7 +182,7 @@ fn http_convert_here_downloads_verified_bundle_and_writes_locally() {
         report: json!({"mappedTurns": 1, "degradedBlocks": 0, "droppedBlocks": 0}),
     };
     bundle.bundle_sha256 = memoar_materializer::bundle_sha256(&bundle).unwrap();
-    let (endpoint, _requests, server) =
+    let (endpoint, requests, server) =
         spawn_mock_api(2, Some(serde_json::to_value(&bundle).unwrap()));
     let temp = tempfile::tempdir().unwrap();
     let paths = configured_paths(&temp, &endpoint);
@@ -202,4 +202,16 @@ fn http_convert_here_downloads_verified_bundle_and_writes_locally() {
     server.join().unwrap();
     let written = result.data["written"][0].as_str().unwrap();
     assert_eq!(fs::read(written).unwrap(), content);
+    // `--here` asks the archive to place the session for this directory, which
+    // is the only directory a resume run here will look in.
+    let requests = requests.lock().unwrap();
+    let request = requests
+        .iter()
+        .find(|request| request.method == "POST" && request.path == "/v1/convert")
+        .expect("the conversion was requested");
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    assert_eq!(
+        body["workspacePath"],
+        json!(std::env::current_dir().unwrap().to_str().unwrap())
+    );
 }

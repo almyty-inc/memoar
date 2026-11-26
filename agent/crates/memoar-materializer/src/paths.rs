@@ -28,7 +28,7 @@ pub(crate) fn resolve_bundle_path(
     let allowed_prefix = match target {
         Target::ClaudeCode => ".claude/projects/",
         Target::Codex => ".codex/sessions/",
-        Target::AntigravityCli => ".gemini/antigravity-cli/brain/",
+        Target::AntigravityCli => ".gemini/antigravity-cli/conversations/",
     };
     if !normalized.starts_with(allowed_prefix) || !normalized.contains(session_id) {
         return Err(MaterializeError::UnsafePath(wire_path.to_owned()));

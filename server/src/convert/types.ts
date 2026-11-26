@@ -1,4 +1,4 @@
-import type { ContentBlock, Session, Turn } from "../../libs/canonical/src/generated.js";
+import type { ContentBlock, Session } from "../../libs/canonical/src/generated.js";
 
 export type ConversionTarget = "claude-code" | "codex" | "antigravity-cli";
 
@@ -23,35 +23,21 @@ export interface ConversionBundle {
   report: ConversionReport;
 }
 
+/**
+ * How the caller wants the session placed.
+ *
+ * `workspacePath` is the directory the person will resume from. `memoar convert
+ * --here` sends the current directory. Each tool files a session by the
+ * directory it was started in, so a session written for the archived
+ * workspace is invisible to a resume run anywhere else.
+ */
+export interface WriteOptions {
+  workspacePath?: string;
+}
+
 export function textForDegraded(block: ContentBlock): string {
   const payload = block.text ?? block.name ?? block.artifactRef ?? JSON.stringify(block.data ?? {});
   return `[Memoar ${block.kind}] ${payload}`;
-}
-
-export function nativeBlocks(turn: Turn, report: ConversionReport): Record<string, unknown>[] {
-  return turn.blocks.map((block) => {
-    // Attachments are carried as they are, with their bytes, reference or
-    // text. System and error notes still degrade to attributed text.
-    if (block.kind === "text" || block.kind === "thinking" || block.kind === "tool_call" || block.kind === "tool_result" || block.kind === "attachment") {
-      report.mapped += 1;
-      // Everything the parser kept: a tool result's error flag and images and
-      // a thinking block's signature are in `data`, an image's media type in
-      // `mimeType`. Dropping them here undid the parse.
-      return {
-        id: block.id,
-        kind: block.kind,
-        ...(block.text ? { text: block.text } : {}),
-        ...(block.name ? { name: block.name } : {}),
-        ...(block.callId ? { callId: block.callId } : {}),
-        ...(block.language ? { language: block.language } : {}),
-        ...(block.mimeType ? { mimeType: block.mimeType } : {}),
-        ...(block.artifactRef ? { artifactRef: block.artifactRef } : {}),
-        ...(block.data ? { data: block.data } : {}),
-      };
-    }
-    report.degraded.push({ turnId: turn.id, blockId: block.id, kind: block.kind, reason: "Target has no stable native representation" });
-    return { id: block.id, kind: "text", text: textForDegraded(block) };
-  });
 }
 
 export function freshReport(): ConversionReport {
@@ -62,5 +48,5 @@ export function bytes(value: string): Uint8Array { return Buffer.from(value, "ut
 
 export interface NativeWriter {
   readonly target: ConversionTarget;
-  write(session: Session): ConversionBundle;
+  write(session: Session, options?: WriteOptions): ConversionBundle;
 }

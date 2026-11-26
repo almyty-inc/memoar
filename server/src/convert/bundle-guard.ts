@@ -7,7 +7,7 @@ import type { ConversionBundle } from "./types.js";
 const TARGET_PREFIXES: Record<string, string> = {
   "claude-code": ".claude/projects/",
   codex: ".codex/sessions/",
-  "antigravity-cli": ".gemini/antigravity-cli/brain/",
+  "antigravity-cli": ".gemini/antigravity-cli/conversations/",
 };
 
 /** APFS, ext4 and NTFS all stop a single path component here. */

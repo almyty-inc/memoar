@@ -1,16 +1,12 @@
-//! Native session bundle materialization for gated conversion targets.
+//! Writes the native session bundles the archive builds, for gated targets.
 
 mod antigravity;
 mod bundle;
-mod claude;
-mod claude_blocks;
-mod codex;
 mod commit;
 mod entry;
 mod error;
 mod memory;
 mod memory_dialects;
-mod native;
 mod paths;
 mod target;
 mod validate;
@@ -19,10 +15,9 @@ mod validate;
 mod tests;
 
 pub use crate::bundle::{
-    BundleFile, CanonicalConversionBundle, ConversionBundle, ConversionReport,
-    MaterializationResult, MaterializedReport, bundle_sha256, content_sha256,
+    BundleFile, ConversionBundle, MaterializationResult, bundle_sha256, content_sha256,
 };
-pub use crate::entry::{materialize, materialize_bundle, materialize_canonical_bundle};
+pub use crate::entry::materialize_bundle;
 pub use crate::error::MaterializeError;
 pub use crate::memory::{
     MemoryBundleFile, MemoryConversionBundle, MemoryConversionReport, MemoryMaterializationResult,

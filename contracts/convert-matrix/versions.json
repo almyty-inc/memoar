@@ -1,8 +1,8 @@
 {
   "contractVersion": "0.4.1",
   "targets": {
-    "claude-code": "2.1.224",
-    "codex": "0.147.0",
-    "antigravity-cli": "1.1.6"
+    "claude-code": "2.1.331",
+    "codex": "0.172.0",
+    "antigravity-cli": "1.5.15"
   }
 }

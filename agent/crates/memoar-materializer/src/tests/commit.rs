@@ -3,7 +3,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::json;
 use std::fs;
 
-use super::fixtures::{finalized_bundle, fixture_session};
+use super::fixtures::{SESSION_ID, finalized_bundle};
 use crate::bundle::{BundleFile, ConversionBundle, PlannedFile};
 use crate::commit::commit_plan_with_hook;
 use crate::entry::materialize_bundle;
@@ -14,7 +14,7 @@ use crate::target::Target;
 #[test]
 fn refuses_collision_before_writing_any_bundle_file() {
     let temp = tempfile::tempdir().unwrap();
-    let session_id = fixture_session().id;
+    let session_id = SESSION_ID.to_owned();
     let first = temp
         .path()
         .join(format!(".claude/projects/-tmp/{session_id}.jsonl"));

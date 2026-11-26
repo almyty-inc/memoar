@@ -1,25 +1,35 @@
-version: 0.1.0
+version: 0.2.0
 target: codex
 stability: gated
 layout:
   - path: "~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-<timestamp>-<session-id>.jsonl"
     mediaType: application/x-ndjson
-    purpose: Codex rollout with session metadata and typed events
+    purpose: Codex rollout of Responses API items
 requiredFields:
   - type=session_meta
   - payload.id
   - payload.cwd
   - timestamp
-  - response_item.payload.role
-  - response_item.payload.content
+  - type=response_item
+  - payload.type
+  - message.role
+  - message.content[].type
+  - function_call.call_id
+  - function_call_output.call_id
 mapping:
   session.id: session_meta.payload.id
-  workspace.path: session_meta.payload.cwd
-  turn.role: response_item.payload.role
-  turn.blocks: response_item.payload.content
+  workspace.path: session_meta.payload.cwd, or the request's workspacePath when given
+  text: "message content input_text (user) or output_text (assistant)"
+  image attachment: "message content input_image with a data URL, user messages only"
+  tool_call: "{type: function_call, name, arguments (JSON string), call_id}"
+  tool_result: "{type: function_call_output, call_id, output}"
+  thinking: "{type: reasoning, encrypted_content} only when the source is Codex"
 degradation:
-  unsupportedBlock: Render an attributed input_text block and add it to the conversion report
-  branch: Preserve the parent id in memoar provenance because rollout display is linear
+  unsupportedBlock: Render an attributed text block and add it to the conversion report
+  foreignReasoning: Drop thinking that is not Codex's own encrypted reasoning, reported as reasoning_not_portable
+  harnessContext: Drop system turns and harness-injected user text, reported as source_harness_context
+  unansweredToolCall: Write a placeholder function_call_output, reported as degraded
+  branch: Items are written linearly in archive order
 resume:
-  command: "codex resume <session-id> --no-alt-screen"
-  successSignal: Process loads the requested rollout without a format error
+  command: "codex resume <session-id>"
+  successSignal: "codex exec resume <session-id> asked about the first message quotes it"

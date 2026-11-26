@@ -27,9 +27,7 @@ describe("conversion writers", () => {
   it("writes the Antigravity matrix paths and always supports injection fallback", () => {
     const antigravity = engine.convert(TEST_SESSION, "antigravity-cli", "fail");
     expect(antigravity.files.map((file) => file.path)).toEqual([
-      `~/.gemini/antigravity-cli/brain/${TEST_SESSION.id}/.system_generated/logs/transcript.jsonl`,
-      `~/.gemini/antigravity-cli/brain/${TEST_SESSION.id}/conversations/${TEST_SESSION.id}.db`,
-      `~/.gemini/antigravity-cli/brain/${TEST_SESSION.id}/walkthrough.md`,
+      `~/.gemini/antigravity-cli/conversations/${TEST_SESSION.id}.db`,
     ]);
     const databaseFile = antigravity.files.find((file) => file.path.endsWith(".db"));
     expect(databaseFile).toBeDefined();
@@ -46,14 +44,12 @@ describe("conversion writers", () => {
       // database without it. This used to be `conversations` and `messages`,
       // invented here, and every conversion died on the user's machine.
       expect(tables.map((row) => row.name)).toEqual([
-        "battle_mode_infos", "executor_metadata", "gen_metadata", "memoar_conversion",
+        "battle_mode_infos", "executor_metadata", "gen_metadata",
         "parent_references", "steps", "trajectory_meta", "trajectory_metadata_blob",
       ]);
-      expect(database.prepare("SELECT trajectory_id FROM trajectory_meta").get()).toMatchObject({ trajectory_id: TEST_SESSION.id });
-      expect(database.prepare("SELECT id, workspace_path FROM memoar_conversion").get()).toMatchObject({
-        id: TEST_SESSION.id,
-        workspace_path: TEST_SESSION.workspace.path,
-      });
+      expect(database.prepare("SELECT trajectory_id, cascade_id FROM trajectory_meta").get())
+        .toMatchObject({ trajectory_id: TEST_SESSION.id, cascade_id: TEST_SESSION.id });
+      expect(database.prepare("SELECT step_type FROM steps ORDER BY idx").all()).toEqual([{ step_type: 14 }, { step_type: 15 }]);
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });

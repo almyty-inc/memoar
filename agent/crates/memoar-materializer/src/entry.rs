@@ -1,23 +1,26 @@
-//! The entry points: a server bundle, a canonical bundle, a session.
+//! The entry point: writing the bundle the archive built.
+//!
+//! The archive's writers (`server/src/convert/*-writer.ts`) are the only
+//! writers of the native formats. This crate used to carry a second set, in
+//! Rust, that nothing outside its own tests called. The two disagreed on the
+//! shape of every target, and the one the CLI actually used was the one
+//! without tests against the real tools. A bundle is written here exactly as
+//! the archive built it, after its digests are checked.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::antigravity::{materialize_antigravity, validate_antigravity_database};
+use crate::antigravity::validate_antigravity_database;
 use crate::bundle::{
-    CanonicalConversionBundle, ConversionBundle, MaterializationResult, MaterializedReport,
-    PlannedFile, content_sha256, verify_bundle_sha256,
+    ConversionBundle, MaterializationResult, PlannedFile, content_sha256, verify_bundle_sha256,
 };
-use crate::claude::materialize_claude;
-use crate::codex::materialize_codex;
 use crate::commit::commit_plan;
 use crate::error::{MAX_BUNDLE_FILE_BYTES, MaterializeError};
 use crate::paths::resolve_bundle_path;
 use crate::target::Target;
 use crate::validate::{validate_contract_version, validate_home, validate_session_id};
-use memoar_canonical::Session;
 
 pub fn materialize_bundle(
     bundle: &ConversionBundle,
@@ -97,32 +100,6 @@ pub fn materialize_bundle(
         written,
         unchanged,
         resume_command: bundle.resume_command.clone(),
-        report: MaterializedReport::FromArchive(bundle.report.clone()),
+        report: bundle.report.clone(),
     })
-}
-
-pub fn materialize_canonical_bundle(
-    bundle: &CanonicalConversionBundle,
-    home: &Path,
-) -> Result<MaterializationResult, MaterializeError> {
-    if bundle.contract_version != memoar_canonical::CONTRACT_VERSION {
-        return Err(MaterializeError::ContractVersion(
-            bundle.contract_version.clone(),
-        ));
-    }
-    materialize(&bundle.session, bundle.target, home)
-}
-
-pub fn materialize(
-    session: &Session,
-    target: Target,
-    home: &Path,
-) -> Result<MaterializationResult, MaterializeError> {
-    validate_session_id(&session.id)?;
-    validate_home(home)?;
-    match target {
-        Target::ClaudeCode => materialize_claude(session, home),
-        Target::Codex => materialize_codex(session, home),
-        Target::AntigravityCli => materialize_antigravity(session, home),
-    }
 }

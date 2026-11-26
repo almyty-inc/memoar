@@ -4,9 +4,9 @@ set -eu
 claude_bin=/opt/homebrew/bin/claude
 codex_bin=/opt/homebrew/bin/codex
 antigravity_bin=/Users/frane/.local/bin/agy
-claude_version=2.1.224
-codex_version=0.147.0
-antigravity_version=1.1.6
+claude_version=2.1.331
+codex_version=0.172.0
+antigravity_version=1.5.15
 
 usage() {
   echo "usage: validate-installed-resume.sh claude-code|codex|antigravity-cli UUIDV7" >&2

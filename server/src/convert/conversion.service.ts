@@ -10,6 +10,14 @@ import { ConversionEngine } from "./engine.js";
 import { MaterializeDto, RequestConversionDto } from "../convert.dto.js";
 import { serializeBundle } from "./serialize.js";
 
+/** What a conversion was asked for. `workspacePath` places it for that directory. */
+type ConversionInput = {
+  sessionId: string;
+  target: string;
+  fallback: "fail" | "injection";
+  workspacePath?: string;
+};
+
 /** Pre-signed bundle URLs stay valid long enough for an offline agent to reconnect. */
 const MATERIALIZE_URL_TTL_SECONDS = 3600;
 
@@ -59,7 +67,7 @@ export class ConversionService {
    * The contract has said `queued` since the beginning; only the implementation
    * disagreed.
    */
-  async request(context: TenantContext, input: { sessionId: string; target: string; fallback: "fail" | "injection" }): Promise<Record<string, unknown>> {
+  async request(context: TenantContext, input: ConversionInput): Promise<Record<string, unknown>> {
     // Existence, not the session: accepting the work must not cost a hydration
     // of every turn and block the conversion is about to re-read anyway.
     if (!await this.store.sessionExists(context, input.sessionId)) throw new NotFoundException("Session not found");
@@ -92,7 +100,7 @@ export class ConversionService {
   async run(context: TenantContext, jobId: string): Promise<Record<string, unknown>> {
     const job = await this.store.getJob(context, jobId);
     if (!job || job.kind !== "convert") throw new NotFoundException("Conversion not found");
-    const input = job.payload as { sessionId: string; target: string; fallback: "fail" | "injection" };
+    const input = job.payload as ConversionInput;
     const session = await this.store.getSession(context, input.sessionId);
     if (!session) throw new NotFoundException("Session not found");
     const { id, createdAt } = job;
@@ -101,7 +109,7 @@ export class ConversionService {
       const archiveEvidence = !this.engine.supportsNatively(input.target) && input.fallback === "injection"
         ? await this.archiveEvidenceFor(context, session)
         : undefined;
-      const bundle = this.engine.convert(session, input.target, input.fallback, archiveEvidence);
+      const bundle = this.engine.convert(session, input.target, input.fallback, archiveEvidence, input.workspacePath ? { workspacePath: input.workspacePath } : {});
       const objectKey = `tenants/${context.tenantId}/conversions/${id}.json`;
       await this.objects.put(objectKey, serializeBundle(bundle), "application/json");
       const result = { objectKey, resumeCommand: bundle.resumeCommand, report: bundle.report, fileCount: bundle.files.length };
