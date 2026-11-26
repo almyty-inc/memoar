@@ -66,7 +66,7 @@ capture() {
       ;;
     linux)
       local id
-      id=$(xwininfo -name Memoar 2>/dev/null | awk '/Window id:/ { print $4 }')
+      id=$( (xwininfo -name memoar 2>/dev/null || true) | awk '/Window id:/ { print $4 }')
       import -window "${id:-root}" "$2"
       ;;
     windows)
