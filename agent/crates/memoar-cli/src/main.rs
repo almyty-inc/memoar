@@ -44,6 +44,12 @@ fn main() -> ExitCode {
         }
         Err(error) => return render_error(cli.json, error),
     };
+    if matches!(cli.command, Command::Tui) {
+        return match memoar_cli::tui(cli.json, &paths) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => render_error(cli.json, error),
+        };
+    }
     // The stdio MCP server owns standard output: a result envelope printed
     // after the client hangs up would be one more message nobody asked for.
     if let Command::Mcp(args) = &cli.command

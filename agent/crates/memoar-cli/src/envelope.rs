@@ -83,6 +83,8 @@ pub fn introspect_value() -> Value {
             { "name": "mcp call", "requiresAuth": true, "network": true },
             { "name": "integrate", "requiresAuth": false, "network": false },
             { "name": "doctor", "requiresAuth": true, "network": true },
+            // Interactive: refuses --json and a stdout that is not a terminal.
+            { "name": "tui", "requiresAuth": true, "network": true },
             { "name": "capabilities", "requiresAuth": false, "network": false },
             { "name": "introspect", "requiresAuth": false, "network": false }
         ],

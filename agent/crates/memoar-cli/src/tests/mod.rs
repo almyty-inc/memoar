@@ -17,7 +17,8 @@ mod login;
 mod logout;
 mod mcp;
 mod messages;
-mod mock;
+// The TUI's tests sign in against the same stand-in archive.
+pub(crate) mod mock;
 mod mock_keys;
 mod policy;
 mod retired;
