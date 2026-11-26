@@ -22,7 +22,7 @@ describe('the address of a screen', () => {
   });
 
   it('round-trips every screen', () => {
-    const views = ['workspace', 'timeline', 'search', 'collections', 'import', 'sharing', 'machines', 'memory', 'settings', 'onboarding', 'signin'] as const;
+    const views = ['timeline', 'search', 'collections', 'import', 'sharing', 'machines', 'memory', 'settings', 'onboarding', 'signin'] as const;
     for (const view of views) {
       expect(routeForPath(pathForRoute({ view }))).toEqual({ view });
     }
@@ -39,6 +39,7 @@ describe('the address of a screen', () => {
     // typo'd or retired link rendered the archive under an address that did
     // not name it, with nothing to say anything had gone wrong.
     expect(routeForPath('/')).toEqual({ view: 'timeline' });
+    expect(routeForPath('/overview')).toEqual({ view: 'timeline' });
     expect(routeForPath('/nothing-here')).toEqual({ view: 'not-found' });
     expect(routeForPath('/sessions')).toEqual({ view: 'not-found' });
   });

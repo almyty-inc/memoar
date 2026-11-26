@@ -42,8 +42,8 @@ describe('importing an archive', () => {
 
     const banner = await screen.findByRole('alert');
     expect(banner).toHaveTextContent('artifact rejected: unknown_format');
-    expect(banner).toHaveClass('banner-error');
-    expect(container.querySelector('.privacy-banner:not(.banner-error)')).toBeNull();
+    expect(banner).toHaveClass('notice-error');
+    expect(container.querySelector('.notice:not(.notice-error)')).toBeNull();
   });
 
   it('keeps the neutral surface for progress, which is not a failure', async () => {
@@ -67,7 +67,7 @@ describe('importing an archive', () => {
     await userEvent.click(screen.getByRole('button', { name: /Import archive/u }));
 
     const progress = await screen.findByRole('status');
-    expect(progress).toHaveClass('privacy-banner');
-    expect(container.querySelector('[role="status"].banner-error')).toBeNull();
+    expect(progress).toHaveClass('notice');
+    expect(container.querySelector('[role="status"].notice-error')).toBeNull();
   });
 });

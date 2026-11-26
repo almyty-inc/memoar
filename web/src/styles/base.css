@@ -1,87 +1,90 @@
 /* Element defaults and the few utilities that are not part of a component. */
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--bg); color: var(--text); font-size: var(--fs-base); line-height: var(--lh-normal); }
+html { min-width: 320px; background: var(--surround-flat); }
+/* The product field sits behind everything, fixed, so it never scrolls away. */
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surround) fixed, var(--surround-flat); color: var(--text); font-size: var(--fs-base); line-height: var(--lh); }
 
-h1, h2, h3, h4 { line-height: var(--lh-tight); font-weight: var(--fw-semibold); }
-p { line-height: var(--lh-normal); }
+h1, h2, h3, h4 { margin: 0; font-weight: var(--fw-bold); line-height: 1.3; letter-spacing: -0.01em; }
+h1 { font-size: var(--fs-title); letter-spacing: -0.03em; line-height: 1.2; }
+h2, h3, h4 { font-size: var(--fs-base); }
+p { margin: 0; }
+ul, ol { margin: 0; padding: 0; }
 
-button, input, select, textarea { font: inherit; }
-button { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+a { color: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
-  outline: 2px solid var(--acid);
-  outline-offset: 2px;
-}
-::selection { color: var(--text); background: #dcf0b6; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--accent-soft); }
+
+/* Paths, hashes, ids and code. Never prose or labels. */
+code, pre, samp, kbd, .mono { font-family: var(--mono); font-size: 0.92em; }
+kbd { color: var(--text-2); font-family: var(--font); font-size: var(--fs-meta); }
+mark { color: inherit; background: var(--mark); border-radius: 2px; }
 
 /*
-  Scrollbars: thin, quiet, and only assertive while the region is actually being
-  used. A grey slab at full contrast on every scrollable panel at once is a lot
-  of furniture for something you interact with rarely.
+  Thin scrollbars everywhere. Windows and most Linux browsers otherwise draw
+  the classic 17px bar with arrows beside every scrolling pane. Firefox reads
+  the two standard properties, Chromium and WebKit the pseudo-elements.
 */
-* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
-::-webkit-scrollbar { width: var(--scrollbar-w); height: var(--scrollbar-w); }
-
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-corner { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--scroll-thumb);
-  border: var(--scrollbar-inset) solid transparent;
-
-  border-radius: var(--r-full);
-  background-clip: padding-box;
-  transition: background 140ms ease;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
-:hover::-webkit-scrollbar-thumb { background: var(--scroll-thumb-active); }
-::-webkit-scrollbar-thumb:active { background: var(--acid); }
+html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text-3) 45%, transparent) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-3) 40%, transparent); border: 3px solid transparent; border-radius: 6px; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text-3) 70%, transparent); }
+::-webkit-scrollbar-button { display: none; }
 
 .sr-only, .skip-link:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.skip-link:focus { position: fixed; z-index: 200; top: var(--sp-3); left: var(--sp-3); padding: var(--sp-3) var(--sp-4); color: var(--acid-ink); background: var(--acid); border-radius: var(--r-md); font-weight: var(--fw-bold); }
+.skip-link:focus { position: fixed; z-index: 200; top: var(--sp-3); left: var(--sp-3); padding: var(--sp-3) var(--sp-4); color: var(--accent-text); background: var(--accent-bg); border-radius: var(--r-control); }
 
-.subtle-text { color: var(--muted); }
-.success-icon { color: var(--acid); }
-.muted-small { margin: var(--sp-2) 0; color: var(--quiet); font-size: var(--fs-xs); }
+.muted { color: var(--text-2); }
+.meta { color: var(--text-2); font-size: var(--fs-2); }
+.num { font-variant-numeric: tabular-nums; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/*
-  Monospace where a terminal would align things.
+.empty-note { padding: var(--sp-4) 0; color: var(--text-2); }
+.empty-note code { color: var(--text); }
+.field-hint { color: var(--text-2); font-size: var(--fs-2); }
+.error-note { display: flex; gap: var(--sp-2); align-items: baseline; color: var(--danger); font-size: var(--fs-2); }
+.ok-note { color: var(--text-2); font-size: var(--fs-2); }
 
-  Paths, hashes, timestamps, counts and column labels are data, not prose. Set
-  in the text face they wander; set in mono they line up, which is most of what
-  makes a dense screen readable at a glance.
-*/
-.memory-entry-path, .memory-filter input, .memory-revisions button span,
-.session-path, .tile-size, .crumb, .command-search span,
-code, pre, samp { font-family: var(--mono); }
-
-/* The uppercase mono label: the one place 11px is allowed, because caps at 11
-   read larger than lowercase at 12 and these are labels, not sentences. */
-.eyebrow, .nav-label, .archive-stats span, .memory-list h2 {
-  font-family: var(--mono);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-medium);
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-
-/*
-  A rule that turned off a shadow nobody had turned on. `.panel` is in no
-  component at all, and none of the other six set a shadow in their base rule —
-  the one element here that is meant to lift, `.tile-active`, sets --shadow
-  further down and won this anyway. Hairlines do the separating; that is stated
-  where the hairlines are defined.
-*/
-
-
-.link-button { padding: 0; color: var(--acid); background: none; border: 0; font: inherit; font-weight: var(--fw-medium); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link-button { padding: 0; color: var(--accent); background: none; border: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .link-button:hover { color: var(--text); }
 
+/* A status dot: the one place colour carries state in a list. */
+.dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.dot-ok { background: var(--dot-ok); }
+.dot-warning { background: var(--dot-warning); }
+.dot-danger { background: var(--dot-danger); }
+
+/* Brand: the wordmark and the endorsement line. */
+.wordmark { display: inline-flex; gap: 9px; align-items: center; color: var(--text); font-weight: var(--fw-semibold); letter-spacing: -0.05em; line-height: 1; }
+.endorsement { display: flex; gap: 5px; align-items: center; color: var(--text-2); font-size: var(--fs-meta); font-weight: var(--fw-medium); }
+
+/* Agent marks: a rounded square with a monogram, in the agent's colour. */
+.agent-mark { display: grid; flex: none; place-items: center; width: 32px; height: 32px; color: #fff; border-radius: 10px; font-size: 11px; font-weight: var(--fw-bold); letter-spacing: 0.02em; background: linear-gradient(135deg, var(--a1), var(--a2)); }
+.agent-mark-sm { width: 22px; height: 22px; border-radius: 7px; font-size: 9px; }
+.agent-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--a1); }
+.agent-claude { --a1: var(--agent-claude); --a2: var(--agent-claude-2); }
+.agent-codex { --a1: var(--agent-codex); --a2: var(--agent-codex-2); }
+.agent-dot.agent-codex { background: var(--agent-codex-dot); }
+.agent-mark.agent-codex { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 16%); }
+.agent-antigravity { --a1: var(--agent-antigravity); --a2: var(--agent-antigravity-2); }
+.agent-cursor { --a1: var(--agent-cursor); --a2: var(--agent-cursor-2); }
+.agent-opencode { --a1: var(--agent-opencode); --a2: var(--agent-opencode-2); }
+.agent-copilot { --a1: var(--agent-copilot); --a2: var(--agent-copilot-2); }
+.agent-goose { --a1: var(--agent-goose); --a2: var(--agent-goose-2); }
+.agent-crush, .agent-roo, .agent-kilo, .agent-zed, .agent-other { --a1: var(--agent-other); --a2: var(--agent-other-2); }
+
+.text-warning { color: var(--warning); }
+.text-danger { color: var(--danger); }
+
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
-@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

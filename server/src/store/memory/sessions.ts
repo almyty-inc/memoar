@@ -102,6 +102,8 @@ export class MemorySessionStore implements SessionStore {
       versions.set(session.id, {
         parserVersion: session.provenance.find((item) => item.kind === "native")?.parserVersion ?? null,
         machineId: session.source.machineId || null,
+        title: session.title ?? null,
+        tool: session.source.tool ?? null,
       });
     }
     return Promise.resolve(versions);

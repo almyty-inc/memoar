@@ -1,0 +1,59 @@
+/* Code, diffs and tool steps inside a transcript. */
+
+.code-block { position: relative; min-width: 0; background: var(--subtle); border-radius: var(--r-popover); }
+.code-block pre { margin: 0; padding: 12px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.65; }
+.code-block pre code, .hljs { font-size: inherit; background: transparent; }
+.code-copy { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.code-block:hover .code-copy, .code-copy:focus-within { opacity: 1; }
+.code-copy .button { background: var(--bg); }
+.code-flush { border-radius: 0; background: transparent; }
+.code-flush pre { max-height: 420px; overflow-y: auto; }
+.terminal-block pre { color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-type, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }
+.hljs-string, .hljs-regexp, .hljs-template-tag, .hljs-addition { color: var(--syn-string); }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet { color: var(--syn-number); }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--syn-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-section, .hljs-name { color: var(--syn-title); }
+.hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-params, .hljs-selector-class { color: var(--syn-attr); }
+.hljs-deletion { color: var(--danger); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: var(--fw-bold); }
+
+/* A file edit: a card with an inset header and tinted lines. */
+.diff-block { min-width: 0; overflow: hidden; border-radius: var(--r-popover); box-shadow: 0 0 0 1px var(--line); }
+.diff-block > header { display: flex; gap: var(--sp-3); align-items: center; height: 38px; padding: 0 6px 0 14px; color: var(--text-2); background: var(--subtle); font-size: 12.5px; font-weight: var(--fw-semibold); }
+.diff-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-stat { font-variant-numeric: tabular-nums; }
+.diff-stat-add { color: var(--ok); }
+.diff-stat-remove { color: var(--danger); }
+.diff-lines { overflow-x: auto; padding: 4px 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; }
+.diff-row { display: grid; grid-template-columns: 36px 36px 18px max-content; min-width: 100%; }
+.diff-row code { padding-right: var(--sp-5); white-space: pre; font-size: inherit; }
+.diff-no { padding-right: var(--sp-2); color: var(--text-3); text-align: right; user-select: none; font-size: var(--fs-meta); }
+.diff-sign { text-align: center; user-select: none; }
+.diff-add { color: var(--ok); background: var(--diff-new); }
+.diff-remove { color: var(--danger); background: var(--diff-old); }
+.diff-add .diff-no, .diff-remove .diff-no { color: inherit; opacity: .7; }
+.diff-gap { display: block; padding-left: 90px; color: var(--text-3); font-size: var(--fs-meta); }
+.tool-edit { display: grid; gap: var(--sp-2); }
+
+/* A step: one line on an inset pill, a status dot, the outcome on the right. */
+.step { display: flex; gap: 10px; align-items: center; min-height: 42px; padding: 9px 14px; color: var(--text-2); background: var(--subtle); border-radius: 12px; font-size: 13.5px; line-height: 1.5; }
+.step-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-label code { margin-left: 4px; padding: 0; color: var(--text); background: none; font-size: 12.5px; }
+.step-outcome { flex: none; max-width: 45%; overflow: hidden; color: var(--text-2); font-style: normal; font-weight: var(--fw-semibold); text-overflow: ellipsis; white-space: nowrap; }
+.step-outcome.is-failed { color: var(--danger); }
+.step-outcome.is-ok { color: var(--ok); }
+.tool-block { min-width: 0; border-radius: 12px; }
+.tool-block > summary { cursor: pointer; list-style: none; transition: background-color var(--t-fast) var(--ease); }
+.tool-block > summary::-webkit-details-marker { display: none; }
+.tool-block > summary:hover { background: var(--hover); }
+.tool-block[open], .step-block[open] { background: var(--subtle); }
+.tool-block[open] > summary { border-radius: 12px 12px 0 0; }
+.tool-chevron { flex: none; color: var(--text-3); transition: transform var(--t-fast) var(--ease); }
+.tool-block[open] .tool-chevron { transform: rotate(90deg); }
+.tool-body { min-width: 0; border-top: 1px solid var(--line); }
+.tool-output { max-height: 360px; margin: 0; padding: 12px 16px; overflow: auto; border-top: 1px solid var(--line); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-note { padding: var(--sp-2) var(--sp-4); color: var(--text-2); font-size: var(--fs-2); }
+.tool-name { font-weight: var(--fw-semibold); }

@@ -85,7 +85,7 @@ describe('choosing a distillation provider', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /Distillation/u }));
 
-    expect(await screen.findByText(/a key ending cd12 is stored/iu)).toBeInTheDocument();
+    expect(await screen.findByText(/one ending cd12 is stored/iu)).toBeInTheDocument();
     // The field is for entering a replacement, and starts empty: a password
     // input pre-filled with anything is a credential waiting to be autofilled
     // somewhere else.

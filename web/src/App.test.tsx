@@ -51,8 +51,8 @@ describe('Memoar archive app', () => {
     // The rows themselves are virtualized and need a measured scroll box that
     // jsdom does not give them; the summary is what this asserts, and it is the
     // part that used to be invented.
-    expect(await screen.findByText('41')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Pick up where you left off.' })).toBeInTheDocument();
+    expect(await screen.findByText('41 sessions')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sessions', level: 1 })).toBeInTheDocument();
     expect(screen.queryByText('Demo archive'), 'there is no demo archive any more').not.toBeInTheDocument();
   });
 

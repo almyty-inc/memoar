@@ -1,16 +1,13 @@
-import { ChevronDown, ChevronRight, LogOut, UserPlus, Users } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import type { CurrentUser, Team } from '../../lib/types';
-import { Button } from '../../components/ui';
+import { Button, cn, plural } from '../../components/ui';
 import { CreateTeamForm } from './CreateTeamForm';
 import { MemberRoster } from './MemberRoster';
 
 /**
- * The teams this account has actually joined.
- *
- * `memberCount` is the server's own count of active members, shown as it
- * arrives. Who those members are is a second read, made only when the reader
- * asks for it, and never inferred from the count.
+ * The teams this account has joined. `memberCount` is the server's count of
+ * active members. Who they are is a second read, made when asked for.
  */
 export function TeamList({ teams, user, busy, openRoster, reloadKey, onToggleRoster, onCreate, onInvite, onLeave }: {
   teams: Team[];
@@ -26,46 +23,39 @@ export function TeamList({ teams, user, busy, openRoster, reloadKey, onToggleRos
   onLeave: (teamId: string, userId: string) => void;
 }) {
   return (
-    <section className="data-panel" aria-labelledby="teams-joined-heading">
-      <header>
-        <div>
-          <h2 id="teams-joined-heading">Teams you have joined</h2>
-          <p>Members can read every session and collection anyone here widens to the team.</p>
-        </div>
+    <section className="section" aria-labelledby="teams-joined-heading">
+      <div className="section-head">
+        <h2 id="teams-joined-heading" className="section-title">Teams you have joined</h2>
         <CreateTeamForm busy={busy === 'create'} onCreate={onCreate} />
-      </header>
-      <div className="data-list">
+      </div>
+      <p className="section-note">Members can read every session and collection anyone here widens to the team.</p>
+      <div className="row-list">
         {teams.length === 0 ? <p className="empty-note">You are not a member of any team. Create one above to start sharing an archive.</p> : null}
         {teams.map((team) => (
-          <article className="team-row" key={team.id}>
-            <span className="row-icon"><Users size={16} /></span>
-            <div className="team-main">
-              <strong>{team.name}</strong>
-              <p>{team.memberCount} {team.memberCount === 1 ? 'member' : 'members'}</p>
-            </div>
-            <InviteField team={team} busy={busy === team.id} onInvite={onInvite} />
-            <div className="team-actions">
-              <Button
-                size="sm"
-                variant="ghost"
+          <div key={team.id}>
+            <div className="row">
+              <button
+                type="button"
+                className="machine-toggle"
                 aria-expanded={openRoster === team.id}
+                aria-label={`Members of ${team.name}`}
                 onClick={() => onToggleRoster(team.id)}
               >
-                {openRoster === team.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Members
-              </Button>
+                <ChevronRight size={13} aria-hidden="true" className={cn('chevron', openRoster === team.id && 'open')} />
+              </button>
+              <strong className="row-name">{team.name}</strong>
+              <span className="row-main meta">{plural(team.memberCount, 'member')}</span>
+              <InviteField team={team} busy={busy === team.id} onInvite={onInvite} />
               {user ? (
-                <Button size="sm" variant="ghost" disabled={busy === team.id} onClick={() => onLeave(team.id, user.id)}>
-                  <LogOut size={14} /> Leave
-                </Button>
+                <Button size="sm" variant="ghost" disabled={busy === team.id} onClick={() => onLeave(team.id, user.id)}>Leave</Button>
               ) : null}
             </div>
             {/* The key remounts the roster after any action that may have moved
-                it, so the re-read starts from no state rather than from the
-                last answer. */}
+                it, so the re-read starts from no state. */}
             {openRoster === team.id
               ? <MemberRoster key={`${team.id}:${reloadKey}`} teamId={team.id} teamName={team.name} />
               : null}
-          </article>
+          </div>
         ))}
       </div>
     </section>
@@ -82,7 +72,7 @@ function InviteField({ team, busy, onInvite }: {
 
   return (
     <form
-      className="invite-form"
+      className="inline-form"
       onSubmit={(event) => {
         event.preventDefault();
         onInvite(team.id, email);
@@ -96,9 +86,7 @@ function InviteField({ team, busy, onInvite }: {
         aria-label={`Email to invite to ${team.name}`}
         onChange={(event) => setEmail(event.target.value)}
       />
-      <Button size="sm" type="submit" disabled={busy || !email.includes('@')}>
-        <UserPlus size={14} /> Invite
-      </Button>
+      <Button size="sm" type="submit" disabled={busy || !email.includes('@')}>Invite</Button>
     </form>
   );
 }

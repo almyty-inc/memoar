@@ -34,6 +34,9 @@ pub enum DaemonError {
     UnsupportedRedaction(PathBuf),
     #[error("ZIP redaction failed for {path}: {message}")]
     Zip { path: PathBuf, message: String },
+    /// A compressed store that does not decode: a frame cut short or not zstd.
+    #[error("{path} could not be decompressed: {message}")]
+    Undecodable { path: PathBuf, message: String },
     #[error("{path} is {size} bytes, past the {limit}-byte ceiling the archive accepts")]
     TooLarge {
         path: PathBuf,
@@ -78,7 +81,11 @@ impl DaemonError {
     /// used to end a whole sweep, and a 500 MB stray file would do it again
     /// through the other door.
     pub fn is_skippable(&self) -> bool {
-        self.is_unredactable() || matches!(self, DaemonError::TooLarge { .. })
+        self.is_unredactable()
+            || matches!(
+                self,
+                DaemonError::TooLarge { .. } | DaemonError::Undecodable { .. }
+            )
     }
 
     /// The whole pass is stopped by this, not just the artifact that drew it.

@@ -24,6 +24,7 @@ kubectl -n <namespace> exec deploy/<release>-worker -- node dist/reprocess.js \
 | `--status <status>` | Only artifacts in this status, for example `stored`. |
 | `--merged-sessions` | Only artifacts linked to a session that more than one file writes to. |
 | `--stale-parser` | Only `parsed` artifacts whose sessions an older parser wrote, the newest capture of each session, and with `--machine` only sessions that machine captured. |
+| `--placeholder-titles` | Only `parsed` artifacts whose sessions still carry the placeholder title `<source> imported session`, the newest capture of each session, with the same machine rule. A re-parse names each one after the first prompt a person typed. |
 | `--dry-run` | Print the selection and parse nothing. |
 
 The selection is processed oldest capture first. Without a selection flag the

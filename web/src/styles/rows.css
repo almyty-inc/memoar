@@ -1,0 +1,81 @@
+/* Lists: soft rows on a card, or on the field beside a transcript. */
+
+.row-list { display: grid; gap: 2px; }
+.row {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: center;
+  min-height: 48px;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: 12px;
+  transition: background-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.row + .row { box-shadow: 0 -1px 0 var(--line); }
+.row-button { width: 100%; color: var(--text); text-align: left; background: none; border: 0; text-decoration: none; }
+.row-button:hover, a.row:hover { background: var(--hover); box-shadow: none; }
+.row-button:focus-visible, a.row:focus-visible { outline: 0; background: var(--accent-soft); box-shadow: none; }
+.row-selected { background: var(--accent-soft); box-shadow: none; }
+.row-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-main strong { font-weight: var(--fw-bold); }
+.row-stack { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.row-stack > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-stack .row-sub { color: var(--text-2); font-size: var(--fs-2); }
+.row-meta { flex: none; color: var(--text-2); font-size: var(--fs-2); font-weight: var(--fw-medium); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.row-actions { display: flex; flex: none; gap: var(--sp-1); align-items: center; }
+.row-detail { padding: var(--sp-4) var(--sp-4) var(--sp-5) 48px; }
+
+/* Column headings over a table of rows. */
+.row-head { display: flex; gap: var(--sp-4); align-items: center; height: 30px; padding: 0 var(--sp-4); color: var(--text-2); font-size: var(--fs-meta); font-weight: var(--fw-semibold); }
+
+/* The session list, on the field beside the transcript card. */
+.timeline-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.list-top { display: grid; gap: 12px; padding: 18px 12px 8px 10px; }
+.list-top .page-header { margin-bottom: 0; }
+.list-top .page-header h1 { font-size: 24px; }
+.list-toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+
+.session-scroll { position: relative; flex: 1; min-height: 0; padding: 0 6px 0 0; overflow-y: auto; overscroll-behavior: contain; }
+.virtual-list { position: relative; width: 100%; }
+.virtual-row { position: absolute; top: 0; left: 0; width: 100%; padding: 3px 0; }
+.virtual-row.sticky { position: sticky; z-index: 2; padding: 0; }
+
+.day-header {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  height: 38px;
+  padding: 10px 12px 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: var(--fw-semibold);
+}
+.sticky .day-header { background: var(--side); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 10px; }
+.day-header span { font-weight: var(--fw-medium); opacity: .8; }
+
+.session-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  color: var(--text);
+  border-radius: 14px;
+  text-decoration: none;
+  transition: background-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.session-row:hover { background: var(--row-hover); }
+.session-row.row-selected, .session-row.row-selected:hover { background: var(--bg); box-shadow: var(--row-shadow); }
+.session-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.session-row-body { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.session-row-title { overflow: hidden; font-size: 14.5px; font-weight: var(--fw-bold); letter-spacing: -0.01em; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.session-row-preview { display: -webkit-box; overflow: hidden; color: var(--text-2); font-size: var(--fs-2); line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.session-row-meta { display: flex; flex-wrap: wrap; gap: 0 6px; margin-top: 1px; color: var(--text-2); font-size: var(--fs-meta); font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; }
+.session-row-meta > span + span::before { content: "·"; margin-right: 6px; }
+
+.list-end { display: flex; gap: var(--sp-3); align-items: center; justify-content: center; height: 48px; color: var(--text-2); font-size: var(--fs-2); }
+
+/* Placeholder rows the same size as real ones, so nothing moves when data lands. */
+.skeleton { display: block; height: 10px; background: linear-gradient(90deg, var(--subtle) 0%, var(--hover) 50%, var(--subtle) 100%); background-size: 200% 100%; border-radius: 5px; animation: shimmer 1.2s linear infinite; }
+.skeleton-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px; }
+.skeleton-row .skeleton-mark { flex: none; width: 32px; height: 32px; border-radius: 10px; }
+.skeleton-row .skeleton-lines { display: grid; flex: 1; gap: 8px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }

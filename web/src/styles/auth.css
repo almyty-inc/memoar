@@ -1,0 +1,13 @@
+/* Sign-in: one centred card on the product field, the wordmark above it. */
+
+.auth-page { display: grid; gap: var(--sp-6); align-content: center; justify-items: center; min-height: 100vh; padding: var(--sp-7) var(--sp-5); }
+.auth-card { width: min(100%, 380px); padding: 34px 34px 30px; background: var(--bg); border-radius: var(--r-card); box-shadow: var(--card-shadow); animation: pop-in var(--t-med) var(--ease); }
+.auth-brand { margin-bottom: 26px; }
+.auth-card h1 { margin-bottom: var(--sp-5); font-size: 24px; }
+.auth-card .button-primary { width: 100%; height: 40px; margin-top: var(--sp-1); }
+.auth-oauth { display: grid; gap: var(--sp-2); }
+.auth-oauth .button { width: 100%; height: 40px; }
+.auth-or { display: flex; gap: var(--sp-3); align-items: center; margin: var(--sp-5) 0; color: var(--text-2); font-size: var(--fs-2); }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.auth-foot { min-height: 20px; margin-top: var(--sp-5); color: var(--text-2); font-size: var(--fs-2); }
+.auth-page > .endorsement { justify-content: center; }

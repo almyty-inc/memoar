@@ -1,12 +1,8 @@
-/**
- * Memoar's mark: a thread of turns on a spine, the same shape the session view
- * renders a conversation in. Drawn on a 24 grid with a 2px stroke so it stays
- * legible at 17px, where it lives.
- */
+import { useId } from 'react';
+
 /**
  * GitHub's mark, for the button that signs in with it. Inline because lucide
- * dropped brand icons in 1.0, and a provider button without its provider's mark
- * is harder to recognise than it should be.
+ * dropped brand icons in 1.0.
  */
 export function GithubMark({ size = 16 }: { size?: number }) {
   return (
@@ -16,30 +12,67 @@ export function GithubMark({ size = 16 }: { size?: number }) {
   );
 }
 
-export function MemoarMark({ size = 18 }: { size?: number }) {
+/**
+ * The memoar Thread mark: an m drawn as one hollow line through five nodes,
+ * in the accent gradient. The same geometry as public/memoar.svg. Never
+ * filled, never recoloured, never drawn below 16px.
+ */
+export function ThreadMark({ size = 22 }: { size?: number }) {
+  const id = useId();
+  const gradient = `thread-${id}`;
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {/* The spine: one conversation, running top to bottom. */}
-      <path d="M7 5v14" />
-      {/* Two turns on it. Filled, so they read as nodes rather than holes at
-          small sizes. */}
-      <circle cx="7" cy="8" r="1.9" fill="currentColor" stroke="none" />
-      <circle cx="7" cy="17" r="1.9" fill="currentColor" stroke="none" />
-      {/* What each turn said. Unequal lengths, because a question and an answer
-          are not the same size. */}
-      <path d="M12 8h6" />
-      <path d="M12 17h4" />
+    <svg width={Math.max(16, size)} height={Math.max(16, size) * 30 / 28} viewBox="-2 -2 28 30" fill="none" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#2775F7" />
+          <stop offset="0.65" stopColor="#26C5CF" />
+          <stop offset="1" stopColor="#85E5BA" />
+        </linearGradient>
+      </defs>
+      <polyline points="3,24 3,4 12,15 21,4 21,24" stroke={`url(#${gradient})`} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx="3" cy="24" r="2" fill="#2775F7" />
+      <circle cx="3" cy="4" r="2" fill="#2775F7" />
+      <circle cx="12" cy="15" r="1.6" fill="#26C5CF" />
+      <circle cx="21" cy="4" r="2" fill="#26C5CF" />
+      <circle cx="21" cy="24" r="2" fill="#85E5BA" />
     </svg>
+  );
+}
+
+/** almyty's bolt, as in its own asset. Only ever in the endorsement line. */
+export function AlmytyBolt({ size = 11 }: { size?: number }) {
+  const id = useId();
+  const gradient = `bolt-${id}`;
+  return (
+    <svg width={size} height={size * 30 / 26} viewBox="-2 -2 26 30" fill="none" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={gradient} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#8b5cf6" />
+          <stop offset="100%" stopColor="#22d3ee" />
+        </linearGradient>
+      </defs>
+      <polygon points="10,0 20,0 12,12 19,12 6,26 12,12 4,12" fill="none" stroke={`url(#${gradient})`} strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx="10" cy="0" r="2" fill="#a78bfa" />
+      <circle cx="20" cy="0" r="2" fill="#8b5cf6" />
+      <circle cx="12" cy="12" r="1.5" fill="#7c3aed" />
+      <circle cx="6" cy="26" r="2" fill="#22d3ee" />
+    </svg>
+  );
+}
+
+/** "memoar" set as the wordmark, with the mark before it. */
+export function Wordmark({ size = 22 }: { size?: number }) {
+  return (
+    <span className="wordmark" style={{ fontSize: size - 1 }}>
+      <ThreadMark size={size} />
+      <span>memoar</span>
+    </span>
+  );
+}
+
+/** "memoar by almyty", the endorsement line. */
+export function Endorsement() {
+  return (
+    <p className="endorsement">memoar by <AlmytyBolt /> almyty</p>
   );
 }

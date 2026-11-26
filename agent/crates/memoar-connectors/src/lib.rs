@@ -6,6 +6,7 @@ pub mod memory;
 mod discovery;
 mod glob;
 mod sources;
+mod sources_editors;
 mod spec;
 
 #[cfg(test)]

@@ -9,8 +9,6 @@ import type { ViewId } from './types';
  * the timeline and there was nothing to send anyone.
  */
 const VIEW_PATHS: Readonly<Record<Exclude<ViewId, 'session' | 'not-found'>, string>> = {
-
-  workspace: '/overview',
   timeline: '/timeline',
   search: '/search',
   collections: '/collections',
@@ -57,7 +55,9 @@ export function pathForRoute(route: Route): string {
  */
 export function routeForPath(pathname: string): Route {
   const path = pathname.replace(/\/+$/u, '') || '/';
-  if (path === '/') return { view: 'timeline' };
+  // The overview dashboard is gone: the session list is the home screen, so a
+  // bookmark to it lands there rather than on a 404.
+  if (path === '/' || path === '/overview') return { view: 'timeline' };
   if (path === SIGN_UP_PATH) return { view: 'signin', creating: true };
 
   const session = /^\/sessions\/([^/]+)$/u.exec(path);

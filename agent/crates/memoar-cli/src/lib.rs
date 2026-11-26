@@ -15,11 +15,13 @@ mod envelope;
 mod error;
 mod health;
 mod http_error;
+mod integrate;
 mod listen;
 mod lock;
 mod login;
 mod logout;
 mod machine;
+mod mcp;
 mod memory;
 mod plan_report;
 mod progress;
@@ -31,6 +33,7 @@ mod sse;
 mod status;
 mod sync;
 mod sync_archive;
+mod tui;
 mod watch;
 
 #[cfg(test)]
@@ -53,6 +56,8 @@ pub use crate::error::{
     AppError, EXIT_DISK_LOW, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK,
     EXIT_REFUSED, EXIT_UNKNOWN, EXIT_USAGE,
 };
+pub use crate::integrate::IntegrateArgs;
+pub use crate::mcp::{McpArgs, McpCallArgs, McpCommand};
 pub use crate::service::args::{
     ServiceChangeArgs, ServiceCommand, ServiceLogsArgs, ServiceNameArgs,
 };
@@ -79,6 +84,13 @@ pub struct CommandOutput {
     pub data: Value,
 }
 
+/// `memoar tui`. Refuses `--json` and a stdin or stdout that is not a
+/// terminal with a usage error, and says to run `memoar login` when there is
+/// no sign-in, before it touches the terminal.
+pub fn tui(json: bool, paths: &RuntimePaths) -> Result<(), AppError> {
+    crate::tui::launch(json, paths)
+}
+
 pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppError> {
     match &cli.command {
         Command::Login(args) => login(args, paths),
@@ -95,7 +107,16 @@ pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppErro
         Command::Convert(args) => convert(args, paths),
         Command::Memory { command } => memory(command, paths),
         Command::Listen(args) => listen(args, paths),
+        Command::Mcp(args) => crate::mcp::mcp(args, paths),
+        Command::Integrate(args) => crate::integrate::integrate(args, cli, paths),
         Command::Doctor => doctor(paths),
+        // `main` runs this one itself, as it has nothing to print on exit.
+        // Here for completeness, and so a caller of `execute` gets the same
+        // refusals: no JSON, no terminal.
+        Command::Tui => tui(cli.json, paths).map(|()| CommandOutput {
+            command: "tui".to_owned(),
+            data: Value::Null,
+        }),
         Command::Capabilities => Ok(CommandOutput {
             command: "capabilities".to_owned(),
             data: capabilities_value(),

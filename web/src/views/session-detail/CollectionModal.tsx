@@ -1,5 +1,5 @@
 import type { Collection as CollectionRecord } from '../../lib/types';
-import { Button, Modal } from '../../components/ui';
+import { Button, Modal, plural } from '../../components/ui';
 
 export function CollectionModal({ collectionOpen, setCollectionOpen, collections, busyAction, addToCollection, actionError }: {
   collectionOpen: boolean;
@@ -10,13 +10,13 @@ export function CollectionModal({ collectionOpen, setCollectionOpen, collections
   actionError: string | null;
 }) {
   return (
-    <Modal open={collectionOpen} title="Add to collection" description="Collections group sessions for review and for packing evidence." onClose={() => setCollectionOpen(false)}>
+    <Modal open={collectionOpen} title="Add to collection" onClose={() => setCollectionOpen(false)}>
       <div className="modal-body">
-        <div className="collection-picker">
+        <div className="choice-list">
           {collections.map((collection) => (
-            <button key={collection.id} type="button" className="collection-choice" disabled={busyAction === 'collection'} onClick={() => void addToCollection(collection.id)}>
+            <button key={collection.id} type="button" className="choice" disabled={busyAction === 'collection'} onClick={() => void addToCollection(collection.id)}>
               <strong>{collection.name}</strong>
-              <small>{collection.sessionCount} sessions</small>
+              <small>{plural(collection.sessionCount, 'session')}</small>
             </button>
           ))}
         </div>

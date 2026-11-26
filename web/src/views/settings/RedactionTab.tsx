@@ -1,4 +1,4 @@
-import { Plus, ScanSearch, Trash2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { TenantSettings } from '../../lib/api';
 import { Badge, Button, IconButton, Toggle } from '../../components/ui';
 
@@ -14,7 +14,7 @@ export function RedactionTab({ settings, settingsError, saving, newPattern, setN
     <section className="settings-section">
       <header>
         <div><h2>Redaction rules</h2><p>Scan captured blocks before upload and before any visibility change.</p></div>
-        <Badge><ScanSearch size={12} /> {settings ? `${settings.redaction.customPatterns.length} custom ${settings.redaction.customPatterns.length === 1 ? 'pattern' : 'patterns'}` : 'Loading…'}</Badge>
+        <Badge>{settings ? `${settings.redaction.customPatterns.length} custom ${settings.redaction.customPatterns.length === 1 ? 'pattern' : 'patterns'}` : ''}</Badge>
       </header>
       {settingsError ? <p role="alert" className="error-note">{settingsError}</p> : null}
       <div className="toggle-list">
@@ -31,7 +31,7 @@ export function RedactionTab({ settings, settingsError, saving, newPattern, setN
             <IconButton
               label={`Delete custom rule ${pattern}`}
               onClick={() => setRedaction({ customPatterns: (settings?.redaction.customPatterns ?? []).filter((entry) => entry !== pattern) })}
-            ><Trash2 size={14} /></IconButton>
+            ><X size={13} /></IconButton>
           </div>
         ))}
         <div className="custom-rule-add">
@@ -49,7 +49,7 @@ export function RedactionTab({ settings, settingsError, saving, newPattern, setN
               setRedaction({ customPatterns: [...(settings?.redaction.customPatterns ?? []), pattern] });
               setNewPattern('');
             }}
-          ><Plus size={14} /> Add pattern</Button>
+          >Add pattern</Button>
         </div>
       </div>
     </section>

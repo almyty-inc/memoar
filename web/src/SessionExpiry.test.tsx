@@ -44,7 +44,7 @@ describe('a sign-in that is about to lapse', () => {
 
     render(<App />);
 
-    await screen.findByRole('heading', { name: 'Pick up where you left off.' });
+    await screen.findByRole('heading', { name: 'Sessions', level: 1 });
     expect(screen.queryByText(/This sign-in expires/u)).not.toBeInTheDocument();
   });
 
@@ -55,7 +55,7 @@ describe('a sign-in that is about to lapse', () => {
 
     // What the 401 handler in the client does, from the middle of the work.
     act(() => { window.dispatchEvent(new CustomEvent('memoar:unauthorized')); });
-    expect(await screen.findByRole('heading', { name: 'Open your archive.' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
 
     const user = userEvent.setup();

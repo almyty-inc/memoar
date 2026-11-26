@@ -1,4 +1,4 @@
-import { chatEnvelopes, chatEnvelopesFromLog, isSqliteBytes, messageArray } from "../../libs/parsers/src/index.js";
+import { chatEnvelopes, chatEnvelopesFromLog, isCopilotEventLog, isSqliteBytes, messageArray } from "../../libs/parsers/src/index.js";
 
 /**
  * Which parser version an upload belongs to, when the client named only the tool.
@@ -25,6 +25,8 @@ const SQLITE_SOURCE_VERSIONS: Readonly<Record<string, string>> = {
   zed: "v1",
   opencode: "v1",
   copilot: "v1",
+  // `kilo.db`, opencode's schema, since Kilo Code was rebuilt on opencode.
+  kilo: "v1",
 };
 
 const SOURCE_ALIASES: Readonly<Record<string, { source: string; version: string }>> = {
@@ -110,8 +112,33 @@ function isCursorEnvelope(document: unknown): boolean {
   return isRecord(document) && document.source === "cursor" && isRecord(document.session);
 }
 
-function isCopilotChat(document: unknown, records: readonly JsonRecord[]): boolean {
-  return chatEnvelopes(document) !== null || chatEnvelopesFromLog(records) !== null;
+/**
+ * The first line read whole, however long it is.
+ *
+ * A VS Code chat log opens with a `kind:0` snapshot of the entire panel, and
+ * after VS Code compacts the log that one line is the whole conversation, far
+ * past the sniff window. Cut off there, it parsed as nothing and the panel was
+ * refused as `copilot@unknown`.
+ */
+function firstLine(bytes: Uint8Array): JsonRecord[] {
+  const end = Buffer.from(bytes).indexOf(0x0a);
+  const line = Buffer.from(bytes.subarray(0, end === -1 ? bytes.length : end)).toString("utf8").trim();
+  if (!line.startsWith("{")) return [];
+  try {
+    const value: unknown = JSON.parse(line);
+    return isRecord(value) ? [value] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A VS Code panel in any layout, or the CLI's `events.jsonl`. */
+function isCopilotChat(document: unknown, bytes: Uint8Array): boolean {
+  const records = leadingRecords(bytes);
+  return chatEnvelopes(document) !== null
+    || chatEnvelopesFromLog(records) !== null
+    || isCopilotEventLog(records)
+    || chatEnvelopesFromLog(firstLine(bytes)) !== null;
 }
 
 /** Roo and Kilo: an `api_conversation_history.json` array of `{role, content}`. */
@@ -131,7 +158,7 @@ const TEXT_SNIFFERS: Readonly<Record<string, Sniffer>> = {
   codex: lines(isCodexRollout, "rollout-v1"),
   "antigravity-cli": lines(isAntigravityTranscript, "v1"),
   cursor: (bytes) => (isCursorEnvelope(wholeJson(bytes)) ? "v3" : null),
-  copilot: (bytes) => (isCopilotChat(wholeJson(bytes), leadingRecords(bytes)) ? "v1" : null),
+  copilot: (bytes) => (isCopilotChat(wholeJson(bytes), bytes) ? "v1" : null),
   kilo: (bytes) => (isTaskHistory(wholeJson(bytes)) ? "v1" : null),
   roo: (bytes) => (isTaskHistory(wholeJson(bytes)) ? "v1" : null),
 };

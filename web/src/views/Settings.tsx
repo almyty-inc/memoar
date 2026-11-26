@@ -1,9 +1,8 @@
-import { ChevronRight, Clock3, KeyRound, Settings, Shield, Sparkles, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { accountInitials } from '../lib/account';
 import { memoarApi, type DistillationSettings, type TenantSettings, McpStatus } from '../lib/api';
 import type { CurrentUser, ApiKey } from '../lib/types';
-import { cn } from '../components/ui';
+import { PageHeader, cn } from '../components/ui';
+import { AccountTab } from './settings/AccountTab';
 import { ChangePasswordForm } from './settings/ChangePasswordForm';
 import { CreateKeyModal } from './settings/CreateKeyModal';
 import { DistillationTab } from './settings/DistillationTab';
@@ -13,12 +12,12 @@ import { RetentionTab } from './settings/RetentionTab';
 
 type SettingsTab = 'general' | 'keys' | 'privacy' | 'retention' | 'distillation';
 
-const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings }> = [
-  { id: 'general', label: 'General', icon: UserRound },
-  { id: 'keys', label: 'API keys & MCP', icon: KeyRound },
-  { id: 'privacy', label: 'Redaction', icon: Shield },
-  { id: 'retention', label: 'Retention', icon: Clock3 },
-  { id: 'distillation', label: 'Distillation', icon: Sparkles },
+const tabs: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'general', label: 'General' },
+  { id: 'keys', label: 'API keys and MCP' },
+  { id: 'privacy', label: 'Redaction' },
+  { id: 'retention', label: 'Retention' },
+  { id: 'distillation', label: 'Distillation' },
 ];
 
 export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRevoked }: { apiKeys: ApiKey[]; mcpEndpoint: string; user: CurrentUser | null; onCreateKey: (name: string, scopes: string[]) => Promise<string>; onKeyRevoked: () => void }) {
@@ -145,14 +144,13 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
 
   return (
     <div className="page settings-page">
-      <section className="page-heading"><div className="eyebrow"><Settings size={13} /> Archive controls</div><h1>Settings</h1><p>Manage access, retrieval credentials, privacy rules, and lifecycle defaults.</p></section>
+      <PageHeader title="Settings" />
 
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
-          {tabs.map((item) => {
-            const Icon = item.icon;
-            return <button type="button" key={item.id} className={cn(tab === item.id && 'active')} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)}><Icon size={16} />{item.label}<ChevronRight size={14} /></button>;
-          })}
+          {tabs.map((item) => (
+            <button type="button" key={item.id} className={cn('nav-item', tab === item.id && 'nav-item-active')} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)}>{item.label}</button>
+          ))}
         </nav>
 
         <div className="settings-content">
@@ -200,17 +198,7 @@ export function SettingsView({ apiKeys, mcpEndpoint, user, onCreateKey, onKeyRev
             />
           ) : null}
 
-          {tab === 'general' ? (
-            <section className="settings-section">
-              <header><div><h2>Account</h2><p>The identity this archive belongs to.</p></div></header>
-              {/* Only controls that can act: a setting wired to nothing reads
-                  as a capability the product has. */}
-              <div className="profile-card">
-                <span className="avatar large">{user ? accountInitials(user.displayName) : '·'}</span>
-                <div><strong>{user?.displayName ?? 'Not signed in'}</strong><p>{user?.email ?? '—'}</p></div>
-              </div>
-            </section>
-          ) : null}
+          {tab === 'general' ? <AccountTab user={user} /> : null}
           {/* The server says whether there is a password. A provider-only
               account has none, and a form for it could only fail. */}
           {tab === 'general' && user?.hasPassword === true ? <ChangePasswordForm /> : null}

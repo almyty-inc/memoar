@@ -151,3 +151,43 @@ fn no_home_directory_is_needed_when_none_is_used() {
     let output = bare(&["--json", "status"]);
     assert_eq!(output.status.code(), Some(memoar_cli::EXIT_USAGE.into()));
 }
+
+/// `memoar tui` draws in a terminal. Asked for JSON, or run with its output
+/// in a pipe, it says so with a usage error instead of filling the pipe with
+/// escape sequences.
+#[test]
+fn tui_refuses_json_and_a_pipe() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = |name: &str| temp.path().join(name).to_str().unwrap().to_owned();
+    let (config, data, home) = (dir("config"), dir("data"), dir("home"));
+    let base = [
+        "--config-dir",
+        config.as_str(),
+        "--data-dir",
+        data.as_str(),
+        "--capture-home",
+        home.as_str(),
+    ];
+
+    let mut arguments = vec!["--json"];
+    arguments.extend(base);
+    arguments.push("tui");
+    let output = run(&arguments);
+    assert_eq!(output.status.code(), Some(memoar_cli::EXIT_USAGE.into()));
+    let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(envelope["ok"], false);
+    assert!(
+        envelope["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("interactive")
+    );
+
+    let mut arguments = base.to_vec();
+    arguments.push("tui");
+    let output = run(&arguments);
+    assert_eq!(output.status.code(), Some(memoar_cli::EXIT_USAGE.into()));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("needs a terminal"), "{stderr}");
+    assert!(output.stdout.is_empty(), "nothing drawn into the pipe");
+}

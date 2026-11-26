@@ -53,7 +53,8 @@ describe('a session action that fails', () => {
     const user = userEvent.setup();
     render(view());
 
-    await user.click(await screen.findByRole('button', { name: /Pin session/u }));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Pin session/u }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Annotation store is read-only');
   });

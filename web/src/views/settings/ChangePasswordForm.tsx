@@ -1,4 +1,3 @@
-import { KeyRound } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Button } from '../../components/ui';
 import { memoarApi } from '../../lib/api';
@@ -56,10 +55,10 @@ export function ChangePasswordForm() {
           <input type="password" autoComplete="new-password" value={confirm} disabled={saving} onChange={(event) => setConfirm(event.target.value)} />
         </label>
         {error ? <p role="alert" className="error-note">{error}</p> : null}
-        {changed ? <p role="status" className="settings-note">Password changed. Other sessions are signed out.</p> : null}
+        {changed ? <p role="status" className="ok-note">Password changed. Other sessions are signed out.</p> : null}
         <div className="actions">
           <Button type="submit" variant="primary" size="sm" disabled={saving || !current || !next || !confirm}>
-            <KeyRound size={15} /> {saving ? 'Changing…' : 'Change password'}
+            {saving ? 'Changing' : 'Change password'}
           </Button>
         </div>
       </form>

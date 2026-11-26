@@ -6,15 +6,12 @@
 */
 @import "./styles/tokens.css";
 @import "./styles/base.css";
-@import "./styles/shell.css";
 @import "./styles/controls.css";
-@import "./styles/timeline.css";
+@import "./styles/shell.css";
+@import "./styles/rows.css";
 @import "./styles/session.css";
-@import "./styles/search.css";
-@import "./styles/panels.css";
-@import "./styles/manage.css";
-@import "./styles/teams.css";
-@import "./styles/settings.css";
-@import "./styles/onboarding.css";
-@import "./styles/workspace.css";
+@import "./styles/code.css";
+@import "./styles/palette.css";
+@import "./styles/pages.css";
+@import "./styles/auth.css";
 @import "./styles/responsive.css";

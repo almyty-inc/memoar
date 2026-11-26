@@ -11,7 +11,7 @@ import { ARCHIVE_STORE, OBJECT_STORAGE } from "./tokens.js";
 
 const USAGE = [
   "usage: reprocess --tenant <tenantId> [--user <userId>] (--machine <machineId> | --no-machine)",
-  "                 [--sha256 <hash>] [--status <status>] [--merged-sessions] [--stale-parser] [--dry-run]",
+  "                 [--sha256 <hash>] [--status <status>] [--merged-sessions] [--stale-parser] [--placeholder-titles] [--dry-run]",
 ].join("\n");
 
 function argValue(name: string): string | null {
@@ -48,15 +48,17 @@ export async function runReprocess(): Promise<void> {
     const objects = application.get<ObjectStorage>(OBJECT_STORAGE);
     const pipeline = new IngestPipeline(store, objects, new ParserRegistry(), new FormatDetector(), new SecretScanner(), new DefaultPipelineSeedFactory(), embeddingProviderFromEnv());
     const context: TenantContext = { tenantId, userId, scopes: ["ingest:write"], authType: "machine", ...(machineId ? { machineId } : {}) };
+    // Without a machine the run acts as an upload, so it may only touch
+    // sessions already filed under the upload placeholder machine.
+    const runMachine = machineId ?? uuidV5(`${tenantId}:uploads`);
+    const needsSessions = flag("stale-parser") || flag("placeholder-titles");
+    const sessions = needsSessions ? await store.sessionParserVersions(context) : null;
     const artifacts = selectForReprocess(await store.listRawArtifacts(context), {
       sha256: argValue("sha256"),
       status: argValue("status"),
       mergedSessions: flag("merged-sessions"),
-      // Without a machine the run acts as an upload, so it may only touch
-      // sessions already filed under the upload placeholder machine.
-      staleParser: flag("stale-parser")
-        ? { sessions: await store.sessionParserVersions(context), machineId: machineId ?? uuidV5(`${tenantId}:uploads`) }
-        : null,
+      staleParser: sessions && flag("stale-parser") ? { sessions, machineId: runMachine } : null,
+      placeholderTitles: sessions && flag("placeholder-titles") ? { sessions, machineId: runMachine } : null,
     });
     if (flag("dry-run")) {
       const selected = artifacts.map(({ sha256, status, sourcePath, capturedAt, sessionIds }) => ({ sha256, status, sourcePath, capturedAt, sessionIds }));

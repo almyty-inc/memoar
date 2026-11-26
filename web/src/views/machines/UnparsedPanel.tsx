@@ -1,20 +1,14 @@
-import { AlertCircle, FileQuestion } from 'lucide-react';
 import type { Machine, UnparsedSource } from '../../lib/types';
-import { Badge } from '../../components/ui';
+import { plural } from '../../components/ui';
 import { sourceLabel } from '../../lib/source-labels';
 
 /**
  * Files the capture agent uploaded that the archive could not turn into a
- * session, per tool.
+ * session, per tool. A capture pattern aimed at the wrong directory produces a
+ * machine that syncs on schedule, reports no error and archives nothing, so a
+ * tool here with no sessions at all is named as that failure.
  *
- * `memoar doctor` has reported this for a while; nothing on the web did. It
- * matters because a capture pattern aimed at the wrong directory produces a
- * machine that syncs on schedule, reports no error, and archives nothing — it
- * happened twice, and both times it ran for weeks. A tool listed here whose
- * sources have archived no sessions is that failure, so it is named as one.
- *
- * Renders nothing when there is nothing unreadable. Callers hold the list as
- * null until the archive answers and pass an empty list rather than a guess.
+ * Renders nothing when there is nothing unreadable.
  */
 export function UnparsedPanel({ items, machines }: { items: UnparsedSource[]; machines: Machine[] }) {
   if (items.length === 0) return null;
@@ -23,26 +17,19 @@ export function UnparsedPanel({ items, machines }: { items: UnparsedSource[]; ma
   );
 
   return (
-    <section className="data-panel unparsed-panel" aria-labelledby="unparsed-heading">
-      <header>
-        <div>
-          <h2 id="unparsed-heading">Files the archive could not read</h2>
-          <p>Collected and kept, so a parser written later can still read them — but never turned into a session.</p>
-        </div>
-      </header>
-      <div className="data-list">
+    <section className="section" aria-labelledby="unparsed-heading">
+      <div className="section-head">
+        <h2 id="unparsed-heading" className="section-title">Files the archive could not read</h2>
+        <p>Kept, so a later parser can still read them.</p>
+      </div>
+      <div className="row-list">
         {items.map((item) => (
-          <article className="unparsed-row" key={item.source}>
-            <span className="row-icon"><FileQuestion size={16} /></span>
-            <div className="unparsed-main">
-              <strong>{sourceLabel(item.source)}</strong>
-              {item.diagnostic ? <p>{item.diagnostic}</p> : null}
-            </div>
-            <span className="unparsed-count"><strong>{item.artifacts}</strong> {item.artifacts === 1 ? 'file' : 'files'}</span>
-            {archiving.has(item.source) ? null : (
-              <Badge className="redaction-findings"><AlertCircle size={12} /> No sessions from this source</Badge>
-            )}
-          </article>
+          <div className="row" key={item.source}>
+            <strong className="row-name">{sourceLabel(item.source)}</strong>
+            <span className="row-main meta">{item.diagnostic ?? ''}</span>
+            <span className="row-meta">{plural(item.artifacts, 'file')}</span>
+            {archiving.has(item.source) ? null : <span className="row-meta text-warning">No sessions from this source</span>}
+          </div>
         ))}
       </div>
     </section>

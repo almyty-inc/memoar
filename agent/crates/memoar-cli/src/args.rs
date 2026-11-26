@@ -70,8 +70,14 @@ pub enum Command {
     },
     /// Subscribe to the server command channel and materialize conversions on this machine.
     Listen(ListenArgs),
+    /// Serve the archive's MCP tools over stdio, or call one from the shell.
+    Mcp(crate::mcp::McpArgs),
+    /// Register memoar with a coding agent: its MCP server and its skill.
+    Integrate(crate::integrate::IntegrateArgs),
     /// Check the configuration, queue, credentials, and archive connection.
     Doctor,
+    /// Browse, search, read and convert archived sessions in the terminal.
+    Tui,
     /// Print what this client supports, as JSON.
     Capabilities,
     /// Print the command surface and exit codes, as JSON.

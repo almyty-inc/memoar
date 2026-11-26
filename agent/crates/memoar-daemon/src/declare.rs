@@ -32,7 +32,9 @@ pub(crate) fn declare<T: SyncTransport>(
                 sha256: artifact.sha256.clone(),
                 size: artifact.size,
                 source: artifact.source.clone(),
-                source_path: artifact.source_path.clone(),
+                // The plain name, as the upload header says it.
+                source_path: crate::source_bytes::logical_source_path(&artifact.source_path)
+                    .to_owned(),
                 modified_at: artifact.modified_at.clone(),
             })
             .collect(),

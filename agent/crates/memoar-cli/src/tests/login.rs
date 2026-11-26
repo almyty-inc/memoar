@@ -98,7 +98,9 @@ fn login_trades_the_hour_long_token_for_a_capture_key() {
     for scope in CAPTURE_SCOPES {
         assert!(scopes.contains(scope), "capture key must request {scope}");
     }
-    for withheld in ["sharing:write", "keys:write", "mcp:use"] {
+    // `mcp:use` is asked for: `memoar mcp` serves the archive's tools with it.
+    assert!(scopes.contains("mcp:use"));
+    for withheld in ["sharing:write", "keys:write", "materialize:read"] {
         assert!(
             !scopes.contains(withheld),
             "a credential that lives on a laptop forever must not carry {withheld}"

@@ -11,16 +11,24 @@ name = "memoar"
 path = "src/main.rs"
 
 [dependencies]
+base64.workspace = true
 chrono.workspace = true
 clap.workspace = true
 memoar-canonical = { path = "../memoar-canonical" }
 memoar-connectors = { path = "../memoar-connectors" }
 memoar-daemon = { path = "../memoar-daemon" }
 memoar-materializer = { path = "../memoar-materializer" }
+# `integrate` edits other programs' config files. Both parsers keep comments
+# and layout, so only memoar's own entry changes.
+jsonc-parser = { version = "0.34", features = ["cst", "serde_json"] }
+ratatui.workspace = true
 reqwest.workspace = true
+toml_edit = "0.25"
 serde.workspace = true
 serde_json.workspace = true
+syntect.workspace = true
 thiserror.workspace = true
+unicode-width.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

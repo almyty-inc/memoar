@@ -9,6 +9,7 @@ import { CopilotV1Parser } from "./copilot.js";
 import { CrushV1Parser } from "./crush.js";
 import { CursorV3Parser } from "./cursor.js";
 import { GooseV1Parser } from "./goose.js";
+import { KiloParser } from "./kilo.js";
 import { OpencodeV1Parser } from "./opencode.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { ZedV1Parser } from "./zed.js";
@@ -18,6 +19,7 @@ export { isSqliteBytes } from "./sqlite.js";
 // The shape tests format detection shares with the parsers, so the two cannot
 // disagree about what a Copilot Chat panel or a Roo task looks like.
 export { chatEnvelopes, chatEnvelopesFromLog } from "./copilot-chat.js";
+export { isCopilotEventLog } from "./copilot-events.js";
 export { messageArray } from "./task-history.js";
 
 /** Parsers fed by an upload rather than by reading a store on a machine. */
@@ -37,8 +39,10 @@ export class ParserRegistry {
     new ChatgptExportParser(),
     new OpencodeV1Parser(),
     new CopilotV1Parser(),
-    // Kilo and Roo share the task format they both inherited.
-    ...["kilo", "roo"].map((source) => new TaskHistoryParser(source)),
+    // Roo keeps the Cline task format. Kilo writes it too, and opencode's
+    // database since it was rebuilt on opencode.
+    new TaskHistoryParser("roo"),
+    new KiloParser(),
   ]) {}
 
   parse(request: ParseRequest): ParseResult {

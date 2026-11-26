@@ -1,233 +1,180 @@
 /*
-  The scales. Nothing outside this file invents a number.
+  The scales, in almyty's design system v1. Nothing outside this file invents
+  a number.
 
-  Every size in the application comes from one of the ladders below. A value
-  that is not on a ladder is a value somebody nudged until it looked right on
-  one screen, and the screen next to it then disagrees by a pixel or two — which
-  is what the stylesheet this replaces was made of: seventeen font sizes, forty
-  spacing values, fifteen border radii, twelve font weights.
+  The app sits on the product field (a soft blue to mint gradient) and the
+  working surface floats on it as a white card. The gradient is only ever the
+  field, the logo and thin accents: never a button, never text.
 */
 :root {
   color-scheme: light;
 
-  /*
-    Paper, ink, and one accent.
+  --bg: #ffffff;              /* canvas: cards, panels, popovers */
+  --surround: linear-gradient(135deg, #eaf1ff, #e5f8ff 45%, #e6fcf1);
+  --surround-flat: #eef6fd;   /* the field's average, for things that cannot take a gradient */
+  --side: rgb(255 255 255 / 55%);
+  --subtle: #eff3f8;          /* inset */
+  --hover: #f1f6fd;
+  --row-hover: rgb(255 255 255 / 45%);
+  --line: #e6ebf2;            /* rule */
+  --control: #c9d3e1;
+  --text: #141e30;
+  --text-2: #5c6980;
+  --text-3: #69778e;          /* placeholder */
+  --accent: #1469ec;
+  --accent-hover: #105bd0;
+  --accent-text: #ffffff;
+  --accent-bg: #1469ec;
+  --accent-soft: #ebf3ff;     /* selection surface */
+  --accent-softer: #f4f8ff;
+  --sel-text: #185fca;
+  --danger: #b72e35;
+  --danger-bg: #fff0f0;
+  --warning: #8e651f;
+  --warning-bg: #fff6e5;
+  --ok: #276c52;
+  --ok-bg: #eaf9f1;
+  --dot-ok: #2fbf8f;
+  --dot-danger: #e5484d;
+  --dot-warning: #e3a32b;
+  --diff-old: #fff0f0;
+  --diff-new: #eaf9f1;
+  --mark: rgb(20 105 236 / 14%);
 
-    A terminal is legible because it commits to very few surfaces and lets rules
-    and alignment do the rest. The layers here are nearly the same colour on
-    purpose: a panel separates from the page by a hairline rather than by a step
-    in brightness, so nothing needs a shadow to look raised.
-  */
-  --bg: #f7f6f3;
-  --sidebar: #f2f1ed;
-  --panel: #fffefc;
-  --panel-raised: #ffffff;
-  --panel-hover: #f4f3ef;
-  --line: #dedcd5;
-  --line-soft: #e8e6e0;
-  --text: #17191b;
-  --muted: #5f6265;
-  /*
-    The quietest ink that is still legible.
+  --card-shadow: 0 20px 50px rgb(20 50 110 / 12%), 0 0 0 1px var(--line);
+  --row-shadow: 0 6px 20px rgb(20 50 110 / 10%), 0 0 0 1px var(--line);
+  --pill-shadow: 0 1px 3px rgb(20 30 48 / 8%);
+  --primary-shadow: 0 4px 14px rgb(20 105 236 / 30%);
+  --shadow-pop: 0 24px 60px rgb(20 50 110 / 18%), 0 0 0 1px var(--line);
 
-    This was #86898c, which carries 12px and 13px text in a dozen places and
-    measures 3.1:1 on --sidebar — below the 4.5:1 that size needs. Every
-    surface it is set on is one of the five neutrals below, and against the
-    darkest of them (--sidebar) this value measures 4.61:1.
-  */
-  --quiet: #6a6d70;
+  /* Agent colours: marks, filter dots, the agent tag on a session. */
+  --agent-claude: #e0865f;
+  --agent-claude-2: #c2552f;
+  --agent-claude-tag: #fbe9e1;
+  --agent-claude-tag-text: #a2441f;
+  --agent-codex: #3a3f48;
+  --agent-codex-2: #15181d;
+  --agent-codex-dot: #2b2f36;
+  --agent-antigravity: #5b8def;
+  --agent-antigravity-2: #3a5bd9;
+  --agent-cursor: #8a94a6;
+  --agent-cursor-2: #5d6676;
+  --agent-opencode: #2fbf8f;
+  --agent-opencode-2: #178a66;
+  --agent-copilot: #c26be0;
+  --agent-copilot-2: #9443b3;
+  --agent-goose: #d9a52b;
+  --agent-goose-2: #a9781a;
+  --agent-other: #6f86a8;
+  --agent-other-2: #4b5f7d;
 
+  /* Syntax: muted, so code reads as code without a second palette. */
+  --syn-keyword: #8b3fb3;
+  --syn-string: #276c52;
+  --syn-number: #b56316;
+  --syn-comment: #69778e;
+  --syn-title: #185fca;
+  --syn-attr: #b43a55;
+  --terminal-bg: #eff3f8;
 
-  /* The one saturated colour, kept from the dark theme and darkened until it is
-     legible on paper rather than glowing on top of it. */
-  --acid: #3d7a1f;
-  --acid-strong: #2f6415;
-  --acid-ink: #f2fbe2;
-  --cyan: #1f6f96;
-  --pink: #a13a6b;
-  --violet: #5a46b8;
-  --warning: #8a5d00;
-  --danger: #b3261e;
-  --surface-cyan: #d7e4ea;
-  --surface-warning: #ece6d5;
-  --surface-danger: #e9d8d8;
-  --line-warning: #dfd8c5;
-  --line-danger: #d6b2b2;
+  --font: "Manrope Variable", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --t-fast: 150ms;
+  --t-med: 180ms;
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 
-  /*
-    Which hairline.
-
-    Two weights, one rule: --line-soft separates two surfaces that are already
-    different — a card from the page, a header from the body under it.
-    --line draws a box the reader acts on: an input, a button, a badge, a drop
-    target, a command well, and the modal, which has to read as lifted off the
-    page rather than laid on it.
-  */
-
-  /* Spacing: a 4px grid. Steps are far enough apart to read as deliberate.
-     --sp-05 is the half step, for the hairline gaps inside a control. */
-  --sp-05: 2px;
-  --sp-1: 4px;
-
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 20px;
-  --sp-6: 24px;
-  --sp-8: 32px;
-  --sp-10: 40px;
-  --sp-12: 48px;
-  --sp-16: 64px;
-
-  /*
-    Type: 14px is the body. Nothing that carries meaning is set below 12px, and
-    11px exists only for uppercase mono labels, where the caps height makes it
-    read a size larger than it is.
-  */
-  --fs-label: 11px;
-  --fs-xs: 12px;
-  --fs-sm: 13px;
+  /* Type. Never below 12px. */
+  --fs-meta: 12px;
+  --fs-2: 13px;
   --fs-base: 14px;
-  --fs-md: 16px;
-  --fs-lg: 18px;
-  --fs-xl: 20px;
-  --fs-2xl: 24px;
-  --fs-3xl: 30px;
-  --fs-4xl: 38px;
-
-  --lh-tight: 1.15;
-  --lh-snug: 1.35;
-  --lh-normal: 1.5;
-  --lh-prose: 1.65;
-
-  /* Four weights. Inter can render anything between 100 and 900, which is how a
-     stylesheet ends up with 560, 620, 670 and 720 in it. */
+  --fs-prose: 15.5px;
+  --fs-title: 26px;
   --fw-normal: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
+  --lh: 1.5;
+  --lh-prose: 1.7;
 
-  /* Boxes, not pills: a small radius everywhere reads as structure. */
-  --r-xs: 2px;
-  --r-sm: 4px;
+  --sp-0: 2px;
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 24px;
+  --sp-7: 32px;
 
-  --r-md: 6px;
-  --r-lg: 10px;
-  --r-full: 999px;
+  --r-control: 10px;
+  --r-popover: 14px;
+  --r-card: 18px;
+  --r-pill: 999px;
 
-  /*
-    Control heights, so a button, a select and an input in one row line up.
+  --row-h: 36px;
+  --control-h: 36px;
+  --sidebar-w: 236px;
+  --topbar-h: 0px;
+  --measure: 720px;
+  --gutter: 28px;
+  --content-max: 1180px;
 
-    This claimed to be three and was eight, because spacing tokens were doing
-    duty as heights: a badge was --sp-6 tall, a toggle row --sp-16, and a
-    metric cell was 68px for no reason the ladder could explain. Seven rungs,
-    every one of them named for what stands that tall.
-  */
-  --h-2xs: 20px;  /* a count chip; the compact switch */
-  --h-xs: 24px;   /* a badge */
-  --h-sm: 32px;
-  --h-md: 36px;
-  --h-lg: 44px;   /* the touch minimum */
-  --h-xl: 56px;   /* a row read across: the hero field, a source row */
-  --h-2xl: 64px;  /* a row acted on: a toggle, a drop target, the phone nav */
-
-  /* The switch is a shape rather than a box, so its parts are named here
-     instead of being five loose numbers in the rule that draws it. */
-  --switch-w: 40px;
-  --switch-knob: 18px;
-  --switch-travel: 16px;
-  --switch-w-sm: var(--sp-8);
-  --switch-knob-sm: 14px;
-  --switch-travel-sm: 12px;
-
-
-  /* Square tiles behind icons. Three sizes, not the ten this replaces. */
-  --tile-sm: 28px;
-  --tile-md: 32px;
-  --tile-lg: 40px;
-
-  /* Layout. The topbar shares the page gutter so the breadcrumb sits directly
-     above the heading rather than eight pixels to the left of it. */
-  --sidebar-w: 248px;
-  /* The facet rail on search. The same width as the nav rail, and a separate
-     decision from it: they sit side by side on that screen. */
-  --facet-w: 248px;
-  --topbar-h: 60px;
-  --bottom-nav-h: var(--h-2xl);
-  --gutter: var(--sp-8);
-  --content-max: 1200px;
-  /* Prose stops at a readable measure instead of running the width of a 27" display. */
-  --measure: 68ch;
-
-  /*
-    One heading scale.
-
-    There were three: 24→30 on every page heading, 28→38 on the timeline,
-    28→38 again on the setup guide. 28 is not on the type ladder at all, and
-    the timeline's heading was a full step larger than the same heading
-    everywhere else. Built from ladder values only.
-  */
-  --h1: clamp(var(--fs-2xl), 3vw, var(--fs-4xl));
-
-  /*
-    Named sizes that belong to one element each.
-
-    They are still measurements somebody chose, but they are chosen once, in
-    the file that holds measurements, and the rule that uses them says which
-    one it means.
-  */
-  --marker-reserve: 120px;      /* clearance kept for the floating "best match" mark */
-  --session-header-h: 120px;    /* how far the session header pushes the inspector down */
-  --card-min: 280px;            /* the shortest a card or an empty state may be */
-  --tile-min: 260px;            /* an overview tile, once the grid has collapsed */
-  --stat-col: 148px;            /* a figure and its label in the overview strip */
-  --target-col: 112px;          /* a conversion target; a source badge holding a column */
-  --scrollbar-w: 11px;
-  --scrollbar-inset: 3px;
-
-  /*
-    Viewport arithmetic for the timeline's own scroll box, which is the one
-    element in the application sized against the window. Four literals across
-    three files became one pair, redefined per breakpoint with the gutters.
-  */
-  --timeline-chrome: 300px;
-  --timeline-min: 480px;
-  --search-chrome: 260px;
-
-  /* One inactive weight. A disabled control was .45 and a not-yet-connected
-     card was .68, both written inline. */
-  --opacity-inactive: .45;
-
-
-  /* Depth comes from the hairline, so the shadow is barely there. */
-  --shadow: 0 1px 2px rgb(23 25 27 / 6%), 0 8px 24px rgb(23 25 27 / 5%);
-  --scroll-thumb: #d9d7d0;
-  --scroll-thumb-active: #b4b1a8;
-  --scroll-thumb-hover: #c6c3bb;
-
-  /* Paths, hashes, counts, labels: what a terminal would align. */
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
-
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font);
   font-size: var(--fs-base);
+  line-height: var(--lh);
   color: var(--text);
-  background: var(--bg);
+  background: var(--surround-flat);
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  font-feature-settings: "calt", "tnum" 0;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* The session header stacks into two rows here, so what it pushes down grows.
-   Below 1040 the inspector stops being sticky and the offset stops mattering. */
-@media (max-width: 1180px) {
-  :root { --session-header-h: 180px; }
+/* Dark, set by lib/theme.ts from the system setting or the reader's choice. */
+:root[data-mode="dark"] {
+  & {
+    color-scheme: dark;
+    --bg: #162235;
+    --surround: linear-gradient(135deg, #172d53, #173b4b 45%, #17382e);
+    --surround-flat: #101827;
+    --side: rgb(16 24 39 / 55%);
+    --subtle: #1d2b42;
+    --hover: #203149;
+    --row-hover: rgb(255 255 255 / 4%);
+    --line: #2a3a52;
+    --control: #4a5d78;
+    --text: #edf3fc;
+    --text-2: #acbad0;
+    --text-3: #a3b2ca;
+    --accent: #7ab5ff;
+    --accent-hover: #9cc8ff;
+    --accent-text: #0d2440;
+    --accent-bg: #7ab5ff;
+    --accent-soft: #203a5f;
+    --accent-softer: #1a2c47;
+    --sel-text: #b7d5ff;
+    --danger: #ffb3bc;
+    --danger-bg: #47232a;
+    --warning: #f0cf85;
+    --warning-bg: #463719;
+    --ok: #86dbb4;
+    --ok-bg: #15392e;
+    --diff-old: #47232a;
+    --diff-new: #15392e;
+    --mark: rgb(122 181 255 / 22%);
+    --card-shadow: 0 20px 50px rgb(0 0 0 / 30%), 0 0 0 1px var(--line);
+    --row-shadow: 0 6px 20px rgb(0 0 0 / 25%), 0 0 0 1px var(--line);
+    --pill-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+    --primary-shadow: 0 4px 14px rgb(122 181 255 / 22%);
+    --shadow-pop: 0 24px 60px rgb(0 0 0 / 45%), 0 0 0 1px var(--line);
+    --agent-claude-tag: #4a2a1f;
+    --agent-claude-tag-text: #f5b79c;
+    --agent-codex-dot: #9aa3b5;
+    --syn-keyword: #d4a5ff;
+    --syn-string: #86dbb4;
+    --syn-number: #f2be8d;
+    --syn-comment: #8596b0;
+    --syn-title: #9cc8ff;
+    --syn-attr: #f89bb1;
+    --terminal-bg: #1d2b42;
+  }
 }
-
-@media (max-width: 860px) {
-  :root { --gutter: var(--sp-6); --timeline-chrome: 320px; --timeline-min: 560px; }
-}
-
-
-@media (max-width: 620px) {
-  :root { --gutter: var(--sp-4); --topbar-h: 56px; --timeline-chrome: 360px; }
-}
-
