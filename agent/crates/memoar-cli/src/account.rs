@@ -32,19 +32,27 @@ pub(crate) fn sign_in(
     }
     let needed = || {
         AppError::usage(format!(
-            "{command} requires --email and --password, or --token"
+            "{command} requires --email and --password, or --token, when it cannot ask at a terminal"
         ))
     };
-    let email = email
-        .filter(|email| !email.trim().is_empty())
-        .ok_or_else(needed)?;
-    let password = match password.ok_or_else(needed)? {
-        "-" => read_password_line()?,
-        given => given.to_owned(),
+    // A person at a terminal is asked. A bare `memoar login` used to fail and
+    // tell them to put their password on the command line.
+    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    let email = match email.map(str::trim).filter(|email| !email.is_empty()) {
+        Some(email) => email.to_owned(),
+        None if interactive => prompt_line("Email: ")?,
+        None => return Err(needed()),
+    };
+    let password = match password {
+        Some("-") => read_password_line()?,
+        Some(given) => given.to_owned(),
+        None if interactive => rpassword::prompt_password("Password: ")
+            .map_err(|error| AppError::usage(format!("could not read the password: {error}")))?,
+        None => return Err(needed()),
     };
     let auth = ApiClient::new(endpoint, None).post(
         "/auth/login",
-        &json!({ "email": email.trim(), "password": password }),
+        &json!({ "email": email, "password": password }),
     )?;
     Ok(Credential::Bearer(
         auth.get("accessToken")
@@ -54,13 +62,29 @@ pub(crate) fn sign_in(
     ))
 }
 
+fn prompt_line(prompt: &str) -> Result<String, AppError> {
+    eprint!("{prompt}");
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|error| AppError::usage(format!("could not read the answer: {error}")))?;
+    let answer = line.trim().to_owned();
+    if answer.is_empty() {
+        return Err(AppError::usage(format!(
+            "{} cannot be empty",
+            prompt.trim_end_matches([':', ' '])
+        )));
+    }
+    Ok(answer)
+}
+
 fn read_password_line() -> Result<String, AppError> {
     let stdin = std::io::stdin();
-    // Typed at a terminal the password would echo, and hiding it portably
-    // takes a dependency this client does not carry for one prompt.
+    // At a terminal, leaving out --password asks without echoing it.
     if stdin.is_terminal() {
         return Err(AppError::usage(
-            "--password - reads the password from a pipe, not a terminal. Pipe it in, or set MEMOAR_PASSWORD.",
+            "--password - reads the password from a pipe, not a terminal. Leave --password out to be asked for it.",
         ));
     }
     let mut line = String::new();

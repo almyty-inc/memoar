@@ -66,7 +66,7 @@ pub(crate) fn login_args(endpoint: &str, credentials: &Credentials) -> LoginArgs
         Credentials::ApiKey(key) => (None, None, Some(key.trim().to_owned())),
     };
     LoginArgs {
-        endpoint: endpoint.trim().to_owned(),
+        endpoint: Some(endpoint.trim().to_owned()),
         email,
         password,
         token,

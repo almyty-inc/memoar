@@ -86,9 +86,11 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct LoginArgs {
-    /// The archive's API URL, ending in /v1.
-    #[arg(long, default_value = "http://localhost:4000/v1")]
-    pub endpoint: String,
+    /// The archive's API URL, ending in /v1. Defaults to the archive this
+    /// computer is already signed in to, and on a first login to
+    /// http://localhost:4000/v1.
+    #[arg(long)]
+    pub endpoint: Option<String>,
     #[arg(long)]
     pub email: Option<String>,
     /// The account password. `-` reads it from standard input, which keeps it
