@@ -179,14 +179,14 @@ export class PostgresSessionStore implements SessionStore {
   /** Read off the session rows' own columns, never their turns. */
   async sessionParserVersions(context: TenantContext): Promise<Map<string, SessionParse>> {
     return this.runner.inTenant(context, async (manager) => {
-      const rows: { id: string; machineId: string | null; parserVersion: string | null }[] = await manager.query(
-        `SELECT id, source->>'machineId' AS "machineId",
+      const rows: { id: string; machineId: string | null; parserVersion: string | null; title: string | null; tool: string | null }[] = await manager.query(
+        `SELECT id, source->>'machineId' AS "machineId", title, source->>'tool' AS tool,
                 (SELECT entry->>'parserVersion' FROM jsonb_array_elements(provenance) entry
                   WHERE entry->>'kind' = 'native' LIMIT 1) AS "parserVersion"
            FROM sessions WHERE "tenantId" = $1`,
         [context.tenantId],
       );
-      return new Map(rows.map((row) => [row.id, { parserVersion: row.parserVersion, machineId: row.machineId }]));
+      return new Map(rows.map((row) => [row.id, { parserVersion: row.parserVersion, machineId: row.machineId, title: row.title, tool: row.tool }]));
     });
   }
 
