@@ -75,6 +75,8 @@ pub fn introspect_value() -> Value {
             // believed the answer concluded the command did not exist.
             { "name": "listen", "requiresAuth": true, "network": true },
             { "name": "doctor", "requiresAuth": true, "network": true },
+            // Interactive: refuses --json and a stdout that is not a terminal.
+            { "name": "tui", "requiresAuth": true, "network": true },
             { "name": "capabilities", "requiresAuth": false, "network": false },
             { "name": "introspect", "requiresAuth": false, "network": false }
         ],

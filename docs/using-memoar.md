@@ -88,6 +88,33 @@ Same raw-first path as the agent.
 - **Retention** — how long raw artifacts are kept.
 - **Distillation** — summarisation settings.
 
+## The terminal: `memoar tui`
+
+`memoar tui` is the archive in a terminal, for SSH sessions and for people who
+live there. It needs `memoar login` first and works on macOS, Linux and Windows.
+
+- The session list is on the left, grouped by day. The selected session's
+  transcript is on the right and follows the selection. Below 96 columns the
+  two take turns.
+- `j`/`k` or the arrows move, `Enter` or `l` reads the transcript, `Esc` or `q`
+  goes back, and `q` on the list quits. `t` shows or hides thinking.
+- `/` searches the archive. `:` or `Ctrl-P` opens the command palette, which
+  fuzzy matches the loaded sessions and every action.
+- `c` converts the session for Claude Code, Codex or Antigravity CLI and writes
+  it on this machine, the same as `memoar convert --here`. It never writes over
+  a file that differs, and it shows the command that resumes the session.
+- `e` writes the canonical export to `memoar-<id>.json` in the directory the TUI
+  was started from, and never over an existing file. `y` copies the session id.
+- `s` shows the capture status `memoar status` reports. The background service
+  is optional, and its absence is shown as advice, not as a fault.
+- Code blocks are highlighted, file edits are drawn as diffs, and shell commands
+  show their first lines of output. The mouse wheel scrolls the pane under it.
+- Without a connection it shows the last session list it saw and every
+  transcript read in the same run. `MEMOAR_TUI_ASCII=1` draws borders and
+  markers in plain ASCII for a console font without them.
+
+It refuses `--json` and a pipe. Scripts use `search`, `view` and `convert`.
+
 ## Things worth knowing
 
 ### Capture runs only while something runs it
