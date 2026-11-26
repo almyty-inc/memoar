@@ -100,7 +100,7 @@ for screen in sign-in status; do
       exit 1
     fi
     if [ "$target" = linux ] && command -v xwininfo >/dev/null 2>&1; then
-      xwininfo -root -tree | grep -i memoar >&2 || echo "memoar desktop: no X window named Memoar" >&2
+      xwininfo -root -tree | head -n 20 >&2
     fi
     capture "$app_pid" "$shot"
     kill "$app_pid" 2>/dev/null || true
