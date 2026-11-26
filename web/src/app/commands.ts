@@ -1,7 +1,7 @@
 import type { Command } from '../components/command-search';
 import { formatRelative } from '../components/ui';
 import { saveTheme, type ThemeChoice } from '../lib/theme';
-import type { SessionSummary, ViewId } from '../lib/types';
+import type { Machine, SessionSummary, ViewId } from '../lib/types';
 import { requestSessionAction } from '../views/session-detail/session-actions';
 
 const PLACES: Array<[ViewId, string, string?]> = [
@@ -16,6 +16,17 @@ const PLACES: Array<[ViewId, string, string?]> = [
   ['import', 'Import', 'upload archive'],
   ['settings', 'Settings', 'api keys mcp redaction retention'],
 ];
+
+/** Sessions per agent across every machine, most first, for the sidebar. */
+export function agentCounts(machines: Machine[]): Array<{ source: string; label: string; count: number }> {
+  const counts = new Map<string, { source: string; label: string; count: number }>();
+  for (const source of machines.flatMap((machine) => machine.sources)) {
+    const entry = counts.get(source.id) ?? { source: source.id, label: source.label, count: 0 };
+    entry.count += source.sessionCount;
+    counts.set(source.id, entry);
+  }
+  return [...counts.values()].filter((entry) => entry.count > 0).sort((left, right) => right.count - left.count);
+}
 
 /** Recent sessions listed before anything is typed. The rest need a query. */
 const RECENT = 6;

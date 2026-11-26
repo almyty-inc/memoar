@@ -10,9 +10,10 @@ type TimelineItem =
   | { type: 'date'; key: string; date: string; count: number }
   | { type: 'session'; key: string; session: SessionSummary };
 
-const ROW = 32;
+const ROW = 96;
+const DAY = 38;
 
-export function TimelineView({ groups, machines, archived, asOf, selectedId, onOpen, onSelect, onPrefetch, onConnect, onImport, hasMore, loadingMore, onLoadMore }: {
+export function TimelineView({ groups, machines, archived, asOf, selectedId, initialSource, onOpen, onSelect, onPrefetch, onConnect, onImport, hasMore, loadingMore, onLoadMore }: {
   groups: TimelineGroup[];
   machines: Machine[];
   /** Sessions in the archive, counted by the server rather than by this page. */
@@ -30,9 +31,11 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, onO
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => Promise<void>;
+  /** An agent chosen in the sidebar. The caller remounts the list to apply it. */
+  initialSource?: string | undefined;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [filters, setFilters] = useState<Filters>(() => (initialSource ? { ...NO_FILTERS, source: initialSource } : NO_FILTERS));
   const machineNames = useMemo(() => new Map(machines.map((machine) => [machine.id, machine.name])), [machines]);
 
   const sessions = useMemo(() => groups.flatMap((group) => group.sessions), [groups]);
@@ -55,7 +58,8 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, onO
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW,
+    // Rows are two or three lines, measured once drawn.
+    estimateSize: (index) => (items[index]?.type === 'date' ? DAY : ROW),
     overscan: 12,
     rangeExtractor,
   });
@@ -125,10 +129,6 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, onO
         />
       ) : (
         <>
-          <div className="session-head session-cols" aria-hidden="true">
-            <span className="col-source">Source</span><span className="col-title">Title</span><span className="col-project">Project</span>
-            <span className="col-machine">Machine</span><span className="col-time">Time</span><span className="col-turns">Turns</span>
-          </div>
           <div className="session-scroll" ref={scrollRef} role="feed" aria-label="Sessions">
             {items.length === 0 ? (
               <EmptyState
@@ -145,6 +145,7 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, onO
                     <div
                       key={item.key}
                       data-index={virtualItem.index}
+                      ref={virtualizer.measureElement}
                       className={cn('virtual-row', sticky && 'sticky')}
                       style={sticky ? { top: 0 } : { transform: `translateY(${virtualItem.start}px)` }}
                     >

@@ -44,41 +44,52 @@ function lineCount(value: string): number {
   return value ? value.replace(/\n$/u, '').split('\n').length : 0;
 }
 
-/** One line that opens to show more. The line says what happened. */
-function Disclosure({ className, summary, children, open }: { className?: string; summary: ReactNode; children: ReactNode; open?: boolean }) {
+/** The last thing a command printed, which is usually its verdict. */
+function lastLine(value: string): string {
+  const line = value.trim().split('\n').at(-1)?.trim() ?? '';
+  return line.length > 48 ? `${line.slice(0, 47)}…` : line;
+}
+
+/**
+ * One step: a dot for how it went, what was done, and the outcome on the
+ * right. It opens onto what it produced, when it produced anything.
+ */
+function Step({ result, label, outcome, children, open }: {
+  result: ToolResult | undefined;
+  label: ReactNode;
+  outcome?: string | undefined;
+  children?: ReactNode;
+  open?: boolean;
+}) {
+  const failed = result?.status === 'error';
+  const dot = <span className={cn('dot', result ? (failed ? 'dot-danger' : 'dot-ok') : '')} aria-hidden="true" />;
+  const end = outcome ? <em className={cn('step-outcome', failed ? 'is-failed' : result ? 'is-ok' : '')}>{outcome}</em> : null;
+  const status = failed ? <span className="sr-only">failed</span> : null;
+  if (!children) return <div className="step">{dot}<span className="step-label">{label}</span>{status}{end}</div>;
   return (
-    <details className={cn('tool-block', className)} open={open}>
-      <summary><ChevronRight size={12} className="tool-chevron" aria-hidden="true" />{summary}</summary>
+    <details className="tool-block step-block" open={open}>
+      <summary className="step">{dot}<span className="step-label">{label}</span>{status}{end}<ChevronRight size={13} className="tool-chevron" aria-hidden="true" /></summary>
       <div className="tool-body">{children}</div>
     </details>
   );
 }
 
 /**
- * A tool call rendered by what it did, with its result folded in. A shell
- * command shows as a terminal, an edit as a diff, a file read as one line
- * with the path and how long the file was.
+ * A tool call drawn by what it did, with its result folded in: a command as
+ * "Ran …" with its last line, an edit as a diff, a read as the path and how
+ * long the file was.
  */
 export function ToolBlock({ call, result }: { call: ToolCall; result?: ToolResult | undefined }) {
   const kind = toolKind(call.name);
   const failed = result?.status === 'error';
   const output = result?.text ?? '';
-  const status = failed ? <span className="tool-failed">failed</span> : null;
 
   if (kind === 'shell') {
     const command = text(call.data, 'command', 'cmd') || preview(call);
     return (
-      <div className={cn('terminal-block', failed && 'terminal-failed')}>
-        <div className="terminal-command"><span className="terminal-prompt" aria-hidden="true">$</span><code>{command}</code>{status}</div>
-        {output ? (
-          lineCount(output) > 14 ? (
-            <details className="terminal-more">
-              <summary>{plural(lineCount(output), 'line')} of output</summary>
-              <pre>{output}</pre>
-            </details>
-          ) : <pre>{output}</pre>
-        ) : null}
-      </div>
+      <Step result={result} label={<>Ran <code>{command}</code></>} outcome={failed ? lastLine(output) || 'failed' : lastLine(output)}>
+        {output ? <CodeBlock code={output} copy={false} className="code-block code-flush terminal-block" /> : null}
+      </Step>
     );
   }
 
@@ -99,34 +110,35 @@ export function ToolBlock({ call, result }: { call: ToolCall; result?: ToolResul
   if (kind === 'patch') {
     const patch = text(call.data, 'input', 'patch');
     return (
-      <Disclosure open summary={<><span className="tool-name">Patch</span><span className="tool-arg">{plural(lineCount(patch), 'line')}</span>{status}</>}>
+      <Step result={result} label={<>Patched {plural(lineCount(patch), 'line')}</>} outcome={failed ? 'failed' : undefined} open>
         <CodeBlock code={patch} language="diff" copy={false} className="code-block code-flush" />
-      </Disclosure>
+      </Step>
     );
   }
 
   if (kind === 'read') {
     const path = preview(call);
     return (
-      <Disclosure className="tool-quiet" summary={<><span className="tool-name">Read</span><span className="tool-arg">{path}</span>{output ? <span className="tool-meta">{plural(lineCount(output), 'line')}</span> : null}{status}</>}>
-        {output ? <CodeBlock code={output} language={languageForPath(path)} copy={false} className="code-block code-flush" /> : <p className="tool-note">No output recorded.</p>}
-      </Disclosure>
+      <Step result={result} label={<>Read <code>{path}</code></>} outcome={failed ? 'failed' : output ? plural(lineCount(output), 'line') : undefined}>
+        {output ? <CodeBlock code={output} language={languageForPath(path)} copy={false} className="code-block code-flush" /> : null}
+      </Step>
     );
   }
 
+  const arg = preview(call);
   return (
-    <Disclosure className={cn(kind === 'search' && 'tool-quiet')} summary={<><span className="tool-name">{call.name}</span><span className="tool-arg">{preview(call)}</span>{output ? <span className="tool-meta">{plural(lineCount(output), 'line')}</span> : null}{status}</>}>
+    <Step result={result} label={<>{call.name}{arg ? <> <code>{arg}</code></> : null}</>} outcome={failed ? 'failed' : output ? plural(lineCount(output), 'line') : undefined}>
       <CodeBlock code={JSON.stringify(call.data, null, 2)} language="json" copy={false} className="code-block code-flush" />
       {output ? <pre className={cn('tool-output', failed && 'text-danger')}>{output}</pre> : null}
-    </Disclosure>
+    </Step>
   );
 }
 
 /** A result whose call is not in the session, shown on its own. */
 export function OrphanResult({ result }: { result: ToolResult }) {
   return (
-    <Disclosure className="tool-quiet" summary={<><span className="tool-name">{result.status === 'error' ? 'Tool error' : 'Tool result'}</span><span className="tool-meta">{plural(lineCount(result.text), 'line')}</span></>}>
+    <Step result={result} label={result.status === 'error' ? 'Tool error' : 'Tool result'} outcome={plural(lineCount(result.text), 'line')}>
       <pre className={cn('tool-output', result.status === 'error' && 'text-danger')}>{result.text}</pre>
-    </Disclosure>
+    </Step>
   );
 }

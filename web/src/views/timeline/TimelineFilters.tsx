@@ -1,3 +1,4 @@
+import { AgentDot } from '../../components/AgentMark';
 import { Button, plural } from '../../components/ui';
 import type { SessionSummary } from '../../lib/types';
 
@@ -49,13 +50,15 @@ export function TimelineFilters({ sessions, filters, onChange, shown }: {
 
   return (
     <section className="list-toolbar" aria-label="Session filters">
-      <label>
-        <span className="sr-only">Filter by source</span>
-        <select className="select-plain" value={filters.source} onChange={(event) => onChange({ ...filters, source: event.target.value })}>
-          <option value="all">All sources</option>
-          {knownSources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </label>
+      {/* Pills with the agent's colour. The active one is solid ink. */}
+      <div className="chips" role="group" aria-label="Filter by source">
+        <button type="button" className="chip" aria-pressed={filters.source === 'all'} onClick={() => onChange({ ...filters, source: 'all' })}>All</button>
+        {knownSources.map(([value, label]) => (
+          <button key={value} type="button" className="chip" aria-pressed={filters.source === value} onClick={() => onChange({ ...filters, source: filters.source === value ? 'all' : value })}>
+            <AgentDot source={value} />{label}
+          </button>
+        ))}
+      </div>
       <label>
         <span className="sr-only">Filter by project</span>
         <select className="select-plain" value={filters.workspace} onChange={(event) => onChange({ ...filters, workspace: event.target.value })}>

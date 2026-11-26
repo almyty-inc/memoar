@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../components/ui';
-import { GithubMark } from '../components/MemoarMark';
+import { Endorsement, GithubMark, Wordmark } from '../components/MemoarMark';
 import { MemoarApiError, memoarApi, type AuthMethods } from '../lib/api';
 import { MINIMUM_PASSWORD } from '../lib/limits';
 
@@ -85,7 +85,7 @@ export function SignInView({ onSignIn, onCreateAccount, onOAuth, creating: start
   return (
     <div className="auth-page">
       <main className="auth-card">
-        <p className="auth-brand">memoar</p>
+        <p className="auth-brand"><Wordmark size={28} /></p>
         <h1>{creating ? 'Create an archive' : 'Sign in'}</h1>
 
         {methods && methods.oauth.length > 0 ? (
@@ -149,6 +149,7 @@ export function SignInView({ onSignIn, onCreateAccount, onOAuth, creating: start
           ) : 'This archive is not open for new accounts.'}
         </p>
       </main>
+      <Endorsement />
     </div>
   );
 }

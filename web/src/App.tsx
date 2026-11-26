@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { emptyConnectedDashboard, initialLocation, mergeTimelinePage, placeToReturnTo, routeFromLocation } from './app/bootstrap';
-import { buildCommands } from './app/commands';
+import { agentCounts, buildCommands } from './app/commands';
 import { useSessionCache } from './app/session-cache';
 import { useExpiryWarning } from './app/session-expiry';
 import { CommandPalette } from './components/CommandPalette';
@@ -38,6 +38,8 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // What the palette asked transcript search to look for, handed over once.
   const [searchSeed, setSearchSeed] = useState('');
+  // An agent picked in the sidebar: the list remounts on it, filtered.
+  const [agentFilter, setAgentFilter] = useState({ source: '', turn: 0 });
   const [user, setUser] = useState<CurrentUser | null>(null);
   // Stamped when the archive loads so views can do time maths without reading
   // the clock while rendering.
@@ -272,7 +274,7 @@ export function App() {
       <SessionsSplit
         selected={routeSessionId !== undefined}
         list={loading && allSessions.length === 0 ? <ListSkeleton /> : (
-          <TimelineView groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} selectedId={routeSessionId} onOpen={openSession} onSelect={selectSession} onPrefetch={sessionCache.prefetch} onConnect={() => navigate('onboarding')} onImport={() => navigate('import')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />
+          <TimelineView key={agentFilter.turn} initialSource={agentFilter.source || undefined} groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} selectedId={routeSessionId} onOpen={openSession} onSelect={selectSession} onPrefetch={sessionCache.prefetch} onConnect={() => navigate('onboarding')} onImport={() => navigate('import')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />
         )}
         detail={openDetail ? (
           <SessionPane detail={openDetail} collections={dashboard.collections} machines={dashboard.machines} onBack={leaveSession} onChanged={() => void loadDashboard()}
@@ -291,7 +293,8 @@ export function App() {
   });
 
   return (
-    <Shell view={view} user={user} onNavigate={navigate} onOpenPalette={() => setPaletteOpen(true)}>
+    <Shell view={view} user={user} onNavigate={navigate} onOpenPalette={() => setPaletteOpen(true)} sessionCount={dashboard.archivedSessions} agents={agentCounts(dashboard.machines)}
+      onAgent={(source) => { setAgentFilter((current) => ({ source, turn: current.turn + 1 })); navigate('timeline'); }}>
       {expiringIn === null ? null : <SessionExpiryBanner msLeft={expiringIn} onSignIn={askToSignIn} />}
       {content}
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />

@@ -170,6 +170,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
       <SessionHeader
         session={session}
         machineName={machineName}
+        models={[...new Set(detail.turns.flatMap((turn) => (turn.model ? [turn.model] : [])))]}
         busyAction={busyAction}
         pinned={pinId !== null}
         collectionsAvailable={collections.length > 0}

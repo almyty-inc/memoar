@@ -18,7 +18,7 @@ function detail(turns: SessionTurn[]): SessionDetailData {
 const at = '2026-09-01T09:00:00.000Z';
 
 describe('a transcript', () => {
-  it('draws a shell command as a terminal with its output folded in', () => {
+  it('draws a shell command as one step, its last line as the outcome', () => {
     render(<Transcript showThinking={false} setShowThinking={vi.fn()} detail={detail([
       { id: 't1', ordinal: 1, parentId: null, role: 'assistant', createdAt: at, blocks: [
         { id: 'b1', kind: 'tool_call', name: 'Bash', callId: 'c1', data: { command: 'npm test' } },
@@ -29,7 +29,7 @@ describe('a transcript', () => {
     ])} />);
 
     expect(screen.getByText('npm test')).toBeInTheDocument();
-    expect(screen.getByText('4 passed')).toBeInTheDocument();
+    expect(document.querySelector('.step-outcome')).toHaveTextContent('4 passed');
     // The result is drawn once, inside the call, not again as its own turn.
     expect(screen.queryByText('Tool')).not.toBeInTheDocument();
   });

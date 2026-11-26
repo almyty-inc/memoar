@@ -1,3 +1,4 @@
+import { AgentMark } from '../../components/AgentMark';
 import { cn, formatTime, plural } from '../../components/ui';
 import { isPlainClick } from '../../components/Shell';
 import type { SessionSummary } from '../../lib/types';
@@ -15,9 +16,15 @@ export function friendlyDate(date: string, asOf: number): string {
   return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
 }
 
+/** The last part of a project path, which is how people name a project. */
+export function projectName(workspace: string): string {
+  return workspace.replace(/\/+$/u, '').split('/').at(-1) || workspace;
+}
+
 /**
- * One session as one 32px row. A real link, so it opens in a new tab on a
- * modified click, and a plain click shows it beside the list.
+ * One session: the agent's mark, the title, what was asked, then project,
+ * turns and time. A real link, so a modified click opens a new tab, and a
+ * plain click shows it beside the list.
  */
 export function SessionRow({ session, machineName, selected, onOpen, onPrefetch }: {
   session: SessionSummary;
@@ -26,10 +33,11 @@ export function SessionRow({ session, machineName, selected, onOpen, onPrefetch 
   onOpen: (session: SessionSummary) => void;
   onPrefetch?: ((sessionId: string) => void) | undefined;
 }) {
+  const preview = session.summary.trim();
   return (
     <a
       href={`/sessions/${encodeURIComponent(session.id)}`}
-      className={cn('session-row session-cols', selected && 'row-selected')}
+      className={cn('session-row', selected && 'row-selected')}
       aria-current={selected ? 'true' : undefined}
       onMouseEnter={() => onPrefetch?.(session.id)}
       onFocus={() => onPrefetch?.(session.id)}
@@ -39,12 +47,18 @@ export function SessionRow({ session, machineName, selected, onOpen, onPrefetch 
         onOpen(session);
       }}
     >
-      <span className="col-source">{session.sourceLabel}</span>
-      <span className="col-title" title={session.title}>{session.title}</span>
-      <span className="col-project" title={session.workspace}>{session.workspace}</span>
-      <span className="col-machine">{machineName ?? ''}</span>
-      <span className="col-time">{formatTime(session.updatedAt)}</span>
-      <span className="col-turns">{plural(session.turnCount, 'turn')}</span>
+      <AgentMark source={session.source} label={session.sourceLabel} />
+      <span className="session-row-body">
+        <span className="sr-only">{session.sourceLabel}: </span>
+        <span className="session-row-title">{session.title}</span>
+        {preview && preview !== session.title ? <span className="session-row-preview">{preview}</span> : null}
+        <span className="session-row-meta">
+          <span title={session.workspace}>{projectName(session.workspace)}</span>
+          <span>{plural(session.turnCount, 'turn')}</span>
+          {machineName ? <span>{machineName}</span> : null}
+          <span>{formatTime(session.updatedAt)}</span>
+        </span>
+      </span>
     </a>
   );
 }

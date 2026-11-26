@@ -227,8 +227,8 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await page.getByRole('button', { name: 'Open sessions' }).click();
     await expect(page.getByText(fixtureTitle, { exact: true }).first()).toBeVisible();
 
-    const source = page.getByLabel('Filter by source');
-    await source.selectOption({ label: 'Claude Code' });
+    const source = page.getByRole('group', { name: 'Filter by source' });
+    await source.getByRole('button', { name: 'Claude Code' }).click();
     await expect(page.getByText(fixtureTitle, { exact: true }).first()).toBeVisible();
     const loadMore = page.getByRole('button', { name: 'Load older sessions' });
     await expect(loadMore).toBeVisible();

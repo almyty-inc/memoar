@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { AgentMark } from '../../components/AgentMark';
 import { cn, formatNumber, formatTime } from '../../components/ui';
 import type { ContentBlock, SessionDetailData } from '../../lib/types';
 import { BlockView } from './BlockView';
@@ -38,7 +39,8 @@ export function Transcript({ detail, showThinking, setShowThinking }: {
         return (
           <li key={turn.id} className={cn('turn', `turn-${turn.role}`)}>
             <div className="turn-head">
-              <span className="turn-role">{roleLabel(turn.role, detail.session.sourceLabel)}</span>
+              {turn.role === 'assistant' ? <AgentMark source={detail.session.source} label={detail.session.sourceLabel} size={22} /> : null}
+              <span className={turn.role === 'user' ? 'turn-role sr-only' : 'turn-role'}>{roleLabel(turn.role, detail.session.sourceLabel)}</span>
               <span className="turn-time">{formatTime(turn.createdAt)}</span>
               {turn.model ? <span className="turn-model">{turn.model}</span> : null}
               {turn.tokens ? <span className="turn-tokens">{formatNumber(turn.tokens.input)} in, {formatNumber(turn.tokens.output)} out</span> : null}

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { AgentMark } from '../../components/AgentMark';
 import { HighlightText, cn, formatRelative, plural } from '../../components/ui';
 import { isPlainClick } from '../../components/Shell';
 import type { SessionSummary } from '../../lib/types';
@@ -31,16 +32,19 @@ export function SearchResults({ items, query, onOpen }: {
               onOpen(session);
             }}
           >
-            <span className="result-title"><HighlightText text={session.title} query={query} /></span>
-            <span className="result-meta">
-              <span>{session.sourceLabel}</span>
-              <span className="mono">{session.workspace}</span>
-              <span>{formatRelative(session.updatedAt)}</span>
-              <span>{plural(session.turnCount, 'turn')}</span>
+            <AgentMark source={session.source} label={session.sourceLabel} />
+            <span className="result-body">
+              <span className="result-title"><HighlightText text={session.title} query={query} /></span>
+              {session.highlight || session.summary ? (
+                <span className="result-snippet"><HighlightText text={session.highlight ?? session.summary} query={query} /></span>
+              ) : null}
+              <span className="result-meta">
+                <span>{session.sourceLabel}</span>
+                <span className="mono">{session.workspace}</span>
+                <span>{plural(session.turnCount, 'turn')}</span>
+                <span>{formatRelative(session.updatedAt)}</span>
+              </span>
             </span>
-            {session.highlight || session.summary ? (
-              <span className="result-snippet"><HighlightText text={session.highlight ?? session.summary} query={query} /></span>
-            ) : null}
           </a>
         </li>
       ))}
