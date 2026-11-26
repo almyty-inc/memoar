@@ -3,12 +3,26 @@ import { createHash, randomBytes } from "node:crypto";
 let lastMs = 0;
 let sequence = 0;
 
-/** UUID v7 with a monotonic 12-bit counter for same-millisecond inserts. */
+/**
+ * UUID v7 with a monotonic 12-bit counter for same-millisecond inserts.
+ *
+ * Callers sort by these ids to break `createdAt` ties, so every id must sort
+ * after the one before it. When the counter runs out it carries into the
+ * timestamp rather than wrapping to zero, which would sort the next id first.
+ * The counter starts in the lower half so a burst rarely needs the carry. A
+ * clock that steps back keeps counting from the last id too.
+ */
 export function uuidV7(now = Date.now()): string {
-  if (now === lastMs) sequence = (sequence + 1) & 0x0fff;
-  else {
+  if (now <= lastMs) {
+    sequence += 1;
+    if (sequence > 0x0fff) {
+      lastMs += 1;
+      sequence = 0;
+    }
+    now = lastMs;
+  } else {
     lastMs = now;
-    sequence = randomBytes(2).readUInt16BE(0) & 0x0fff;
+    sequence = randomBytes(2).readUInt16BE(0) & 0x07ff;
   }
   const bytes = randomBytes(16);
   let timestamp = BigInt(now);
