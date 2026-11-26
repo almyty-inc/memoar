@@ -12,38 +12,69 @@ use crate::tui::draw;
 use crate::tui::request::Response;
 use crate::tui::update::apply;
 
+/// Whether one line of the frame holds all of `parts`, in order.
+fn line_with(frame: &str, parts: &[&str]) -> bool {
+    frame.lines().any(|line| {
+        let mut rest = line;
+        parts.iter().all(|part| match rest.find(part) {
+            Some(at) => {
+                rest = &rest[at + part.len()..];
+                true
+            }
+            None => false,
+        })
+    })
+}
+
 #[test]
 fn a_wide_terminal_shows_the_list_and_the_preview_side_by_side() {
     let mut app = loaded(120, 32);
     let frame = screen(&app);
-    assert!(frame.contains("╭ Sessions 3 sessions"), "{frame}");
-    assert!(frame.contains("Fix the importer"), "{frame}");
     assert!(
-        frame.contains("Claude Code · example-app · 4 turns"),
+        frame.contains("╭ ∿ memoar · Sessions 3 sessions"),
         "{frame}"
     );
+    assert!(
+        line_with(&frame, &["● Fix the importer", "11:00"]) || frame.contains("● Fix the importer"),
+        "{frame}"
+    );
+    assert!(frame.contains("example-app · 4 turns"), "{frame}");
     assert!(frame.contains("Loading the transcript."), "{frame}");
     assert!(frame.contains(" sessions  j/k move  enter read"), "{frame}");
     assert!(frame.contains("archive.example.test"), "{frame}");
     deliver_transcript(&mut app, FIRST);
     let frame = screen(&app);
     for expected in [
-        "You",
-        "Why does the importer drop tool output?",
+        "▌ You",
+        "▌  Why does the importer drop tool output?",
+        "● Claude Code",
         "▸ thinking, t shows it",
         "│ fn parse() -> u32 { 42 }",
-        "▸ Read /workspace/example-app/src/parser.rs · 3 lines",
-        "$ cargo test parser",
-        "│ running 1 test",
-        "▸ Edit /workspace/example-app/src/parser.rs",
         "- copy_text_only()",
         "+ copy_every_field()",
     ] {
         assert!(frame.contains(expected), "missing {expected:?} in\n{frame}");
     }
+    for parts in [
+        &["● Read /workspace/example-app/src/parser.rs", "3 lines"][..],
+        &["● $ cargo test parser", "passed"],
+        &["● Edit /workspace/example-app/src/parser.rs", "+1 -1"],
+    ] {
+        assert!(line_with(&frame, parts), "no step {parts:?} in\n{frame}");
+    }
+    assert!(
+        !frame.contains("running 1 test"),
+        "a passing command is one line"
+    );
     assert!(
         !frame.contains("edited"),
         "a result drawn with its call is not drawn again"
+    );
+    assert!(
+        frame
+            .lines()
+            .any(|line| line.starts_with("│   Why does the import")),
+        "the first prompt previews the row once read\n{frame}"
     );
 }
 
@@ -118,9 +149,10 @@ fn a_diff_is_drawn_in_green_and_red() {
         })
     };
     let (x, y) = find("+ copy_every_field").unwrap();
-    assert_eq!(buffer[(x, y)].fg, Color::Green);
+    assert_eq!(buffer[(x, y)].fg, crate::tui::style::added().fg.unwrap());
+    assert_ne!(buffer[(x, y)].bg, Color::Reset, "a tinted band");
     let (x, y) = find("- copy_text_only").unwrap();
-    assert_eq!(buffer[(x, y)].fg, Color::Red);
+    assert_eq!(buffer[(x, y)].fg, crate::tui::style::removed().fg.unwrap());
 }
 
 #[test]
@@ -157,7 +189,7 @@ fn status_without_a_service_is_advice_not_a_fault() {
     );
     let frame = screen(&app);
     for expected in [
-        "╭ Capture status",
+        "╭ ∿ memoar · Capture status",
         "Capture     background capture is not running",
         "Service     not installed. It is optional",
         "Queue       2 waiting, 0 retrying, 40 uploaded, 1 held",

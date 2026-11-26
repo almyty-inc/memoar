@@ -146,16 +146,21 @@ pub(super) fn transcript(frame: &mut Frame, app: &App, pane: Rect, focused: bool
         meta.push(when_utc(at));
     }
     meta.push(plural(session.turn_count, "turn", "turns"));
+    // The agent's mark in its colour, then the facts in dim.
+    let mark = format!(" {} ", style::glyphs().dot);
     let text = truncate(
-        &format!(" {}", meta.join(&separator)),
-        usize::from(inner.width),
+        &meta.join(&separator),
+        usize::from(inner.width).saturating_sub(crate::tui::text::width(&mark)),
     );
     frame.render_widget(
-        Paragraph::new(Line::styled(text, style::dim())),
+        Paragraph::new(Line::from(vec![
+            Span::styled(mark, style::agent(&session.source)),
+            Span::styled(text, style::dim()),
+        ])),
         Rect { height: 1, ..inner },
     );
     let area = transcript_text(pane);
-    let body = view.memo.get(&view.turns, area.width, app.show_thinking);
+    let body = view.rendered(area.width, app.show_thinking);
     if body.is_empty() {
         let sentence = match &view.error {
             Some(error) => error.as_str(),

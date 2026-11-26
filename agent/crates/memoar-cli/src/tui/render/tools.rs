@@ -1,20 +1,18 @@
-//! Tool calls drawn by what they did: an edit as a diff, a shell command
-//! with its output, a file read as one line with its path and length.
+//! Tool calls as steps: one line each, with a status dot and the outcome on
+//! the right. An edit keeps its diff under the step, and a failed command
+//! keeps the first lines of what it printed.
 //!
 //! A call and its result are drawn together, so the result block that
 //! follows in the transcript is skipped.
 
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use serde_json::Value;
 use std::collections::HashMap;
 
 use super::diff::{self, Change};
-use super::wrap;
-use crate::tui::style;
-use crate::tui::text::{first_line, truncate};
-
-/// Lines of shell output shown under a command.
-const OUTPUT_LINES: usize = 8;
+use super::steps::{Status, output, result_line, step};
+use crate::tui::model::plural;
+use crate::tui::text::truncate;
 
 /// Each result's text and whether the tool failed, by call id.
 pub(crate) type Results = HashMap<String, (String, bool)>;
@@ -46,18 +44,21 @@ fn field<'a>(data: &'a Value, names: &[&str]) -> &'a str {
         .unwrap_or_default()
 }
 
-fn header(glyph: &str, name: &str, detail: &str, columns: usize, indent: &str) -> Line<'static> {
-    let lead = format!("{indent}{glyph} {name} ");
-    let room = columns.saturating_sub(crate::tui::text::width(&lead));
-    Line::from(vec![
-        Span::styled(format!("{indent}{glyph} "), style::dim()),
-        Span::styled(format!("{name} "), style::bold()),
-        Span::styled(truncate(&detail.replace('\n', " "), room), style::dim()),
-    ])
+fn count(text: &str, one: &str, many: &str) -> String {
+    plural(text.lines().count() as u64, one, many)
 }
 
-fn count(text: &str, one: &str, many: &str) -> String {
-    crate::tui::model::plural(text.lines().count() as u64, one, many)
+/// "+3 -1" for a set of changes.
+fn tally(changes: &[(Change, &str)]) -> String {
+    let added = changes
+        .iter()
+        .filter(|(change, _)| *change == Change::Added)
+        .count();
+    let removed = changes
+        .iter()
+        .filter(|(change, _)| *change == Change::Removed)
+        .count();
+    format!("+{added} -{removed}")
 }
 
 /// Draws one call. The result, when there is one, is drawn with it.
@@ -68,13 +69,17 @@ pub(crate) fn call(
     indent: &str,
     out: &mut Vec<Line<'static>>,
 ) {
-    let glyphs = style::glyphs();
     let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
     let data = block.get("data").unwrap_or(&Value::Null);
     let result = block
         .get("callId")
         .and_then(Value::as_str)
         .and_then(|id| results.get(id));
+    let status = match result {
+        None => Status::Pending,
+        Some((_, true)) => Status::Failed,
+        Some((_, false)) => Status::Passed,
+    };
     let path = field(
         data,
         &[
@@ -85,6 +90,13 @@ pub(crate) fn call(
             "target_file",
         ],
     );
+    let outcome = |text: String| {
+        if status == Status::Failed {
+            "failed".to_owned()
+        } else {
+            text
+        }
+    };
     match name.to_ascii_lowercase().as_str() {
         "edit"
         | "multiedit"
@@ -92,26 +104,47 @@ pub(crate) fn call(
         | "replace"
         | "str_replace_editor"
         | "str_replace_based_edit_tool" => {
-            out.push(header(glyphs.collapsed, name, path, columns, indent));
             let edits = data
                 .get("edits")
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_else(|| vec![data.clone()]);
-            for edit in &edits {
-                let old = field(edit, &["old_string", "old_str", "oldString"]);
-                let new = field(edit, &["new_string", "new_str", "newString"]);
-                diff::draw(&diff::compare(old, new), columns, indent, out);
+            let pairs: Vec<(&str, &str)> = edits
+                .iter()
+                .map(|edit| {
+                    (
+                        field(edit, &["old_string", "old_str", "oldString"]),
+                        field(edit, &["new_string", "new_str", "newString"]),
+                    )
+                })
+                .collect();
+            let changes: Vec<Vec<(Change, &str)>> = pairs
+                .iter()
+                .map(|(old, new)| diff::compare(old, new))
+                .collect();
+            let all: Vec<(Change, &str)> = changes.iter().flatten().copied().collect();
+            out.push(step(
+                status,
+                name,
+                path,
+                &outcome(tally(&all)),
+                columns,
+                indent,
+            ));
+            for change in &changes {
+                diff::draw(change, columns, indent, out);
             }
         }
         "write" | "create_file" | "write_file" => {
             let content = field(data, &["content", "contents", "file_text"]);
-            let detail = format!(
-                "{path} {} {}",
-                glyphs.separator,
-                count(content, "line", "lines")
-            );
-            out.push(header(glyphs.collapsed, name, &detail, columns, indent));
+            out.push(step(
+                status,
+                name,
+                path,
+                &outcome(count(content, "line", "lines")),
+                columns,
+                indent,
+            ));
             let added: Vec<(Change, &str)> =
                 content.lines().map(|line| (Change::Added, line)).collect();
             diff::draw(&added, columns, indent, out);
@@ -120,133 +153,78 @@ pub(crate) fn call(
             let patch = data
                 .as_str()
                 .unwrap_or_else(|| field(data, &["input", "patch"]));
-            out.push(header(glyphs.collapsed, name, "", columns, indent));
-            diff::draw(&diff::classify(patch), columns, indent, out);
+            let changes = diff::classify(patch);
+            out.push(step(
+                status,
+                name,
+                "",
+                &outcome(tally(&changes)),
+                columns,
+                indent,
+            ));
+            diff::draw(&changes, columns, indent, out);
         }
         "bash" | "shell" | "exec_command" | "local_shell" | "run_shell_command" | "terminal" => {
-            shell(data, result, columns, indent, out);
+            let command = match data.get("command").or_else(|| data.get("cmd")) {
+                Some(Value::Array(parts)) => parts
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                Some(Value::String(command)) => command.clone(),
+                _ => data
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| compact(data)),
+            };
+            let verdict = match status {
+                Status::Pending => "",
+                Status::Passed => "passed",
+                Status::Failed => "failed",
+            };
+            out.push(step(status, "$", &command, verdict, columns, indent));
+            // What a failed command printed is why it failed. A passing one
+            // is a line, like every other step.
+            if let Some((text, true)) = result {
+                output(text, columns, indent, out);
+            }
             return;
         }
         "read" | "view" | "read_file" | "cat" => {
             let length = result
                 .map(|(text, _)| count(text, "line", "lines"))
                 .unwrap_or_default();
-            let detail = [path, &length]
-                .iter()
-                .filter(|part| !part.is_empty())
-                .copied()
-                .collect::<Vec<_>>();
-            out.push(header(
-                glyphs.collapsed,
-                name,
-                &detail.join(&format!(" {} ", glyphs.separator)),
-                columns,
-                indent,
-            ));
+            out.push(step(status, name, path, &outcome(length), columns, indent));
         }
         "grep" | "glob" | "search" | "find" | "ls" | "list_dir" => {
             let pattern = field(data, &["pattern", "query", "path"]);
             let found = result
                 .map(|(text, _)| count(text, "result", "results"))
                 .unwrap_or_default();
-            out.push(header(
-                glyphs.collapsed,
+            out.push(step(
+                status,
                 name,
-                &format!("{pattern}  {found}"),
+                pattern,
+                &outcome(found),
                 columns,
                 indent,
             ));
         }
         _ => {
-            out.push(header(
-                glyphs.collapsed,
+            let done = if result.is_some() { "done" } else { "" };
+            out.push(step(
+                status,
                 name,
                 &compact(data),
+                &outcome(done.to_owned()),
                 columns,
                 indent,
             ));
-            // A failure is drawn below, as it is for every kind of tool.
-            if let Some((text, false)) = result {
-                out.push(result_line(text, false, columns, indent));
-            }
         }
     }
     if let Some((text, true)) = result {
         out.push(result_line(text, true, columns, indent));
     }
-}
-
-/// `$ command` and the first lines of what it printed, in a gutter.
-fn shell(
-    data: &Value,
-    result: Option<&(String, bool)>,
-    columns: usize,
-    indent: &str,
-    out: &mut Vec<Line<'static>>,
-) {
-    let command = match data.get("command").or_else(|| data.get("cmd")) {
-        Some(Value::Array(parts)) => parts
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(" "),
-        Some(Value::String(command)) => command.clone(),
-        _ => data
-            .as_str()
-            .map(str::to_owned)
-            .unwrap_or_else(|| compact(data)),
-    };
-    let prompt = vec![Span::styled(format!("{indent}$ "), style::accent())];
-    out.extend(wrap::chars(&[(command, style::code())], columns, &prompt));
-    let Some((text, error)) = result else {
-        return;
-    };
-    let gutter_style = if *error {
-        style::removed()
-    } else {
-        style::dim()
-    };
-    let gutter = vec![Span::styled(
-        format!("{indent}{} ", style::glyphs().gutter),
-        gutter_style,
-    )];
-    let lines: Vec<&str> = text.trim_end().lines().collect();
-    for line in lines.iter().take(OUTPUT_LINES) {
-        out.extend(wrap::chars(
-            &[(line.replace('\t', "    "), style::dim())],
-            columns,
-            &gutter,
-        ));
-    }
-    if lines.len() > OUTPUT_LINES {
-        out.push(Line::styled(
-            format!(
-                "{indent}{} {} more lines",
-                style::glyphs().ellipsis,
-                lines.len() - OUTPUT_LINES
-            ),
-            style::dim(),
-        ));
-    }
-}
-
-/// A result on one line: its first line and how many follow.
-pub(crate) fn result_line(text: &str, error: bool, columns: usize, indent: &str) -> Line<'static> {
-    let lines = text.trim().lines().count();
-    let first = first_line(text);
-    let summary = match lines {
-        0 => "empty".to_owned(),
-        1 => first.to_owned(),
-        _ => format!("{first} ({lines} lines)"),
-    };
-    let label = if error { "error" } else { "result" };
-    let text = format!("{indent}  {} {label}: {summary}", style::glyphs().result);
-    let line_style = if error {
-        style::removed()
-    } else {
-        style::dim()
-    };
-    Line::styled(truncate(&text, columns), line_style)
 }
 
 /// A tool's input on one line: the value of a lone field, or compact JSON.

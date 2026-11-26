@@ -6,6 +6,7 @@
 pub(crate) mod code;
 pub(crate) mod diff;
 pub(crate) mod markdown;
+pub(crate) mod steps;
 pub(crate) mod tools;
 pub(crate) mod wrap;
 
@@ -35,20 +36,42 @@ pub(crate) struct Memo {
 }
 
 impl Memo {
-    pub(crate) fn get(&self, turns: &[Value], columns: u16, show_thinking: bool) -> Rendered {
+    /// The agent never changes for one transcript, so it is not in the key.
+    pub(crate) fn get(
+        &self,
+        turns: &[Value],
+        agent: &Agent,
+        columns: u16,
+        show_thinking: bool,
+    ) -> Rendered {
         let key = (columns, show_thinking, turns.len());
         if let Some((cached, rendered)) = self.cell.borrow().as_ref()
             && *cached == key
         {
             return Rc::clone(rendered);
         }
-        let rendered = Rc::new(lines(turns, columns, show_thinking));
+        let rendered = Rc::new(lines(turns, agent, columns, show_thinking));
         *self.cell.borrow_mut() = Some((key, Rc::clone(&rendered)));
         rendered
     }
 }
 
-pub(crate) fn lines(turns: &[Value], columns: u16, show_thinking: bool) -> Vec<Line<'static>> {
+/// Whose session it is, for the label and colour of the agent's turns.
+pub(crate) struct Agent<'a> {
+    pub(crate) source: &'a str,
+    pub(crate) label: &'a str,
+}
+
+/// The bar and indent a person's turn is drawn with, so it reads apart from
+/// the agent's at a glance.
+const USER_BAR: usize = 3;
+
+pub(crate) fn lines(
+    turns: &[Value],
+    agent: &Agent,
+    columns: u16,
+    show_thinking: bool,
+) -> Vec<Line<'static>> {
     let columns = usize::from(columns).max(16);
     let results = tools::collect(turns);
     let calls: std::collections::HashSet<&str> = turns
@@ -75,32 +98,55 @@ pub(crate) fn lines(turns: &[Value], columns: u16, show_thinking: bool) -> Vec<L
                         .is_some_and(|id| calls.contains(id))
             })
             .collect();
+        let mut blocks = blocks;
+        if !show_thinking {
+            // Hidden thinking is one line, however many blocks of it there are.
+            let thinking =
+                |block: &&Value| block.get("kind").and_then(Value::as_str) == Some("thinking");
+            blocks.dedup_by(|next, previous| thinking(next) && thinking(previous));
+        }
         if blocks.is_empty() {
             continue;
         }
-        out.push(role_line(role, turn));
-        for block in blocks {
-            block_lines(block, &results, columns, show_thinking, &mut out);
+        if role == "user" {
+            // A bar in the accent down the left of everything the person said.
+            let bar = Span::styled(format!("  {}", style::glyphs().bar), style::accent());
+            let mut own = vec![role_line(role, agent, turn)];
+            for block in blocks {
+                block_lines(block, &results, columns - USER_BAR, show_thinking, &mut own);
+            }
+            for mut line in own {
+                line.spans.insert(0, bar.clone());
+                out.push(line);
+            }
+        } else {
+            out.push(role_line(role, agent, turn));
+            for block in blocks {
+                block_lines(block, &results, columns, show_thinking, &mut out);
+            }
         }
         out.push(Line::default());
     }
     out
 }
 
-fn role_line(role: &str, turn: &Value) -> Line<'static> {
-    let label = match role {
-        "user" => "You",
-        "assistant" => "Assistant",
-        "tool" => "Tool",
-        "system" => "System",
-        other => other,
+fn role_line(role: &str, agent: &Agent, turn: &Value) -> Line<'static> {
+    let mut spans = match role {
+        "user" => vec![Span::styled(
+            " You".to_owned(),
+            style::accent().add_modifier(Modifier::BOLD),
+        )],
+        "assistant" => vec![
+            Span::styled(
+                format!("{} ", style::glyphs().dot),
+                style::agent(agent.source),
+            ),
+            Span::styled(agent.label.to_owned(), style::bold()),
+        ],
+        "tool" => vec![Span::styled("Tool".to_owned(), style::bold())],
+        "system" => vec![Span::styled("System".to_owned(), style::dim())],
+        other => vec![Span::styled(other.to_owned(), style::bold())],
     };
-    let label_style = if role == "user" {
-        style::accent().add_modifier(Modifier::BOLD)
-    } else {
-        style::bold()
-    };
-    let mut spans = vec![Span::styled(label.to_owned(), label_style)];
     if let Some(at) = turn
         .get("createdAt")
         .and_then(Value::as_str)
@@ -146,7 +192,7 @@ fn block_lines(
         "tool_call" => tools::call(block, results, columns, INDENT, out),
         "tool_result" => {
             let error = block.pointer("/data/isError").and_then(Value::as_bool) == Some(true);
-            out.push(tools::result_line(text, error, columns, INDENT));
+            out.push(steps::result_line(text, error, columns, INDENT));
         }
         "diff" => diff::draw(&diff::classify(text), columns, INDENT, out),
         "artifact" | "attachment" => {

@@ -29,9 +29,25 @@ pub(super) fn frame_pane(
         style::bold()
     };
     let room = usize::from(area.width.saturating_sub(4));
-    let title = truncate(title, room);
-    let mut spans = vec![Span::styled(format!(" {title} "), title_style)];
-    let mut used = crate::tui::text::width(&title) + 2;
+    let mut spans = Vec::new();
+    let mut used = 0;
+    // The pane in the top left corner carries the name, as a window's title
+    // bar would: the thread in the logo's blue, then the wordmark.
+    if area.x == 0 && area.y == 0 && room > 24 {
+        let glyphs = style::glyphs();
+        spans.push(Span::styled(
+            format!(" {} ", glyphs.thread),
+            ratatui::style::Style::default().fg(crate::tui::colour::brand()),
+        ));
+        spans.push(Span::styled("memoar ", style::bold()));
+        spans.push(Span::styled(format!("{} ", glyphs.separator), style::dim()));
+        used +=
+            10 + crate::tui::text::width(glyphs.thread) + crate::tui::text::width(glyphs.separator);
+    }
+    let title = truncate(title, room.saturating_sub(used + 2));
+    let lead = if spans.is_empty() { " " } else { "" };
+    spans.push(Span::styled(format!("{lead}{title} "), title_style));
+    used += crate::tui::text::width(&title) + 2;
     for fact in facts.iter().filter(|fact| !fact.is_empty()) {
         let text = format!("{fact} ");
         let size = crate::tui::text::width(&text);

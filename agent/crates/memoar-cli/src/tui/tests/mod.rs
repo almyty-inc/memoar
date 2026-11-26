@@ -1,3 +1,4 @@
+mod colour;
 mod fixtures;
 mod mouse;
 mod palette;

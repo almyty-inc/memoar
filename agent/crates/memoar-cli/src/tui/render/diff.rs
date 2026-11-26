@@ -88,9 +88,20 @@ pub(crate) fn draw(
             Change::Removed => ("-", style::removed()),
             Change::Same => (" ", style::dim()),
         };
-        let gutter = vec![Span::styled(format!("{indent}{mark} "), line_style)];
+        let gutter = vec![
+            Span::raw(indent.to_owned()),
+            Span::styled(format!("{mark} "), line_style),
+        ];
         let pieces: Vec<(String, Style)> = vec![(text.replace('\t', "    "), line_style)];
-        out.extend(wrap::chars(&pieces, columns, &gutter));
+        for mut line in wrap::chars(&pieces, columns, &gutter) {
+            // The tint runs to the edge, so a change reads as a band.
+            let used = line.width();
+            line.spans.push(Span::styled(
+                " ".repeat(columns.saturating_sub(used)),
+                line_style,
+            ));
+            out.push(line);
+        }
     }
     if changes.len() > MAX_DIFF_LINES {
         out.push(Line::styled(

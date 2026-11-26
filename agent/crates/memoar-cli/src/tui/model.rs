@@ -19,6 +19,8 @@ pub(crate) struct SessionRow {
     pub(crate) updated_at: Option<DateTime<Utc>>,
     pub(crate) turn_count: u64,
     pub(crate) highlight: Option<String>,
+    /// What the archive says the session is about, when it says.
+    pub(crate) summary: Option<String>,
 }
 
 impl SessionRow {
@@ -39,6 +41,7 @@ impl SessionRow {
                 .map(|at| at.with_timezone(&Utc)),
             turn_count: value.get("turnCount").and_then(Value::as_u64).unwrap_or(0),
             highlight: text("highlight").filter(|highlight| !highlight.trim().is_empty()),
+            summary: text("summary").filter(|summary| !summary.trim().is_empty()),
             id,
         })
     }

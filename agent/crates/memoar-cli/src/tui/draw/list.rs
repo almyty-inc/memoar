@@ -1,5 +1,6 @@
-//! A list of sessions, two lines a row: the title and time, then source,
-//! project, machine and turns in dim.
+//! A list of sessions, two lines a row and a blank line between rows: the
+//! agent's coloured mark, the title and the time, then the first prompt in
+//! dim with the project and turns on the right.
 //!
 //! The session list groups rows under the day they were last updated, and
 //! keeps the day of the top row pinned above the list as it scrolls.
@@ -19,9 +20,12 @@ use crate::tui::text::{fit, truncate, width};
 fn height(line: &ListLine) -> usize {
     match line {
         ListLine::Day(_) => 1,
-        ListLine::Session(_) => 2,
+        ListLine::Session(_) => ROW_HEIGHT,
     }
 }
+
+/// A session's two lines and the blank line under them.
+pub(crate) const ROW_HEIGHT: usize = 3;
 
 /// Which lines are on screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,47 +166,78 @@ fn day_line(label: &str, columns: usize) -> Line<'static> {
     )
 }
 
-/// A session's two lines: title and time, then the facts about it.
+/// The first thing the person asked, from a transcript read in this run.
+fn first_prompt(app: &App, id: &str) -> Option<String> {
+    let view = match &app.transcript {
+        Some(view) if view.session.id == id => view,
+        _ => app.viewed.get(id)?,
+    };
+    view.turns
+        .iter()
+        .filter(|turn| turn.get("role").and_then(serde_json::Value::as_str) == Some("user"))
+        .flat_map(|turn| {
+            turn.get("blocks")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter(|block| block.get("kind").and_then(serde_json::Value::as_str) == Some("text"))
+        .find_map(|block| block.get("text").and_then(serde_json::Value::as_str))
+        .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|text| !text.is_empty())
+}
+
+/// A session's lines: the mark, title and time, then the first prompt with
+/// the project and turns on the right, then a blank line.
 pub(crate) fn row_lines(
     row: &SessionRow,
     app: &App,
     columns: usize,
     highlight: Option<Style>,
-) -> [Line<'static>; 2] {
-    let primary = highlight.unwrap_or_else(style::plain);
+) -> [Line<'static>; ROW_HEIGHT] {
+    let primary = highlight.map_or_else(style::bold, |style| {
+        style.add_modifier(ratatui::style::Modifier::BOLD)
+    });
     let secondary = highlight.unwrap_or_else(style::dim);
+    let background = highlight.unwrap_or_default();
+    let glyphs = style::glyphs();
+    let mark = format!(" {} ", glyphs.dot);
+    let indent = width(&mark);
     let time = row.time();
-    let room = columns.saturating_sub(width(&time) + 3);
-    let mut title = row.title.replace('\n', " ");
-    if let Some(highlight) = &row.highlight
-        && highlight != &row.title
-    {
-        title = format!("{title}  {}", highlight.replace('\n', " "));
-    }
+    let room = columns.saturating_sub(indent + width(&time) + 2);
     let first = Line::from(vec![
-        Span::styled(" ", primary),
-        Span::styled(fit(&title, room), primary),
+        Span::styled(mark, background.patch(style::agent(&row.source))),
+        Span::styled(fit(&row.title.replace('\n', " "), room), primary),
         Span::styled(format!(" {time} "), secondary),
     ]);
-    let separator = format!(" {} ", style::glyphs().separator);
+    let separator = format!(" {} ", glyphs.separator);
     let facts: Vec<String> = [
-        row.source_label.clone(),
         row.project().to_owned(),
-        row.machine(&app.machines).to_owned(),
         plural(row.turn_count, "turn", "turns"),
     ]
     .into_iter()
     .filter(|fact| !fact.is_empty())
     .collect();
-    let second = Line::styled(
-        fit(
-            &format!(
-                " {}",
-                truncate(&facts.join(&separator), columns.saturating_sub(2))
-            ),
-            columns,
-        ),
-        secondary,
-    );
-    [first, second]
+    // A long project name still leaves room for 16 columns of the prompt.
+    let limit = columns.saturating_sub(indent + 18);
+    let facts = format!(" {} ", truncate(&facts.join(&separator), limit));
+    let preview = row
+        .highlight
+        .clone()
+        .or_else(|| first_prompt(app, &row.id))
+        .or_else(|| row.summary.clone())
+        .unwrap_or_else(|| {
+            [row.source_label.as_str(), row.machine(&app.machines)]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(&separator)
+        });
+    let room = columns.saturating_sub(indent + width(&facts));
+    let second = Line::from(vec![
+        Span::styled(" ".repeat(indent), background),
+        Span::styled(fit(&preview.replace('\n', " "), room), secondary),
+        Span::styled(truncate(&facts, columns.saturating_sub(indent)), secondary),
+    ]);
+    [first, second, Line::default()]
 }

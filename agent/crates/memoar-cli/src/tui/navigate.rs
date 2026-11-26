@@ -129,11 +129,10 @@ pub(crate) fn open_status(app: &mut App) -> Vec<Request> {
 /// How many lines the transcript is, and how many fit, at the current size.
 pub(crate) fn transcript_extent(app: &App) -> (usize, usize) {
     let area = transcript_area(app);
-    let length = app.transcript.as_ref().map_or(0, |view| {
-        view.memo
-            .get(&view.turns, area.width, app.show_thinking)
-            .len()
-    });
+    let length = app
+        .transcript
+        .as_ref()
+        .map_or(0, |view| view.rendered(area.width, app.show_thinking).len());
     (length, usize::from(area.height).max(1))
 }
 
@@ -204,6 +203,5 @@ pub(crate) fn settle(app: &App) {
 
 /// How many list rows fit, for page keys.
 pub(crate) fn page(app: &App) -> usize {
-    // A session takes two lines.
-    (list_height(app) / 2).max(1)
+    (list_height(app) / super::draw::list::ROW_HEIGHT).max(1)
 }

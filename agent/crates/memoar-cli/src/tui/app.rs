@@ -67,6 +67,15 @@ pub(crate) struct Transcript {
 }
 
 impl Transcript {
+    /// The turns as lines at this width, from the memo when nothing changed.
+    pub(crate) fn rendered(&self, columns: u16, show_thinking: bool) -> super::render::Rendered {
+        let agent = super::render::Agent {
+            source: &self.session.source,
+            label: &self.session.source_label,
+        };
+        self.memo.get(&self.turns, &agent, columns, show_thinking)
+    }
+
     pub(crate) fn pending(session: SessionRow) -> Self {
         Self {
             session,

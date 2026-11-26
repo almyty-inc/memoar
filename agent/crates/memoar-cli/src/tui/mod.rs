@@ -9,6 +9,7 @@ mod action;
 mod app;
 mod cache;
 mod clipboard;
+mod colour;
 mod draw;
 mod export;
 mod fuzzy;
@@ -53,6 +54,7 @@ pub(crate) fn launch(json: bool, paths: &RuntimePaths) -> Result<(), AppError> {
     // typed next, not inside a screen that has to be quit first.
     let (config, _) = authenticated_config(paths)?;
     style::choose_glyphs();
+    colour::choose_theme();
     let mut app = App::new(config.endpoint);
     let first = start(&mut app, paths);
     let mut guard = terminal::Guard::enter().map_err(|error| {

@@ -112,6 +112,10 @@ live there. It needs `memoar login` first and works on macOS, Linux and Windows.
 - Without a connection it shows the last session list it saw and every
   transcript read in the same run. `MEMOAR_TUI_ASCII=1` draws borders and
   markers in plain ASCII for a console font without them.
+- Each session carries its agent's colour, and focus is almyty blue. It uses
+  truecolor when `COLORTERM` says the terminal has it (and in Windows
+  Terminal), the nearest of 256 colours when `TERM` does, else 16. It assumes
+  a dark background unless `COLORFGBG` says the background is light.
 
 It refuses `--json` and a pipe. Scripts use `search`, `view` and `convert`.
 
