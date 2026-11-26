@@ -139,24 +139,24 @@ async function ensureFixtureArchive(request: APIRequestContext): Promise<void> {
 
 async function signIn(page: Page): Promise<void> {
   await page.goto('/#/timeline');
-  const signIn = page.getByRole('heading', { name: 'Open your archive.' });
+  const signIn = page.getByRole('heading', { name: 'Sign in' });
   if (await signIn.isVisible()) {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: /^Sign in/ }).click();
   }
-  await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
   await expect(page.getByText('Demo archive', { exact: true })).toHaveCount(0);
 }
 
 async function openFixture(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Search', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Search', exact: true }).click();
   const search = page.getByRole('searchbox', { name: 'Search sessions' });
   await search.fill('parent reference');
-  const card = page.locator('.search-result-card').first();
-  await expect(card).toBeVisible();
-  await card.locator('.search-result-button').click();
-  await expect(page.getByRole('heading', { name: 'Session overview' })).toBeVisible();
+  const result = page.locator('.result-row').first();
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(page.getByRole('group', { name: 'Session actions' })).toBeVisible();
 }
 
 // Deliberately NOT serial. The config already pins workers to 1 so these run
@@ -183,7 +183,7 @@ test.describe('Memoar live Compose browser acceptance', () => {
     const loginResponse = page.waitForResponse((response) => response.url().endsWith('/v1/auth/login') && response.request().method() === 'POST');
     await page.getByRole('button', { name: /^Sign in/ }).click();
     await expect((await loginResponse).status()).toBe(200);
-    await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
     await expect(page.getByText('Demo archive', { exact: true })).toHaveCount(0);
   });
 
@@ -193,7 +193,7 @@ test.describe('Memoar live Compose browser acceptance', () => {
     // email registration existed at all.
     await page.goto('/#/signin');
     await page.getByRole('button', { name: 'Create an archive' }).click();
-    await expect(page.getByRole('heading', { name: 'Start your archive.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Create an archive' })).toBeVisible();
 
     const address = `e2e-${Date.now()}@memoar.test`;
     await page.getByLabel('Email').fill(address);
@@ -204,8 +204,10 @@ test.describe('Memoar live Compose browser acceptance', () => {
 
     // Signed straight in, and into an archive of their own rather than the one
     // the fixture account owns.
-    await expect(page.getByText('Connected', { exact: true })).toBeVisible();
-    await expect(page.getByText(address)).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
+    // The address lives in the account menu, once.
+    await page.getByRole('button', { name: 'Account' }).click();
+    await expect(page.getByRole('menu', { name: 'Account' })).toContainText(address);
   });
 
   test('covers onboarding, fixture visibility, filters, and a second timeline page', async ({ page }) => {
@@ -214,14 +216,15 @@ test.describe('Memoar live Compose browser acceptance', () => {
     // `npx memoar connect` command the CLI does not have, and an "I ran the
     // command" button that only set a flag. It now checks that the page hands
     // over commands the agent accepts and lists the machines that exist.
+    await page.getByRole('link', { name: 'Machines', exact: true }).click();
     await page.getByRole('button', { name: 'Connect a machine' }).click();
-    await expect(page.getByRole('heading', { name: 'Connect a machine.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Connect a machine' })).toBeVisible();
     await expect(page.locator('.install-command').first()).toContainText('memoar login --endpoint');
     await expect(page.locator('.install-command').nth(1)).toContainText('memoar sync --watch');
     await expect(page.getByText('Machines on this account')).toBeVisible();
     // The fixture importer registered a machine, so the archive is reachable
     // from here rather than the button staying disabled forever.
-    await page.getByRole('button', { name: /Browse the archive|Open the timeline/ }).click();
+    await page.getByRole('button', { name: 'Open sessions' }).click();
     await expect(page.getByText(fixtureTitle, { exact: true }).first()).toBeVisible();
 
     const source = page.getByLabel('Filter by source');
@@ -238,14 +241,14 @@ test.describe('Memoar live Compose browser acceptance', () => {
 
   test('renders live search highlighting, aggregations, and realized retrieval mode', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('button', { name: 'Search', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Search', exact: true }).click();
     const search = page.getByRole('searchbox', { name: 'Search sessions' });
     const responsePromise = page.waitForResponse((response) => response.url().includes('/v1/search?') && response.request().method() === 'GET');
     await search.fill('parent reference');
     const response = await responsePromise;
     expect(response.ok()).toBeTruthy();
-    await expect(page.locator('.search-result-card').first()).toBeVisible();
-    await expect(page.locator('.search-result-card mark').first()).toBeVisible();
+    await expect(page.locator('.result-row').first()).toBeVisible();
+    await expect(page.locator('.result-row mark').first()).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Search filters' })).toContainText('Claude Code');
     await expect(page.locator('.results-meta')).toContainText(/lexical|hybrid/);
   });
@@ -256,19 +259,25 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await expect(page.locator('.thinking-hidden').first()).toBeVisible();
     await page.getByLabel('Show thinking').check();
     await expect(page.locator('.thinking-block').first()).toBeVisible();
-    const tool = page.locator('details.tool-block').first();
+    // Tool calls render by kind: a shell command as a terminal, an edit as a
+    // diff, anything else as one line that opens onto its highlighted input.
+    const tool = page.locator('details.tool-block, .terminal-block').first();
     await expect(tool).toBeVisible();
-    await tool.locator('summary').click();
-    await expect(tool.locator('.syntax-block')).toBeVisible();
-    await expect(tool.locator('.syntax-key').first()).toBeVisible();
+    const generic = page.locator('details.tool-block').first();
+    if (await generic.count()) {
+      await generic.locator('summary').click();
+      await expect(generic.locator('.code-block').first()).toBeVisible();
+    }
     await expect(page.getByRole('table', { name: /Diff for/ })).toBeVisible();
-    await expect(page.getByRole('complementary', { name: 'Session details' })).toContainText('Input');
+    const details = page.locator('details.session-details');
+    await details.locator('summary').click();
+    await expect(details).toContainText('Tokens');
     await expect(page.locator('.provenance-item').first()).toBeVisible();
   });
 
   test('creates a collection against the API', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('button', { name: 'Collections', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Collections', exact: true }).click();
     await page.getByRole('button', { name: 'New collection' }).click();
     const name = `E2E evidence ${Date.now()}`;
     await page.getByLabel('Name').fill(name);
@@ -276,13 +285,13 @@ test.describe('Memoar live Compose browser acceptance', () => {
     const responsePromise = page.waitForResponse((response) => response.url().endsWith('/v1/collections') && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Create collection' }).click();
     expect((await responsePromise).ok()).toBeTruthy();
-    await expect(page.getByRole('heading', { name })).toBeVisible();
+    await expect(page.getByRole('button', { name: `Open ${name}` })).toBeVisible();
   });
 
   test('requires review before sharing and exposes transfer management', async ({ page }) => {
     await signIn(page);
     await openFixture(page);
-    await page.getByRole('button', { name: 'Share' }).click();
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Review what leaves your archive' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Create secure link/ })).toHaveCount(0);
     await page.getByRole('button', { name: /Approve redactions/ }).click();
@@ -302,7 +311,7 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await expect(page.getByText(String(body.token), { exact: false })).toBeVisible();
 
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Sharing', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Shared', exact: true }).click();
 
     // The grant must reach the Sharing view without a reload — its list is
     // loaded with the dashboard, which predates the link. The token itself is
@@ -322,42 +331,38 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await expect(page.getByRole('heading', { name: 'Session transfers' })).toBeVisible();
   });
 
-  test('keeps a rearranged workspace across a reload', async ({ page }) => {
+  test('jumps to a session from the command palette and moves with j and k', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('button', { name: 'Overview', exact: true }).first().click();
-    const tile = page.getByRole('region', { name: /Machines tile/ });
-    await expect(tile).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+k');
+    const palette = page.getByRole('dialog', { name: 'Command palette' });
+    await expect(palette).toBeVisible();
+    await page.getByRole('combobox', { name: 'Command' }).fill(fixtureTitle.slice(0, 12));
+    await page.keyboard.press('Enter');
+    await expect(palette).toHaveCount(0);
+    await expect(page).toHaveURL(/\/sessions\//);
 
-    const before = await tile.boundingBox();
-    // Keyboard rather than a synthetic drag: it exercises the same layout code
-    // and does not depend on hit-testing a 26px corner in CI.
-    await tile.focus();
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.press('Shift+ArrowDown');
-    const after = await tile.boundingBox();
-    expect(after!.x, 'the tile should have moved a column left').toBeLessThan(before!.x);
-    expect(after!.height, 'shift and arrow should have made the tile taller').toBeGreaterThan(before!.height);
-
-    // A layout that is not remembered is not a layout.
-    await page.reload();
-    await page.getByRole('button', { name: 'Overview', exact: true }).first().click();
-    const restored = await page.getByRole('region', { name: /Machines tile/ }).boundingBox();
-    expect(restored!.x).toBeCloseTo(after!.x, 0);
-    expect(restored!.height).toBeCloseTo(after!.height, 0);
+    // The list and the transcript are both live: j moves the selection and
+    // the transcript beside it follows without a page load.
+    const before = page.url();
+    await page.locator('body').focus();
+    await page.keyboard.press('j');
+    await expect.poll(() => page.url()).not.toBe(before);
+    await expect(page.getByRole('group', { name: 'Session actions' })).toBeVisible();
   });
 
   test('builds a cited pack preview and queues a live conversion', async ({ page }) => {
     await signIn(page);
     await openFixture(page);
     const packResponse = page.waitForResponse((response) => response.url().endsWith('/v1/pack') && response.request().method() === 'POST');
-    await page.getByRole('button', { name: 'Pack preview' }).click();
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Pack preview' }).click();
     expect((await packResponse).ok()).toBeTruthy();
     const packDialog = page.getByRole('dialog', { name: 'Pack preview' });
-    await expect(packDialog).toContainText(/excerpts/);
-    await expect(packDialog).toContainText(/turns \d+–\d+/);
+    await expect(packDialog).toContainText(/excerpt/);
+    await expect(packDialog).toContainText(/turns \d+ to \d+/);
     await page.getByRole('button', { name: 'Close dialog' }).click();
 
-    await page.getByRole('button', { name: 'Convert' }).click();
+    await page.getByRole('button', { name: 'Convert', exact: true }).click();
     await page.getByRole('radio', { name: /Codex/ }).click();
     const conversionResponse = page.waitForResponse((response) => response.url().endsWith('/v1/convert') && response.request().method() === 'POST');
     await page.getByRole('button', { name: /Queue conversion/ }).click();
@@ -367,13 +372,14 @@ test.describe('Memoar live Compose browser acceptance', () => {
 
   test('shows registered machines, source state, API keys, and the live MCP endpoint', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('button', { name: 'Machines & sources' }).first().click();
-    await expect(page.locator('.machine-card').first()).toBeVisible();
+    await page.getByRole('link', { name: 'Machines', exact: true }).click();
+    await expect(page.locator('.machine').first()).toBeVisible();
     await expect(page.locator('.source-row').first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'API keys and MCP' }).click();
     await expect(page.getByRole('heading', { name: 'Remote MCP' })).toBeVisible();
-    await expect(page.locator('.endpoint-row code')).toContainText('/mcp');
+    await expect(page.locator('.mcp-section .command code').first()).toContainText('/mcp');
     await page.getByRole('button', { name: 'Create key' }).click();
     const keyName = `Playwright ${Date.now()}`;
     await page.getByLabel('Key name').fill(keyName);
@@ -386,7 +392,7 @@ test.describe('Memoar live Compose browser acceptance', () => {
   test('imports a consumer ZIP through machine-token delta, raw upload, manifest, and worker visibility', async ({ page }) => {
     test.setTimeout(90_000);
     await signIn(page);
-    await page.getByRole('button', { name: 'Import', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await page.getByLabel('Format').selectOption('chatgpt-export');
     await page.getByLabel('Archive file').setInputFiles('../contracts/fixtures/chatgpt-export/2026-08/session-1/input/export.zip');
     const machineToken = page.waitForResponse((response) => response.url().endsWith('/v1/auth/machine-token') && response.request().method() === 'POST');
@@ -404,6 +410,6 @@ test.describe('Memoar live Compose browser acceptance', () => {
     ).toBeTruthy();
     expect((await manifest).status()).toBe(202);
     await expect(page.getByRole('status', { name: 'Import progress' })).toContainText('ready', { timeout: 60_000 });
-    await expect(page.getByRole('button', { name: /Open imported session/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open session' })).toBeVisible();
   });
 });
