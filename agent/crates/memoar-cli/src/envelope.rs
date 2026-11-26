@@ -41,7 +41,11 @@ pub fn capabilities_value() -> Value {
         "bundleIntegrity": ["bundle-sha256", "file-sha256", "size"],
         "noClobber": true,
         "sources": SOURCES.iter().map(|source| source.id).collect::<Vec<_>>(),
-        "materializationTargets": ["claude-code", "codex", "antigravity-cli"]
+        "materializationTargets": ["claude-code", "codex", "antigravity-cli"],
+        // `memoar mcp` serves the archive's MCP tools over stdio.
+        "mcpStdio": true,
+        // The agents `memoar integrate` can register memoar with.
+        "integrations": crate::integrate::AGENTS.iter().map(|agent| agent.id).collect::<Vec<_>>()
     })
 }
 
@@ -74,6 +78,10 @@ pub fn introspect_value() -> Value {
             // "run memoar introspect for the command surface". Anything that
             // believed the answer concluded the command did not exist.
             { "name": "listen", "requiresAuth": true, "network": true },
+            { "name": "mcp", "requiresAuth": true, "network": true },
+            { "name": "mcp tools", "requiresAuth": true, "network": true },
+            { "name": "mcp call", "requiresAuth": true, "network": true },
+            { "name": "integrate", "requiresAuth": false, "network": false },
             { "name": "doctor", "requiresAuth": true, "network": true },
             { "name": "capabilities", "requiresAuth": false, "network": false },
             { "name": "introspect", "requiresAuth": false, "network": false }
