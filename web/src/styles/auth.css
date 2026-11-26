@@ -1,0 +1,12 @@
+/* Sign-in: one small centred form. */
+
+.auth-page { display: grid; min-height: 100vh; place-items: center; padding: var(--sp-6) var(--sp-5); background: var(--subtle); }
+.auth-card { width: min(100%, 320px); animation: fade-in var(--t-med) var(--ease); }
+.auth-brand { margin-bottom: var(--sp-6); font-size: var(--fs-base); font-weight: var(--fw-semibold); }
+.auth-card h1 { margin-bottom: var(--sp-5); font-size: var(--fs-title); letter-spacing: -0.011em; }
+.auth-card .button-primary { width: 100%; margin-top: var(--sp-1); }
+.auth-oauth { display: grid; gap: var(--sp-2); }
+.auth-oauth .button { width: 100%; }
+.auth-or { display: flex; gap: var(--sp-3); align-items: center; margin: var(--sp-4) 0; color: var(--text-2); font-size: var(--fs-2); }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.auth-foot { min-height: 20px; margin-top: var(--sp-5); color: var(--text-2); font-size: var(--fs-2); }

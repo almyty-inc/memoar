@@ -1,0 +1,99 @@
+/* Lists are rows separated by hairlines. 32px tall, 13px text. */
+
+.row-list { border-top: 1px solid var(--line); }
+.row {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: center;
+  min-height: var(--row-h);
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  transition: background-color var(--t-fast) var(--ease);
+}
+.row-button { width: 100%; color: var(--text); text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); text-decoration: none; }
+.row-button:hover, a.row:hover { background: var(--hover); }
+.row-button:focus-visible, a.row:focus-visible { outline: 0; background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.row-selected { background: var(--accent-softer); }
+.row-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-main strong { font-weight: var(--fw-medium); }
+.row-stack { display: grid; flex: 1; min-width: 0; gap: 1px; padding: var(--sp-1) 0; }
+.row-stack > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-stack .row-sub { color: var(--text-2); font-size: var(--fs-2); }
+.row-meta { flex: none; color: var(--text-2); font-size: var(--fs-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.row-actions { display: flex; flex: none; gap: var(--sp-1); align-items: center; }
+.row-detail { padding: var(--sp-3) var(--sp-3) var(--sp-4) var(--sp-6); border-bottom: 1px solid var(--line); background: var(--subtle); }
+
+/* Column headings over a table of rows. */
+.row-head { display: flex; gap: var(--sp-4); align-items: center; height: 28px; padding: 0 var(--sp-3); color: var(--text-2); font-size: var(--fs-2); border-bottom: 1px solid var(--line); }
+
+/* The session list. Full width it is a table; beside a transcript it keeps
+   source, title and time, which is what you scan by. */
+.timeline-page { display: flex; flex-direction: column; height: 100%; min-height: 0; container-type: inline-size; container-name: sessions; }
+.list-top { padding: var(--sp-4) var(--sp-5) 0; }
+.list-top .page-header { margin-bottom: var(--sp-3); }
+.list-toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin-bottom: var(--sp-3); }
+
+.session-cols {
+  display: grid;
+  grid-template-columns: 96px minmax(120px, 200px) minmax(0, 1fr) 112px 44px 60px;
+  grid-template-areas: "source project title machine time turns";
+  gap: var(--sp-4);
+  align-items: center;
+}
+.col-source { grid-area: source; }
+.col-project { grid-area: project; }
+.col-title { grid-area: title; }
+.col-machine { grid-area: machine; }
+.col-time { grid-area: time; }
+.col-turns { grid-area: turns; text-align: right; }
+
+@container sessions (max-width: 720px) {
+  .session-cols { grid-template-columns: 84px minmax(0, 1fr) 40px; grid-template-areas: "source title time"; gap: var(--sp-3); }
+  .session-cols .col-project, .session-cols .col-machine, .session-cols .col-turns { display: none; }
+  .col-time { text-align: right; }
+}
+
+.session-head { height: 28px; padding: 0 var(--sp-5); color: var(--text-2); font-size: var(--fs-2); border-bottom: 1px solid var(--line); }
+.session-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.virtual-list { position: relative; width: 100%; }
+.virtual-row { position: absolute; top: 0; left: 0; width: 100%; }
+.virtual-row.sticky { position: sticky; z-index: 2; }
+
+.day-header {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  height: var(--row-h);
+  padding: 0 var(--sp-5);
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+}
+.day-header span { color: var(--text-3); font-weight: var(--fw-normal); }
+
+.session-row {
+  height: var(--row-h);
+  padding: 0 var(--sp-5);
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.session-row:hover { background: var(--hover); }
+.session-row.row-selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.session-row:focus-visible { outline: 0; background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.session-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-row .col-source, .session-row .col-machine, .session-row .col-time, .session-row .col-turns { color: var(--text-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
+.session-row .col-project { color: var(--text-2); font-family: var(--mono); font-size: var(--fs-meta); }
+.session-row .col-title { font-size: var(--fs-base); }
+.session-row.row-selected .col-title { font-weight: var(--fw-medium); }
+
+.list-end { display: flex; gap: var(--sp-3); align-items: center; justify-content: center; height: 40px; color: var(--text-3); font-size: var(--fs-2); }
+
+/* Placeholder rows the same height as real ones, so nothing moves when data lands. */
+.skeleton { display: block; height: 10px; background: linear-gradient(90deg, var(--hover) 0%, var(--subtle) 50%, var(--hover) 100%); background-size: 200% 100%; border-radius: 3px; animation: shimmer 1.2s linear infinite; }
+.skeleton-row { display: flex; gap: var(--sp-4); align-items: center; height: var(--row-h); padding: 0 var(--sp-5); border-bottom: 1px solid var(--line); }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }

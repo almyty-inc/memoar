@@ -1,172 +1,144 @@
-/* Buttons, badges, inputs, switches, modals: everything reused across screens. */
+/* Controls: 28px tall, 4px radius, one hairline. */
 
-/* white-space: a label is one line. "Create key" wrapped to two at 390px and
-   the icon beside it centred against the block rather than against the word. */
 .button {
-  min-height: var(--h-md); display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
-  padding: 0 var(--sp-3); color: var(--text); background: var(--panel-raised); border: 1px solid var(--line);
-  border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-medium); cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: center;
+  height: var(--control-h);
+  padding: 0 var(--sp-4);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
-  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
 }
+.button:hover:not(:disabled) { background: var(--hover); }
+.button:disabled { color: var(--text-3); }
+.button-sm { height: 24px; padding: 0 var(--sp-3); font-size: var(--fs-2); }
+.button-primary { color: var(--accent-text); background: var(--accent-bg); border-color: var(--accent-bg); }
+.button-primary:hover:not(:disabled) { background: var(--accent-bg); filter: brightness(1.08); }
+.button-primary:disabled { color: var(--accent-text); opacity: .5; }
+.button-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.button-ghost:hover:not(:disabled) { color: var(--text); }
+.button-danger { color: var(--danger); }
+.button svg { flex: none; }
 
-.button:hover:not(:disabled) { background: var(--panel-hover); }
-.button:active:not(:disabled) { transform: translateY(1px); }
-.button:disabled { opacity: var(--opacity-inactive); cursor: not-allowed; }
-
-.button-primary { color: #fbfbf8; background: var(--text); border-color: var(--text); }
-.button-primary:hover:not(:disabled) { background: #2b2e31; border-color: #2b2e31; }
-.button-ghost { color: var(--muted); background: transparent; border-color: transparent; }
-.button-ghost:hover:not(:disabled) { color: var(--text); background: var(--panel-hover); border-color: transparent; }
-.button-danger { color: #fbf1f1; background: var(--danger); border-color: var(--danger); }
-.button-sm { min-height: var(--h-sm); padding-inline: var(--sp-2); font-size: var(--fs-xs); }
-.button-lg { min-height: var(--h-lg); padding-inline: var(--sp-4); }
-
-.icon-button { width: var(--h-md); height: var(--h-md); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: var(--r-md); cursor: pointer; }
-.icon-button:hover { color: var(--text); background: var(--sidebar); border-color: var(--line); }
-
-.badge { min-height: var(--h-xs); display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-2); color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-xs); font-weight: var(--fw-normal); white-space: nowrap; }
-.source-badge { min-height: var(--h-xs); display: inline-flex;
- align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2); color: var(--text); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: var(--fw-semibold); white-space: nowrap; }
-.source-mark { width: 6px; height: 6px; border-radius: 50%; }
-.source-claude .source-mark { background: #855026; box-shadow: 0 0 7px #85502680; }
-.source-codex .source-mark { background: var(--acid); box-shadow: 0 0 7px #3d7a1f80; }
-.source-antigravity .source-mark { background: var(--cyan); box-shadow: 0 0 7px #1f6f9680; }
-.source-cursor .source-mark { background: var(--violet); box-shadow: 0 0 7px #5a46b880; }
-.source-goose .source-mark { background: var(--pink); box-shadow: 0 0 7px #a13a6b80; }
-
-.redaction-clear { color: var(--acid-strong); border-color: var(--line); background: var(--sidebar); }
-.redaction-reviewed { color: #204a60; border-color: #b4cbd6; background: var(--surface-cyan); }
-.redaction-findings { color: var(--warning); border-color: var(--line-warning); background: var(--surface-warning); }
-.status-active { color: var(--acid-strong); background: var(--sidebar); border-color: var(--line); }
-.status-active > span:first-child { width: 6px; height: 6px; background: var(--acid); border-radius: 50%; box-shadow: 0 0 7px var(--acid); }
-.status-dot { width: 8px; height: 8px; display: inline-block; border-radius: 50%; }
-.status-online { background: var(--acid); box-shadow: 0 0 6px var(--acid); }
-.status-offline { background: #96928b; }
-.status-never_connected { background: var(--warning); }
-
-.command-search { width: 260px; height: var(--h-md); gap: var(--sp-2); padding: 0 var(--sp-3); color: var(--quiet); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-md); cursor: pointer; text-align: left; }
-.command-search span { flex: 1; min-width: 0; overflow: hidden; font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
-/* --fs-xs, not --fs-label: 11px is reserved for uppercase mono labels, and a
-   key cap is a glyph rather than a label. */
-kbd { display: inline-flex; align-items: center; gap: var(--sp-05); padding: var(--sp-05) var(--sp-1); color: var(--quiet); background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-xs); }
-
-
-.select-control { height: var(--h-md); display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); color: var(--muted); background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-md); }
-.select-control select { max-width: 180px; padding: 0 var(--sp-5) 0 0; color: inherit; background: transparent; border: 0; outline: 0; font-size: var(--fs-sm); appearance: none; cursor: pointer; }
-.select-control svg:last-child { margin-left: calc(var(--sp-5) * -1); pointer-events: none; }
-.mobile-filter-button { display: none; }
-/* A count is a number, not a label, so it does not get the 11px that only
-   uppercase mono labels are allowed. */
-.filter-count { min-width: var(--h-2xs); height: var(--h-2xs); display: inline-flex; align-items: center; justify-content: center; color: var(--acid-ink); background: var(--acid); border-radius: var(--r-full); font-size: var(--fs-xs); }
-
-.shortcut-hint { color: var(--quiet); }
-
-.field-label { display: grid; gap: var(--sp-2); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
-
-/*
-  One text input.
-
-  This rule was written three times — here, again for the sign-in form, and
-  again for the pack budget row — identical but for the padding, which is the
-  only reason they looked the same. One base; the forms that use it list
-  themselves here rather than restating it.
-*/
-.field-label input, .field-label select, .field-label textarea, .form-grid select,
-.auth-form > label input, .budget-row input, .budget-row select {
-  width: 100%; min-height: var(--h-lg); padding: var(--sp-2) var(--sp-3); color: var(--text); background: var(--panel-hover);
-  border: 1px solid var(--line); border-radius: var(--r-md); outline: 0; resize: vertical; font-size: var(--fs-base); font-weight: var(--fw-normal);
+.icon-button {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
 }
-.field-label input::placeholder, .field-label textarea::placeholder, .auth-form > label input::placeholder { color: var(--quiet); }
+.icon-button:hover:not(:disabled) { color: var(--text); background: var(--hover); }
 
-/* One select treatment everywhere. Left to the platform, the same control is a
-   rounded pill in one panel and a bordered box in the next. */
-.field-label select, .form-grid select, .budget-row select {
+input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-h);
+  padding: 0 var(--sp-3);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  font-size: var(--fs-base);
+}
+textarea { height: auto; padding: var(--sp-2) var(--sp-3); resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--text-3); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+input[type="checkbox"], input[type="radio"] { margin: 0; accent-color: var(--accent); }
+/* The same chevron on every platform, rather than each OS's own spinner. */
+select {
+  padding-right: 26px;
   appearance: none;
-  padding-right: var(--sp-8);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%235f6265' stroke-width='1.5'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238a8a94' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right var(--sp-3) center;
+  background-position: right 9px center;
   cursor: pointer;
 }
-/* A filter that lives in a panel header sits on one line with its label. */
-.inline-filter { grid-auto-flow: column; align-items: center; gap: var(--sp-3); color: var(--muted); font-weight: var(--fw-medium); }
-.inline-filter select { min-height: var(--h-md); width: auto; font-size: var(--fs-sm); }
+select:hover { border-color: color-mix(in srgb, var(--text-3) 60%, var(--line)); }
+input:not([type="checkbox"], [type="radio"], [type="file"]):hover { border-color: color-mix(in srgb, var(--text-3) 60%, var(--line)); }
+input, select, textarea { transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 
-.form-stack { display: grid; gap: var(--sp-5); }
+/* A plain dropdown in a filter row: as wide as its value. */
+.select-plain { width: auto; max-width: 220px; height: 26px; color: var(--text); font-size: var(--fs-2); background-color: var(--bg); }
 
-.toggle-row { min-height: var(--h-2xl); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); }
+.field-label { display: grid; gap: var(--sp-1); color: var(--text-2); font-size: var(--fs-2); font-weight: var(--fw-medium); }
+.field-label > input, .field-label > select, .field-label > textarea { color: var(--text); font-weight: var(--fw-normal); }
+.field-empty { color: var(--text-2); font-weight: var(--fw-normal); }
+.form-stack { display: grid; gap: var(--sp-4); }
+.form-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: end; }
+.form-row > .field-label { flex: 1 1 200px; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
 
-.toggle-row label span, .toggle-row label small { display: block; }
-.toggle-row label span { font-size: var(--fs-base); font-weight: var(--fw-semibold); }
-.toggle-row label small { margin-top: var(--sp-1); color: var(--quiet); font-size: var(--fs-xs); }
-.switch { width: var(--switch-w); height: var(--h-xs); flex: 0 0 auto; padding: var(--sp-05); background: var(--line-soft); border: 1px solid var(--line); border-radius: var(--r-full); cursor: pointer; }
-.switch > span { width: var(--switch-knob); height: var(--switch-knob); display: block; background: #7d7a75; border-radius: 50%; transition: transform 140ms ease, background 140ms ease; }
-.switch-on { background: #cedcba; border-color: #b1c68b; }
-.switch-on > span { background: var(--acid); transform: translateX(var(--switch-travel)); }
-.switch.compact { width: var(--switch-w-sm); height: var(--h-2xs); }
-.switch.compact > span { width: var(--switch-knob-sm); height: var(--switch-knob-sm); }
-.switch.compact.switch-on > span { transform: translateX(var(--switch-travel-sm)); }
+/* A short label in a row, such as a scope or a permission. Text, not a pill. */
+.badge { display: inline-flex; gap: var(--sp-1); align-items: center; color: var(--text-2); font-size: var(--fs-2); white-space: nowrap; }
+.badge.text-warning { color: var(--warning); }
+.badge-box { padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-control); line-height: 18px; }
 
+/* The on-off switch. */
+.toggle-row { display: flex; gap: var(--sp-5); align-items: center; justify-content: space-between; min-height: var(--row-h); padding: var(--sp-2) 0; }
+.toggle-row label { display: grid; gap: 1px; }
+.toggle-row small { color: var(--text-2); font-size: var(--fs-2); }
+.switch { position: relative; flex: none; width: 28px; height: 16px; padding: 0; background: var(--line); border: 0; border-radius: 8px; }
+.switch span { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--bg); border-radius: 50%; transition: transform 120ms ease; }
+.switch-on { background: var(--accent-bg); }
+.switch-on span { transform: translateX(12px); }
 
-/*
-  Having nothing to show, and failing: the two states every screen needs and
-  the two that were written per-screen or not at all.
+/* Text tabs, underlined when current. */
+.tabs { display: flex; gap: var(--sp-5); border-bottom: 1px solid var(--line); }
+.tabs button, .tabs a { height: var(--row-h); padding: 0; color: var(--text-2); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: var(--fs-base); text-decoration: none; }
+.tabs button:hover, .tabs a:hover { color: var(--text); }
+.tabs [aria-selected="true"], .tabs [aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--fw-medium); }
+.tabs .count { margin-left: var(--sp-1); color: var(--text-2); font-weight: var(--fw-normal); }
 
-  There was one designed empty state, used on the timeline, and a bare
-  `.empty-note` paragraph — the most-used empty state in the product, on nine
-  screens — with no rule anywhere, so it rendered as flush-left body copy in a
-  tile with six hundred pixels of air under it. Two languages for one
-  situation. One family now: the same centred, quiet voice, at two sizes,
-  because a tile and a page have different room.
-*/
-.no-filter-results, .empty-state { min-height: var(--card-min); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); text-align: center; }
-.no-filter-results h1, .no-filter-results h3, .empty-state h1, .empty-state h3 { margin: 0; font-size: var(--fs-lg); }
-.no-filter-results p, .empty-state p { max-width: 48ch; margin: 0; color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-normal); }
-.empty-state > svg { color: var(--acid); }
+/* An inline notice: a hairline box with one sentence and maybe an action. */
+.notice { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-4); align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-4); background: var(--subtle); border: 1px solid var(--line); border-radius: var(--r-popover); font-size: var(--fs-base); }
+.notice p { color: var(--text-2); }
+.notice strong { font-weight: var(--fw-semibold); }
+.notice-error { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.notice-error strong { color: var(--danger); }
+.notice-warning strong { color: var(--warning); }
 
-/* The compact member of the same family: one sentence, centred in whatever
-   room the container has, rather than flush left against its top-left corner. */
-.empty-note, .collection-empty, .field-empty {
-  display: block; margin: auto; padding: var(--sp-5) var(--sp-3); max-width: 48ch;
-  color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); text-align: center;
-}
-/* Inside a field, the note stands where the control it replaces would. */
-.field-empty { min-height: var(--h-lg); display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: var(--sp-2) 0; text-align: left; }
-.collection-empty { margin: 0 0 var(--sp-3); padding: var(--sp-3) 0; text-align: left; }
+/* The menu behind a "More" button. */
+.menu-anchor { position: relative; }
+.menu { position: absolute; z-index: 40; top: calc(100% + 4px); right: 0; display: grid; min-width: 180px; padding: var(--sp-1); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-popover); }
+.menu-up { top: auto; bottom: calc(100% + 4px); left: 0; right: auto; }
+.menu button { height: var(--control-h); padding: 0 var(--sp-3); text-align: left; background: none; border: 0; border-radius: var(--r-control); font-size: var(--fs-base); }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--hover); outline: 0; }
+.menu button:disabled { color: var(--text-3); }
+.menu .menu-danger { color: var(--danger); }
+.menu .menu-meta { padding: var(--sp-2) var(--sp-3); color: var(--text-2); font-size: var(--fs-2); border-bottom: 1px solid var(--line); margin-bottom: var(--sp-1); overflow-wrap: anywhere; }
 
-/*
-  A failure, anywhere.
+/* Dialogs. */
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: start center; padding: 12vh var(--sp-5) var(--sp-5); background: rgb(0 0 0 / 35%); overflow-y: auto; }
+.modal-card { width: min(100%, 480px); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-popover); }
+.modal-card:focus { outline: 0; }
+.modal-card > header { display: flex; gap: var(--sp-4); align-items: start; justify-content: space-between; padding: var(--sp-4) var(--sp-5) 0; }
+.modal-card > header h2 { font-size: var(--fs-prose); }
+.modal-card > header p { margin-top: var(--sp-1); color: var(--text-2); font-size: var(--fs-2); }
+.modal-body { display: grid; gap: var(--sp-4); padding: var(--sp-4) var(--sp-5); }
+.modal-actions { display: flex; gap: var(--sp-3); justify-content: flex-end; padding: var(--sp-3) var(--sp-5) var(--sp-4); }
 
-  Four of these were an unclassed <p role="alert"> with no matching selector in
-  any stylesheet, so a failed conversion and a failed pack build read as
-  ordinary body copy. This is the sign-in form's error, which was the only one
-  that had ever been designed, promoted to the generic it always was.
-*/
-.error-note {
-  display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; padding: var(--sp-3);
-  color: var(--danger); background: var(--surface-danger); border: 1px solid var(--line-danger);
-  border-radius: var(--r-md); font-size: var(--fs-sm); line-height: var(--lh-normal); overflow-wrap: anywhere;
-}
-.error-note svg { flex: 0 0 auto; margin-top: 1px; }
+/* Pick one of a few, as rows. */
+.choice-list { display: grid; border-top: 1px solid var(--line); }
+.choice { display: flex; gap: var(--sp-3); align-items: center; min-height: var(--row-h); padding: var(--sp-2) var(--sp-2); text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); }
+.choice:hover:not(:disabled) { background: var(--hover); }
+.choice[aria-checked="true"] { background: var(--accent-softer); }
+.choice strong { font-weight: var(--fw-medium); }
+.choice small { margin-left: auto; color: var(--text-2); font-size: var(--fs-2); }
+label.choice { cursor: pointer; }
 
-/* The whole screen failing, rather than one action in it. */
-.connection-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-4); min-height: calc(100vh - var(--topbar-h) - var(--sp-16)); text-align: center; }
-.connection-error > svg { color: var(--danger); }
-.connection-error h1 { margin: 0 0 var(--sp-2); font-size: var(--fs-xl); }
-.connection-error p { max-width: 48ch; margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); overflow-wrap: anywhere; }
-
-/* Not a failure: something the reader has not done yet, said beside the
-   control that is waiting for it. */
-
-.field-hint { display: flex; align-items: center; gap: var(--sp-2); margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); }
-.field-hint svg { flex: 0 0 auto; color: var(--quiet); }
-
-.modal-backdrop { position: fixed;
- inset: 0; z-index: 120; display: grid; place-items: center; padding: var(--sp-5); background: rgb(23 25 27 / 34%); backdrop-filter: blur(7px); }
-.modal-card { width: min(640px, 100%); max-height: min(820px, calc(100vh - var(--sp-10))); overflow-y: auto; background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); animation: modal-in 160ms ease-out; }
-.modal-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-5); padding: var(--sp-5); border-bottom: 1px solid var(--line-soft); }
-.modal-card h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-lg); letter-spacing: -.02em; }
-.modal-card header p { margin: 0; max-width: var(--measure); color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-normal); }
-.modal-body { padding: var(--sp-5); }
-.modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); border-top: 1px solid var(--line-soft); }
+/* A command to copy. */
+.command { display: flex; gap: var(--sp-3); align-items: center; min-height: var(--row-h); padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3); background: var(--subtle); border: 1px solid var(--line); border-radius: var(--r-control); }
+.command code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-2); }
+.command .prompt { color: var(--text-3); font-family: var(--mono); font-size: var(--fs-2); }
