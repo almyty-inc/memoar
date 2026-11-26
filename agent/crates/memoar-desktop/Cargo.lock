@@ -1697,7 +1697,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "memoar-canonical"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1705,7 +1705,7 @@ dependencies = [
 
 [[package]]
 name = "memoar-cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "clap",
@@ -1722,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "memoar-connectors"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "memoar-daemon"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "hex",
@@ -1750,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "memoar-desktop"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "env_logger",
@@ -1767,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "memoar-materializer"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "base64 0.23.1",
  "chrono",

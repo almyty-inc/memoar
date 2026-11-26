@@ -54,22 +54,22 @@ fn verdict(
     })
 }
 
-/// The incident: a watch in a terminal, the terminal closed, no service.
-/// Nothing on disk changed, so `status` used to look exactly as it did the
-/// day before.
+/// The service is optional. Without one, capture runs when `memoar sync`
+/// does, and the report says so without calling it a failure. The backlog is
+/// still named, so nothing waiting goes unmentioned.
 #[test]
-fn nothing_running_and_no_service_is_not_ok() {
+fn no_service_is_a_choice_not_a_failure() {
     let health = verdict(
         &ServiceView::NotInstalled,
         false,
         None,
         &activity(3, 1_400, Some(1_500)),
     );
-    assert_eq!((health.state, health.ok), ("not_running", false));
+    assert_eq!((health.state, health.ok), ("not_running", true));
     assert!(
         health
             .summary
-            .starts_with("background capture is not running"),
+            .starts_with("no background service is installed"),
         "{}",
         health.summary
     );

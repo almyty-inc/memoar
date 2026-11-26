@@ -1,8 +1,8 @@
 {
   "name": "Memoar",
   "id": "dev.memoar.desktop",
-  "version": "0.4.1",
-  "build": 3,
+  "version": "0.4.2",
+  "build": 4,
   "rust": ".",
   "root": "App"
 }
