@@ -44,6 +44,12 @@ fn main() -> ExitCode {
         }
         Err(error) => return render_error(cli.json, error),
     };
+    if matches!(cli.command, Command::Tui) {
+        return match memoar_cli::tui(cli.json, &paths) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => render_error(cli.json, error),
+        };
+    }
     match execute(&cli, &paths) {
         Ok(output) => {
             if cli.json {

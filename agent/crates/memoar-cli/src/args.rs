@@ -72,6 +72,8 @@ pub enum Command {
     Listen(ListenArgs),
     /// Check the configuration, queue, credentials, and archive connection.
     Doctor,
+    /// Browse, search, read and convert archived sessions in the terminal.
+    Tui,
     /// Print what this client supports, as JSON.
     Capabilities,
     /// Print the command surface and exit codes, as JSON.
