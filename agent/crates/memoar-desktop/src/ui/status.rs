@@ -1,12 +1,14 @@
 //! The status screen: what this machine captured, what failed, and the
 //! controls that change it, as grouped lists of facts.
 
+use nsh_core::ui::FontWeight;
 use nsh_core::ui::prelude::*;
 
+use super::agents;
 use super::controls::{button, switch};
 use super::look::{look, motion};
 use super::style::{
-    BASE, SMALL, below, fact, fact_id, failure_text, group, maybe, note, row, section, title,
+    BASE, SMALL, below, fact, fact_id, failure_text, label, maybe, note, row, section, title,
 };
 use crate::capture::{Redaction, Status};
 use crate::controller::Controller;
@@ -127,7 +129,7 @@ fn header(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> impl
 
 fn facts(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> impl IntoElement {
     let held = move || status().held.is_some_and(|held| held > 0);
-    group()
+    view()
         .child(fact(true, "Archive", move || {
             status().endpoint.unwrap_or_default()
         }))
@@ -150,14 +152,41 @@ fn facts(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> impl 
             let status = status();
             words::waiting(status.queued, status.retrying)
         }))
-        .child(fact(false, "Sources", move || {
-            words::sources(&status().sources)
-        }))
+        .child(sources(status))
         .child(when(held, move || {
             fact(false, "Held back", move || {
                 words::count(status().held, "artifact")
             })
         }))
+}
+
+/// The agents found on this machine, each with its mark.
+fn sources(status: impl Fn() -> Status + Copy + 'static) -> impl IntoElement {
+    row(false).child(label("Sources")).child(dynamic(move || {
+        let names = status().sources;
+        if names.is_empty() {
+            return text(words::sources(&names))
+                .text_size(px(14.0))
+                .font_weight(FontWeight::MEDIUM)
+                .into_element();
+        }
+        let mut found = view().flex_row().flex_wrap().gap_x(px(14.0)).gap_y(px(6.0));
+        for name in names {
+            found = found.child(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(7.0))
+                    .child(agents::mark(&name, 20.0))
+                    .child(
+                        text(name)
+                            .text_size(px(14.0))
+                            .font_weight(FontWeight::MEDIUM),
+                    ),
+            );
+        }
+        found.into_element()
+    }))
 }
 
 /// What is masked before upload. The window has to show it and let it be
@@ -176,7 +205,7 @@ fn masks(ctl: Controller) -> impl IntoElement {
         ctl.set_redaction(next);
     };
     view().child(section("Masked before upload")).child(
-        group()
+        view()
             .child(mask(
                 true,
                 "Secrets such as keys and tokens",
@@ -209,7 +238,12 @@ fn mask(
     press: impl Fn() + 'static,
 ) -> impl IntoElement {
     row(first)
-        .child(text(label).text_size(px(BASE)).flex_1())
+        .child(
+            text(label)
+                .text_size(px(14.0))
+                .font_weight(FontWeight::MEDIUM)
+                .flex_1(),
+        )
         .child(switch(label, id, on, press))
 }
 

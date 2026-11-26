@@ -3,6 +3,7 @@
 
 use nsh_core::ui::prelude::*;
 
+use super::brand::mark;
 use super::controls::{button, field, segment};
 use super::look::look;
 use super::style::{below, failure_text, maybe, note, title};
@@ -38,13 +39,14 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
 
     let form = view()
         .w(px(WIDTH))
-        .child(title("Sign in to your archive"))
+        .child(mark(36.0))
+        .child(below(16.0, title("Sign in to your archive")))
         .child(below(
-            4.0,
+            6.0,
             note(|| "The command-line tool here uses the same sign-in.".to_owned()),
         ))
         .child(below(
-            20.0,
+            24.0,
             field(
                 "Archive address",
                 "endpoint",
@@ -69,10 +71,10 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
             view()
                 .mt(px(20.0))
                 .flex_row()
-                .p(px(2.0))
-                .gap(px(2.0))
-                .rounded(px(l.radius))
-                .bg(l.hover)
+                .p(px(3.0))
+                .gap(px(3.0))
+                .rounded(px(11.0))
+                .bg(l.inset)
                 .child(segment(
                     "Email and password",
                     "use-password",
@@ -131,5 +133,5 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
             submit,
         )));
 
-    view().items_center().pt(px(36.0)).child(form)
+    view().items_center().pt(px(12.0)).child(form)
 }

@@ -1,5 +1,8 @@
-//! The window: one screen for signing in, one for everything after.
+//! The window: almyty's product field, the memoar title bar, and one card
+//! floating on the field that holds the screen: sign-in, or everything after.
 
+mod agents;
+pub(crate) mod brand;
 mod chrome;
 mod controls;
 mod look;
@@ -7,7 +10,9 @@ mod sign_in;
 mod status;
 mod style;
 
+use nsh_core::ui::desktop::title_bar;
 use nsh_core::ui::prelude::*;
+use nsh_core::{BoxShadow, Color};
 
 use crate::controller::Controller;
 use look::look;
@@ -32,43 +37,90 @@ fn screen_of(ctl: Controller) -> Screen {
     }
 }
 
+/// The card's float: almyty's 0 20px 50px of deep blue at 12%.
+fn float() -> [BoxShadow; 1] {
+    [BoxShadow {
+        offset_x: px(0.0),
+        offset_y: px(20.0),
+        blur: px(50.0),
+        spread: px(0.0),
+        color: Color::rgba(20, 50, 110, 31),
+        inset: false,
+    }]
+}
+
+fn content(ctl: Controller) -> impl IntoElement {
+    let screen = computed(move || screen_of(ctl));
+    view()
+        .flex_1()
+        .child(when(
+            move || screen.get() == Screen::Fatal,
+            move || {
+                style::note(move || {
+                    format!(
+                        "Memoar cannot start: {}",
+                        ctl.fatal.get().unwrap_or_default()
+                    )
+                })
+            },
+        ))
+        .child(when(
+            move || screen.get() == Screen::Loading,
+            || style::note(|| "Reading this machine's configuration.".to_owned()),
+        ))
+        .child(when(
+            move || screen.get() == Screen::SignIn,
+            move || sign_in::screen(ctl),
+        ))
+        .child(when(
+            move || screen.get() == Screen::Status,
+            move || status::screen(ctl),
+        ))
+}
+
 pub(crate) fn root(ctl: Controller) -> impl IntoElement {
     let l = look();
-    let screen = computed(move || screen_of(ctl));
-    let root = view().flex_1().bg(l.page).text_color(l.text);
-    let root = match l.font {
-        Some(family) => root.font_family(family),
-        None => root,
-    };
-    root.child(chrome::bar()).child(
-        scroll().flex_1().child(
+    let [from, via, to] = l.field;
+    let card = view()
+        .flex_1()
+        .bg(l.canvas)
+        .rounded(px(18.0))
+        .border(px(1.0))
+        .border_color(l.rule)
+        .shadow(float())
+        .overflow_hidden()
+        .child(
+            scroll().flex_1().child(
+                view()
+                    .min_h(px(520.0))
+                    .px(px(32.0))
+                    .pt(px(28.0))
+                    .pb(px(20.0))
+                    .child(content(ctl))
+                    .child(below_all(brand::endorsement())),
+            ),
+        );
+    view()
+        .flex_1()
+        .bg_linear_to_br()
+        .gradient_from(from)
+        .gradient_via(via)
+        .gradient_via_position(percentage(0.45))
+        .gradient_to(to)
+        .text_color(l.text)
+        .font_family(brand::SANS)
+        .child(chrome::bar())
+        .child(
             view()
-                .px(px(24.0))
-                .pt(px(20.0))
-                .pb(px(24.0))
-                .child(when(
-                    move || screen.get() == Screen::Fatal,
-                    move || {
-                        style::note(move || {
-                            format!(
-                                "Memoar cannot start: {}",
-                                ctl.fatal.get().unwrap_or_default()
-                            )
-                        })
-                    },
-                ))
-                .child(when(
-                    move || screen.get() == Screen::Loading,
-                    || style::note(|| "Reading this machine's configuration.".to_owned()),
-                ))
-                .child(when(
-                    move || screen.get() == Screen::SignIn,
-                    move || sign_in::screen(ctl),
-                ))
-                .child(when(
-                    move || screen.get() == Screen::Status,
-                    move || status::screen(ctl),
-                )),
-        ),
-    )
+                .flex_1()
+                .px(px(14.0))
+                .pb(px(14.0))
+                .pt(move || px(if title_bar().top.0 > 0.0 { 0.0 } else { 14.0 }))
+                .child(card),
+        )
+}
+
+/// The endorsement, pushed to the bottom of the card.
+fn below_all(child: impl IntoElement) -> impl IntoElement {
+    view().mt(px(28.0)).child(child)
 }

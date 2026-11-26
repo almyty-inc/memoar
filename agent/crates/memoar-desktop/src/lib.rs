@@ -29,10 +29,19 @@ pub use capture::{LastRun, Redaction, State, Status};
 pub use failure::{Failure, FailureKind};
 pub use paths::Paths;
 
-/// The app's UI set (`nsh.json` `"rust"`).
+/// The app's UI set (`nsh.json` `"rust"`), with the files in `assets/`: the
+/// fonts, which the engine registers before the first render.
 #[native_module("memoar-desktop/native")]
 fn native(registry: &mut Registry) {
     registry.register::<App>();
+    registry.assets(assets!());
+}
+
+/// The fonts in `assets/fonts`, for a runner that does not load the UI set's
+/// assets (`src/main.rs`): Manrope and JetBrains Mono.
+#[must_use]
+pub fn fonts() -> [&'static [u8]; 2] {
+    [ui::brand::MANROPE_TTF, ui::brand::MONO_TTF]
 }
 
 /// The application's root component.
