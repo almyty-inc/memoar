@@ -31,7 +31,7 @@ const DEFAULT_DOWNLOAD_BASE = "https://github.com/almyty-inc/memoar/releases/dow
  * A test holds this to the version in agent/Cargo.toml, because it selects the
  * release tag the binary is fetched from.
  */
-const AGENT_VERSION = "0.4.1";
+const AGENT_VERSION = "0.4.2";
 
 const TARGETS = Object.freeze({
   "darwin-arm64": "aarch64-apple-darwin",

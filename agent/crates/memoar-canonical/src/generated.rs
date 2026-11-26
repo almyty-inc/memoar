@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const CONTRACT_VERSION: &str = "0.4.1";
+pub const CONTRACT_VERSION: &str = "0.4.2";
 
 pub type Uuid = String;
 
