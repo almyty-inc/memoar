@@ -1,16 +1,18 @@
-import { TriangleAlert } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { isTyping } from '../components/Shell';
 import { memoarApi } from '../lib/api';
 import { DEFAULT_PACK_TOKEN_BUDGET } from '../lib/limits';
 import type { Collection as CollectionRecord, ConversionJob, Machine, PackResponse, SessionDetailData } from '../lib/types';
 import { CollectionModal } from './session-detail/CollectionModal';
-import { ConversationColumn } from './session-detail/ConversationColumn';
 import { ConvertModal } from './session-detail/ConvertModal';
 import { DeleteSessionModal } from './session-detail/DeleteSessionModal';
 import { PackModal } from './session-detail/PackModal';
+import { SessionDetails } from './session-detail/SessionDetails';
 import { SessionHeader } from './session-detail/SessionHeader';
-import { SessionInspector } from './session-detail/SessionInspector';
 import { ShareReviewModal } from './session-detail/ShareReviewModal';
+import { Transcript } from './session-detail/Transcript';
+import { SESSION_ACTION_EVENT, type SessionAction } from './session-detail/session-actions';
+import { useSessionAnnotations } from './session-detail/use-annotations';
 
 export function SessionDetailView({ detail, collections, machines, onBack, onBuildPack, onConvert, onConversionStatus, onDeleted, onArchiveChanged }: {
   detail: SessionDetailData;
@@ -29,6 +31,7 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   const [convertOpen, setConvertOpen] = useState(false);
   const [packOpen, setPackOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [collectionOpen, setCollectionOpen] = useState(false);
   // The review id, not just the fact of approval: the contract requires it to
   // create a link, so a link can only exist for an approved mask.
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -40,65 +43,14 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
   const [packLoading, setPackLoading] = useState(false);
   const [conversion, setConversion] = useState<ConversionJob | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // The pack controls drive the request. They were a readOnly number and a
-  // disabled select, so the budget and freshness shown were never the ones used.
+  const [notice, setNotice] = useState<string | null>(null);
   const [packBudget, setPackBudget] = useState(DEFAULT_PACK_TOKEN_BUDGET);
-
   const [packFreshness, setPackFreshness] = useState<'strict' | 'mixed'>('mixed');
   const [machineId, setMachineId] = useState('');
-  const [collectionOpen, setCollectionOpen] = useState(false);
-  const [pinId, setPinId] = useState<string | null>(null);
-  const [tags, setTags] = useState<string[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const session = detail.session;
-  // The archive knows machines by id; the name comes from the machine list the
-  // app already holds, and is simply absent when this session came from one
-  // that is no longer registered. Declared after the session it reads: above
-  // it, the lookup only ran when there was a machine to compare against, so it
-  // worked with none and threw with any — passing every test and blanking the
-  // page for anyone with a machine connected.
   const machineName = machines.find((machine) => machine.id === session.machineId)?.name ?? null;
-
-  // Pins live as annotations, so the current state is read rather than assumed.
-  useEffect(() => {
-    let active = true;
-    void memoarApi.listAnnotations(session.id)
-      .then((page) => {
-        if (!active) return;
-        setPinId(page.items.find((annotation) => annotation.kind === 'pin')?.id ?? null);
-        // Tags are annotations too. The session summary carries an empty array
-        // the server never fills, so the tag row rendered nothing whatever had
-        // been tagged.
-        setTags(page.items
-          .filter((annotation) => annotation.kind === 'tag')
-          .map((annotation) => (typeof annotation.value.label === 'string' ? annotation.value.label : ''))
-          .filter((label) => label.length > 0));
-      })
-      .catch(() => {
-        // Absence of a pin is the safe default: showing "Pin session" for an
-        // already-pinned session is recoverable, the reverse is confusing.
-        if (active) setPinId(null);
-      });
-    return () => { active = false; };
-  }, [session.id]);
-
-  const togglePin = async () => {
-    setBusyAction('pin');
-    setActionError(null);
-    try {
-      if (pinId) {
-        await memoarApi.deleteAnnotation(pinId);
-        setPinId(null);
-      } else {
-        const created = await memoarApi.createAnnotation({ sessionId: session.id, kind: 'pin', value: {} });
-        setPinId(created.id);
-      }
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Pin could not be updated');
-    } finally {
-      setBusyAction(null);
-    }
-  };
+  const { pinId, tags, togglePin } = useSessionAnnotations(session.id, setBusyAction, setActionError);
 
   const exportSession = async () => {
     setBusyAction('export');
@@ -116,6 +68,10 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const copyId = () => {
+    void navigator.clipboard?.writeText(session.id).then(() => setNotice('Session id copied.')).catch(() => setNotice(null));
   };
 
   const addToCollection = async (collectionId: string) => {
@@ -154,9 +110,8 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
     }
   };
 
-  // The conversion happens in the worker, so the request returns a queued job
-  // rather than a finished one. Follow it until it settles: converting inside
-  // the request starved everything else the API had to answer.
+  // The worker converts, so the request returns a queued job. Follow it until
+  // it settles.
   useEffect(() => {
     if (!conversion || (conversion.status !== 'queued' && conversion.status !== 'running')) return;
     let cancelled = false;
@@ -168,52 +123,80 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
     return () => { cancelled = true; clearTimeout(timer); };
   }, [conversion, onConversionStatus]);
 
+  // Single keys act on the open session, and the command palette sends the
+  // same actions as an event. Both are ignored while a dialog is up.
+  const run = (action: SessionAction, convertTo?: ConversionJob['target']) => {
+    if (action === 'convert') { if (convertTo) setTarget(convertTo); setConvertOpen(true); }
+    if (action === 'export') void exportSession();
+    if (action === 'share') setShareOpen(true);
+    if (action === 'copy-id') copyId();
+    if (action === 'pin') void togglePin();
+    if (action === 'pack') void openPack();
+    if (action === 'thinking') setShowThinking((current) => !current);
+  };
+  const runRef = useRef(run);
+  useEffect(() => { runRef.current = run; });
+  useEffect(() => {
+    const keys: Record<string, SessionAction> = { c: 'convert', e: 'export', s: 'share', y: 'copy-id', t: 'thinking' };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
+      if (document.querySelector('[aria-modal="true"], [role="menu"]')) return;
+      if (event.key === 'Escape') { onBack(); return; }
+      const action = keys[event.key];
+      if (!action) return;
+      event.preventDefault();
+      runRef.current(action);
+    };
+    const onAction = (event: Event) => {
+      const { action, target: convertTo } = (event as CustomEvent<{ action: SessionAction; target?: ConversionJob['target'] }>).detail;
+      runRef.current(action, convertTo);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener(SESSION_ACTION_EVENT, onAction);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(SESSION_ACTION_EVENT, onAction);
+    };
+  }, [onBack]);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   return (
-    <div className="session-detail-page">
+    <div className="session-pane">
       <SessionHeader
         session={session}
         machineName={machineName}
         busyAction={busyAction}
+        pinned={pinId !== null}
+        collectionsAvailable={collections.length > 0}
+        showThinking={showThinking}
+        onShowThinking={setShowThinking}
         onBack={onBack}
-        setShareOpen={setShareOpen}
-        exportSession={exportSession}
-        setConvertOpen={setConvertOpen}
-        openPack={openPack}
+        onShare={() => setShareOpen(true)}
+        onExport={() => void exportSession()}
+        onConvert={() => setConvertOpen(true)}
+        onPack={() => void openPack()}
+        onCollection={() => setCollectionOpen(true)}
+        onPin={() => void togglePin()}
+        onCopyId={copyId}
+        onDelete={() => setDeleteOpen(true)}
       />
 
-      {/*
-        Every failure on this page wrote to one state, and the only places that
-        rendered it were modals. Pinning and exporting happen with every modal
-        closed, so "Pin could not be updated" and "Export failed" were set and
-        shown to nobody: the button stopped being busy, the label did not
-        change, and nothing was said.
-      */}
-      {actionError ? (
-        <section className="privacy-banner banner-error" role="alert">
-          <span><TriangleAlert size={20} aria-hidden="true" /></span>
-          <div><strong>That did not go through</strong><p>{actionError}</p></div>
-        </section>
-      ) : null}
+      <div className="session-body">
+        <SessionDetails detail={detail} tags={tags} />
 
-      <div className="session-layout">
-        <ConversationColumn
-          detail={detail}
-          session={session}
-          showThinking={showThinking}
-          setShowThinking={setShowThinking}
-        />
+        {/* Pinning and exporting happen with every dialog closed, so their
+            failures are said here, on the page. */}
+        {actionError && !shareOpen && !convertOpen && !packOpen && !collectionOpen && !deleteOpen ? (
+          <div className="notice notice-error" role="alert"><p><strong>That did not go through.</strong> {actionError}</p></div>
+        ) : null}
+        {notice ? <p className="toast" role="status">{notice}</p> : null}
 
-        <SessionInspector
-          detail={detail}
-          session={session}
-          tags={tags}
-          collections={collections}
-          busyAction={busyAction}
-          pinId={pinId}
-          togglePin={togglePin}
-          setCollectionOpen={setCollectionOpen}
-          setDeleteOpen={setDeleteOpen}
-        />
+        <Transcript detail={detail} showThinking={showThinking} setShowThinking={setShowThinking} />
       </div>
 
       <ShareReviewModal
@@ -235,12 +218,8 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
           setActionError(null);
           void memoarApi.createShareLink({ sessionId: session.id, permission, redactionReviewId: reviewId, expiresAt })
             .then((grant) => {
-              // Surface the link rather than closing: a token shown once and
-              // discarded is a link the user cannot actually use.
+              // Shown rather than closed: a token shown once is the only chance to copy it.
               setShareLink(grant.token ? `${window.location.origin}/s/${grant.token}` : null);
-              // The Sharing view reads grants from the dashboard, which was
-              // loaded before this link existed. Without this the link is
-              // simply absent there until the page is reloaded.
               onArchiveChanged();
             })
             .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Share link could not be created'))
@@ -248,53 +227,10 @@ export function SessionDetailView({ detail, collections, machines, onBack, onBui
         }}
         onClose={() => { setShareOpen(false); setReviewId(null); setShareLink(null); }}
       />
-
-      <ConvertModal
-        convertOpen={convertOpen}
-        setConvertOpen={setConvertOpen}
-        target={target}
-        setTarget={setTarget}
-        machines={machines}
-        machineId={machineId}
-        setMachineId={setMachineId}
-        conversion={conversion}
-        actionError={actionError}
-        queueConversion={queueConversion}
-      />
-
-      <PackModal
-        packOpen={packOpen}
-        setPackOpen={setPackOpen}
-        setConvertOpen={setConvertOpen}
-        packBudget={packBudget}
-        setPackBudget={setPackBudget}
-        packFreshness={packFreshness}
-        setPackFreshness={setPackFreshness}
-        packLoading={packLoading}
-        openPack={openPack}
-        pack={pack}
-        actionError={actionError}
-      />
-
-      <CollectionModal
-        collectionOpen={collectionOpen}
-        setCollectionOpen={setCollectionOpen}
-        collections={collections}
-        busyAction={busyAction}
-        addToCollection={addToCollection}
-        actionError={actionError}
-      />
-
-      <DeleteSessionModal
-        deleteOpen={deleteOpen}
-        setDeleteOpen={setDeleteOpen}
-        deleting={deleting}
-        setDeleting={setDeleting}
-        setActionError={setActionError}
-        session={session}
-        onDeleted={onDeleted}
-      />
-
+      <ConvertModal convertOpen={convertOpen} setConvertOpen={setConvertOpen} target={target} setTarget={setTarget} machines={machines} machineId={machineId} setMachineId={setMachineId} conversion={conversion} actionError={actionError} queueConversion={queueConversion} />
+      <PackModal packOpen={packOpen} setPackOpen={setPackOpen} setConvertOpen={setConvertOpen} packBudget={packBudget} setPackBudget={setPackBudget} packFreshness={packFreshness} setPackFreshness={setPackFreshness} packLoading={packLoading} openPack={openPack} pack={pack} actionError={actionError} />
+      <CollectionModal collectionOpen={collectionOpen} setCollectionOpen={setCollectionOpen} collections={collections} busyAction={busyAction} addToCollection={addToCollection} actionError={actionError} />
+      <DeleteSessionModal deleteOpen={deleteOpen} setDeleteOpen={setDeleteOpen} deleting={deleting} setDeleting={setDeleting} setActionError={setActionError} session={session} onDeleted={onDeleted} />
     </div>
   );
 }

@@ -1,46 +1,68 @@
-import { ArrowLeft, Braces, Download, GitBranch, Laptop, Pin, RefreshCw, Share2 } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal } from 'lucide-react';
+import { Menu } from '../../components/Menu';
+import { Button, IconButton, formatDate, formatTime, plural } from '../../components/ui';
 import type { SessionSummary } from '../../lib/types';
-import { Badge, Button, IconButton, RedactionBadge, SourceBadge, formatRelative } from '../../components/ui';
 
-export function SessionHeader({ session, machineName, busyAction, onBack, setShareOpen, exportSession, setConvertOpen, openPack }: {
+/**
+ * The title, one meta line, and the actions. The three a reader reaches for
+ * are buttons with their key in the tooltip; the rest sit behind More.
+ */
+export function SessionHeader({ session, machineName, busyAction, pinned, collectionsAvailable, showThinking, onShowThinking, onBack, onShare, onExport, onConvert, onPack, onCollection, onPin, onCopyId, onDelete }: {
   session: SessionSummary;
   machineName: string | null;
   busyAction: string | null;
+  pinned: boolean;
+  collectionsAvailable: boolean;
+  showThinking: boolean;
+  onShowThinking: (value: boolean) => void;
   onBack: () => void;
-  setShareOpen: (open: boolean) => void;
-  exportSession: () => Promise<void>;
-  setConvertOpen: (open: boolean) => void;
-  openPack: () => Promise<void>;
+  onShare: () => void;
+  onExport: () => void;
+  onConvert: () => void;
+  onPack: () => void;
+  onCollection: () => void;
+  onPin: () => void;
+  onCopyId: () => void;
+  onDelete: () => void;
 }) {
   return (
     <header className="session-header">
       <div className="session-title-row">
-        <IconButton label="Back to timeline" onClick={onBack}><ArrowLeft size={18} /></IconButton>
-        <div className="session-heading-copy">
-          <div className="session-labels">
-            <SourceBadge source={session.source} label={session.sourceLabel} />
-            <RedactionBadge status={session.redactionStatus} />
-            {session.pinned ? <Badge><Pin size={12} /> Pinned</Badge> : null}
-          </div>
-          <h1>{session.title}</h1>
-          <div className="session-provenance-line">
-            <span><GitBranch size={13} /> {session.workspace}</span>
-            {/* Shown when known. These read "unknown" and "Archived machine"
-                on every session, which is a placeholder wearing the clothes
-                of a fact. */}
-            {session.branch ? <span>{session.branch}</span> : null}
-            {machineName ? <span><Laptop size={13} /> {machineName}</span> : null}
-            <span>Updated {formatRelative(session.updatedAt)}</span>
-          </div>
+        <IconButton className="session-back" label="Back to sessions" title="Back to sessions (Esc)" onClick={onBack}><ArrowLeft size={15} /></IconButton>
+        <h1>{session.title}</h1>
+        <div className="session-actions" role="group" aria-label="Session actions">
+          <Button size="sm" title="Convert (c)" onClick={onConvert}>Convert</Button>
+          <Button size="sm" title="Export (e)" disabled={busyAction === 'export'} onClick={onExport}>
+            {busyAction === 'export' ? 'Exporting' : 'Export'}
+          </Button>
+          <Button size="sm" title="Share (s)" onClick={onShare}>Share</Button>
+          <Menu
+            label="More actions"
+            trigger={<MoreHorizontal size={14} aria-hidden="true" />}
+            items={[
+              { label: 'Pack preview', onSelect: onPack },
+              { label: collectionsAvailable ? 'Add to collection' : 'Add to collection (none yet)', onSelect: onCollection, disabled: !collectionsAvailable },
+              { label: pinned ? 'Unpin session' : 'Pin session', onSelect: onPin, disabled: busyAction === 'pin' },
+              { label: 'Copy session id', onSelect: onCopyId },
+              { label: 'Delete session', onSelect: onDelete, danger: true },
+            ]}
+          />
         </div>
       </div>
-      <div className="session-action-bar" aria-label="Session actions">
-        <Button size="sm" onClick={() => setShareOpen(true)}><Share2 size={14} /> Share</Button>
-        <Button size="sm" disabled={busyAction === 'export'} onClick={() => void exportSession()}>
-          <Download size={14} /> {busyAction === 'export' ? 'Exporting…' : 'Export'}
-        </Button>
-        <Button size="sm" onClick={() => setConvertOpen(true)}><RefreshCw size={14} /> Convert</Button>
-        <Button size="sm" onClick={() => void openPack()}><Braces size={14} /> Pack preview</Button>
+      <div className="session-meta-row">
+        <p className="session-meta">
+          <span>{session.sourceLabel}</span>
+          <span className="mono">{session.workspace}</span>
+          {session.branch ? <span className="mono">{session.branch}</span> : null}
+          {machineName ? <span>{machineName}</span> : null}
+          <span>{formatDate(session.createdAt)} {formatTime(session.createdAt)}</span>
+          <span>{plural(session.turnCount, 'turn')}</span>
+          {pinned ? <span>Pinned</span> : null}
+        </p>
+        <label className="thinking-control" title="Show thinking (t)">
+          <input type="checkbox" checked={showThinking} onChange={(event) => onShowThinking(event.target.checked)} />
+          Show thinking
+        </label>
       </div>
     </header>
   );

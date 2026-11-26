@@ -1,6 +1,5 @@
-import { ArrowRight, ShieldCheck } from 'lucide-react';
 import type { PackResponse } from '../../lib/types';
-import { Badge, Button, CopyButton, Modal } from '../../components/ui';
+import { Button, CopyButton, Modal, plural } from '../../components/ui';
 
 export function PackModal({ packOpen, setPackOpen, setConvertOpen, packBudget, setPackBudget, packFreshness, setPackFreshness, packLoading, openPack, pack, actionError }: {
   packOpen: boolean;
@@ -15,37 +14,34 @@ export function PackModal({ packOpen, setPackOpen, setConvertOpen, packBudget, s
   pack: PackResponse | null;
   actionError: string | null;
 }) {
+  const first = pack?.evidence[0];
   return (
-    <Modal
-      open={packOpen}
-      title="Pack preview"
-      description="A cited, extractive bundle that fits the chosen context budget."
-      onClose={() => setPackOpen(false)}
-    >
-      <div className="modal-body pack-modal-body">
-        <div className="budget-row">
-          <label>Token budget<input type="number" value={packBudget} min={64} max={32000} onChange={(event) => setPackBudget(Number(event.target.value))} /></label>
-          <label>Freshness
+    <Modal open={packOpen} title="Pack preview" description="Cited excerpts that fit the token budget." onClose={() => setPackOpen(false)}>
+      <div className="modal-body">
+        <div className="form-row">
+          <label className="field-label">Token budget<input type="number" value={packBudget} min={64} max={32000} onChange={(event) => setPackBudget(Number(event.target.value))} /></label>
+          <label className="field-label">Freshness
             <select value={packFreshness} onChange={(event) => setPackFreshness(event.target.value === 'strict' ? 'strict' : 'mixed')}>
               <option value="mixed">Mixed, flag stale</option>
               <option value="strict">Strict, fresh only</option>
             </select>
           </label>
-          <Button size="sm" variant="ghost" disabled={packLoading} onClick={() => void openPack()}>Rebuild</Button>
+          <Button size="sm" disabled={packLoading} onClick={() => void openPack()}>Rebuild</Button>
         </div>
-        {packLoading ? <p role="status">Building cited preview…</p> : null}
+        {packLoading ? <p role="status" className="meta">Building the pack</p> : null}
         {pack ? (
-          <div className="pack-preview-card">
-            <div><Badge>{pack.evidence.length} excerpts</Badge><span>Estimated {pack.tokenEstimate.toLocaleString()} tokens</span></div>
-            <h3>{pack.query}</h3>
-            <p>{pack.evidence[0]?.excerpt ?? 'No evidence matched this session title.'}</p>
-            {pack.evidence[0] ? <small>[{pack.evidence[0].sessionId.slice(-8)} · turns {pack.evidence[0].turnStart}–{pack.evidence[0].turnEnd} · {pack.evidence[0].ageDays}d]</small> : null}
+          <div className="pack-preview">
+            <p className="meta">{plural(pack.evidence.length, 'excerpt')}, about {pack.tokenEstimate.toLocaleString('en')} tokens, {plural(pack.staleCount, 'stale excerpt')}. Redaction: {pack.redactionStatus}.</p>
+            <p className="pack-excerpt">{first?.excerpt ?? 'No evidence matched this session title.'}</p>
+            {first ? <p className="meta mono">{first.sessionId.slice(-8)}, turns {first.turnStart} to {first.turnEnd}, {first.ageDays}d old</p> : null}
           </div>
         ) : null}
         {actionError ? <p role="alert" className="error-note">{actionError}</p> : null}
-        {pack ? <div className="redaction-safe"><ShieldCheck size={15} /><span>Redaction status: {pack.redactionStatus}. {pack.staleCount} stale excerpts.</span></div> : null}
       </div>
-      <footer className="modal-actions">{pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}<Button variant="primary" disabled={!pack} onClick={() => { setPackOpen(false); setConvertOpen(true); }}>Send to agent <ArrowRight size={14} /></Button></footer>
+      <footer className="modal-actions">
+        {pack ? <CopyButton value={pack.markdown} label="Copy pack" /> : null}
+        <Button variant="primary" disabled={!pack} onClick={() => { setPackOpen(false); setConvertOpen(true); }}>Send to agent</Button>
+      </footer>
     </Modal>
   );
 }

@@ -1,12 +1,13 @@
-import { LoaderCircle } from 'lucide-react';
-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { emptyConnectedDashboard, initialLocation, mergeTimelinePage, placeToReturnTo, routeFromLocation } from './app/bootstrap';
+import { buildCommands } from './app/commands';
+import { useSessionCache } from './app/session-cache';
 import { useExpiryWarning } from './app/session-expiry';
+import { CommandPalette } from './components/CommandPalette';
 import { SessionExpiryBanner } from './components/SessionExpiryBanner';
 import { Shell } from './components/Shell';
 import { memoarApi } from './lib/api';
-import type { CurrentUser, DashboardState, SessionDetailData, SessionSummary, ViewId } from './lib/types';
+import type { CurrentUser, DashboardState, SessionSummary, ViewId } from './lib/types';
 import { pathForRoute, routeForPath, type Route } from './lib/routes';
 import { CollectionsView } from './views/Collections';
 import { ConnectionError } from './views/ConnectionError';
@@ -17,12 +18,13 @@ import { NotFoundPage } from './views/NotFoundPage';
 import { SignInView } from './views/Onboarding';
 import { OnboardingView } from './views/OnboardingSteps';
 import { SearchView } from './views/Search';
-import { SessionDetailView } from './views/SessionDetail';
+import { SessionPane } from './views/SessionPane';
+import { ListSkeleton } from './views/timeline/ListSkeleton';
+import { SessionsSplit, TranscriptSkeleton, wideLayout } from './views/SessionsSplit';
 import { SettingsView } from './views/Settings';
 import { SharingView } from './views/Sharing';
 import { TeamsView } from './views/Teams';
 import { TimelineView } from './views/Timeline';
-import { WorkspaceView } from './views/Workspace';
 
 export function App() {
   const [start] = useState(() => initialLocation(!memoarApi.configured || memoarApi.authenticated));
@@ -33,7 +35,10 @@ export function App() {
   const [loading, setLoading] = useState(() => !memoarApi.configured || memoarApi.authenticated);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [detail, setDetail] = useState<SessionDetailData | null>(null);
+  const sessionCache = useSessionCache();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // What the palette asked transcript search to look for, handed over once.
+  const [searchSeed, setSearchSeed] = useState('');
   const [user, setUser] = useState<CurrentUser | null>(null);
   // Stamped when the archive loads so views can do time maths without reading
   // the clock while rendering.
@@ -88,8 +93,6 @@ export function App() {
   const askToSignIn = useCallback(() => {
     // Read before the address is rewritten below: a state updater runs during
     // the render that follows, by which time the address says /login.
-    // Read before the address is rewritten below: a state updater runs during
-    // the render that follows, by which time the address says /login.
     const from = placeToReturnTo(routeFromLocation());
     setIntended((current) => current ?? from);
     setRoute({ view: 'signin' });
@@ -107,7 +110,7 @@ export function App() {
     setRoute(next);
     const path = pathForRoute(next);
     if (window.location.pathname !== path) window.history.pushState(null, '', path);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (next.view !== 'session') window.scrollTo({ top: 0 });
   }, []);
 
   const navigate = useCallback((next: ViewId) => { go({ view: next }); }, [go]);
@@ -124,35 +127,54 @@ export function App() {
     go({ view: 'session', sessionId: session.id });
   }, [go]);
 
+  // Moving through the list with j and k: the address follows the selection
+  // without adding a history entry per keystroke.
+  const selectSession = useCallback((session: SessionSummary) => {
+    const next: Route = { view: 'session', sessionId: session.id };
+    setRoute(next);
+    window.history.replaceState(null, '', pathForRoute(next));
+  }, []);
+
   /*
     The address says which session is open, and that is the only thing that
-    fetches one — whether you clicked a row, followed a link somebody sent, or
-    reloaded the page. There is no summary to start from in the last two cases.
+    fetches one, whether a row was chosen, a link was followed, or the page was
+    reloaded. A transcript seen before, or prefetched, shows at once.
   */
   const routeSessionId = route.view === 'session' ? route.sessionId : undefined;
+  const { load: loadSession } = sessionCache;
   useEffect(() => {
     if (!routeSessionId || !memoarApi.authenticated) return undefined;
     let active = true;
-    void memoarApi.getSession({ id: routeSessionId })
-      .then((loaded) => { if (active) setDetail(loaded); })
-      .catch((error: unknown) => {
-        if (active) setConnectionError(error instanceof Error ? error.message : 'Session could not be loaded');
-      });
+    loadSession(routeSessionId).catch((error: unknown) => {
+      if (active) setConnectionError(error instanceof Error ? error.message : 'Session could not be loaded');
+    });
     return () => { active = false; };
-  }, [routeSessionId]);
+  }, [routeSessionId, loadSession]);
 
-  // Whatever is loaded is only shown when it is the session the address names,
-  // so moving between sessions never renders the previous one under the new
-  // heading.
-  const openDetail = detail && detail.session.id === routeSessionId ? detail : null;
+  // Only the session the address names is shown, so moving between sessions
+  // never renders the previous one under the new heading.
+  const openDetail = sessionCache.peek(routeSessionId) ?? null;
 
   const allSessions = useMemo(() => dashboard.timeline.flatMap((group) => group.sessions), [dashboard.timeline]);
+
+  // With room for both panes, the list opens with its newest session showing
+  // rather than beside an empty pane.
+  const newest = allSessions[0];
+  useEffect(() => {
+    if (view === 'timeline' && newest && wideLayout()) selectSession(newest);
+  }, [view, newest, selectSession]);
+
+  // Escape from a transcript: back to the list. Side by side the list is
+  // already there, so focus goes to the selected row instead.
+  const leaveSession = () => {
+    if (!wideLayout()) { navigate('timeline'); return; }
+    document.querySelector<HTMLElement>('.session-row.row-selected')?.focus();
+  };
 
   const createCollection = async (name: string, description: string) => {
     const collection = await memoarApi.createCollection(name, description);
     setDashboard((current) => ({ ...current, collections: [collection, ...current.collections] }));
   };
-
 
   const loadMoreTimeline = async () => {
     if (!dashboard.nextTimelineCursor || loadingMore) return;
@@ -165,10 +187,8 @@ export function App() {
         nextTimelineCursor: page.nextCursor,
       }));
     } catch (error) {
-      // Every other failure in this file sets `connectionError`; this one had
-      // no catch at all, and the callers invoke it as `void onLoadMore()`, so a
-      // failed page became an unhandled rejection and the spinner simply
-      // stopped. Scrolling produced nothing and said nothing.
+      // Callers invoke this as `void onLoadMore()`, so a failure not caught
+      // here would end the spinner and say nothing.
       setConnectionError(error instanceof Error ? error.message : 'More sessions could not be loaded');
     } finally {
       setLoadingMore(false);
@@ -204,20 +224,8 @@ export function App() {
     content = (
       <ConnectionError connectionError={connectionError} loadDashboard={loadDashboard} />
     );
-  } else if (view === 'workspace') {
-    content = (
-      <WorkspaceView
-        sessions={allSessions}
-        archived={dashboard.archivedSessions}
-        machines={dashboard.machines}
-        collections={dashboard.collections}
-        grants={dashboard.grants}
-        transfers={dashboard.transfers}
-        onOpen={openSession}
-      />
-    );
   } else if (view === 'search') {
-    content = <SearchView onOpen={openSession} workspaces={[...new Set(allSessions.map((session) => session.workspace))]} />;
+    content = <SearchView key={searchSeed} initialQuery={searchSeed} onOpen={openSession} workspaces={[...new Set(allSessions.map((session) => session.workspace))]} />;
   } else if (view === 'collections') {
     content = <CollectionsView collections={dashboard.collections} onOpen={openSession} onCreate={createCollection} />;
   } else if (view === 'memory') {
@@ -238,6 +246,7 @@ export function App() {
         onAcceptTransfer={async (id) => { await memoarApi.acceptTransfer(id); await loadDashboard(); }}
         onDeclineTransfer={async (id) => { await memoarApi.declineTransfer(id); await loadDashboard(); }}
         onRevokeGrant={async (id) => { await memoarApi.revokeShareLink(id); await loadDashboard(); }}
+        onTeams={() => navigate('teams')}
         onRequestTransfer={async (input) => {
           const review = await memoarApi.completeRedactionReview(input.sessionId);
           await memoarApi.requestTransfer({ ...input, redactionReviewId: review.id });
@@ -256,45 +265,39 @@ export function App() {
       return created.secret;
     }} />;
   } else if (view === 'not-found') {
-    /*
-      A typo'd or since-removed address used to render the timeline, silently,
-      under whatever the reader had typed: a page that says one thing and an
-      address bar that says another. The address is left alone so it can be
-      corrected or reported.
-    */
-    content = (
-      <NotFoundPage navigate={navigate} />
-    );
+    // The address is left as typed, so it can be corrected or reported.
+    content = <NotFoundPage navigate={navigate} />;
   } else if (view === 'onboarding') {
-
     content = <OnboardingView machines={dashboard.machines} onComplete={() => navigate('timeline')} onRefresh={loadDashboard} />;
-  } else if (view === 'session') {
-    content = openDetail ? (
-      <SessionDetailView
-        detail={openDetail}
-        collections={dashboard.collections}
-        machines={dashboard.machines}
-        onArchiveChanged={() => void loadDashboard()}
-        onBack={() => navigate('timeline')}
-        onBuildPack={(query, budget, freshness) => memoarApi.buildPack(query, budget, freshness)}
-        onConvert={(target) => memoarApi.requestConversion(openDetail.session.id, target)}
-        onConversionStatus={(jobId) => memoarApi.getConversion(jobId)}
-        onDeleted={() => {
-          setDetail(null);
-          void loadDashboard();
-          navigate('timeline');
-        }}
-      />
-    ) : <div className="session-loading"><LoaderCircle size={24} /><p>Loading canonical session…</p></div>;
   } else {
-    content = <TimelineView groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} onOpen={openSession} onSearch={() => navigate('search')} onConnect={() => navigate('onboarding')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />;
+    // Sessions, with or without one open: the list and the transcript side by side.
+    content = (
+      <SessionsSplit
+        selected={routeSessionId !== undefined}
+        list={loading && allSessions.length === 0 ? <ListSkeleton /> : (
+          <TimelineView groups={dashboard.timeline} machines={dashboard.machines} archived={dashboard.archivedSessions} asOf={loadedAt} selectedId={routeSessionId} onOpen={openSession} onSelect={selectSession} onPrefetch={sessionCache.prefetch} onConnect={() => navigate('onboarding')} onImport={() => navigate('import')} hasMore={Boolean(dashboard.nextTimelineCursor)} loadingMore={loadingMore} onLoadMore={loadMoreTimeline} />
+        )}
+        detail={openDetail ? (
+          <SessionPane detail={openDetail} collections={dashboard.collections} machines={dashboard.machines} onBack={leaveSession} onChanged={() => void loadDashboard()}
+            onDeleted={() => { sessionCache.drop(openDetail.session.id); void loadDashboard(); navigate('timeline'); }} />
+        ) : <TranscriptSkeleton />}
+      />
+    );
   }
 
+  const commands = buildCommands({
+    sessions: allSessions,
+    openSessionId: openDetail ? routeSessionId : undefined,
+    navigate,
+    openSession,
+    searchFor: (query) => { setSearchSeed(query); navigate('search'); },
+  });
+
   return (
-    <Shell view={view} user={user} machines={dashboard.machines} reachable={connectionError === null && !loading} onNavigate={navigate}>
-      {loading ? <div className="connection-toast" role="status" aria-label="Connection status"><LoaderCircle size={13} /> Checking archive connection</div> : null}
+    <Shell view={view} user={user} onNavigate={navigate} onOpenPalette={() => setPaletteOpen(true)}>
       {expiringIn === null ? null : <SessionExpiryBanner msLeft={expiringIn} onSignIn={askToSignIn} />}
       {content}
+      <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </Shell>
   );
 }
