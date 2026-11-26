@@ -1,7 +1,8 @@
-import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
+import type { ContentBlock, Session, TokenTotals, Turn } from "../../canonical/src/generated.js";
 import { blockId, incrementUuid, isRecord, mapParent, sessionModels, stringValue, turnId } from "./common.js";
 import { storedSessions } from "./opencode-store.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
+import { tokenTotals } from "./tokens.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { parserVersion } from "./versions.js";
 
@@ -68,6 +69,19 @@ function partsToBlocks(part: Record<string, unknown>, id: string, resultId: stri
   // added since this was written: their prose if they have any, and the part.
   const text = stringValue(part, "prompt") ?? stringValue(part, "text") ?? stringValue(part, "description");
   return [{ id, kind: type === "retry" ? "error" : "system", name: type ?? "part", ...(text ? { text } : {}), data: part }];
+}
+
+/**
+ * `{input, output, reasoning, cache: {read, write}, total}` on an assistant
+ * message. opencode already takes the cache out of `input`, and keeps the
+ * reasoning out of `output`, so reasoning is added back to match how every
+ * other source counts it. The cache was not read before.
+ */
+function opencodeTokens(tokens: Record<string, unknown>): TokenTotals {
+  const cache = isRecord(tokens.cache) ? tokens.cache : {};
+  const reasoning = typeof tokens.reasoning === "number" && tokens.reasoning > 0 ? tokens.reasoning : 0;
+  const output = typeof tokens.output === "number" && tokens.output > 0 ? tokens.output : 0;
+  return tokenTotals(tokens.input, output + reasoning, cache.read, cache.write);
 }
 
 /**
@@ -139,12 +153,7 @@ export class OpencodeV1Parser implements VersionedParser {
               blocks,
             };
             if (model) turn.model = model;
-            if (tokens) {
-              turn.tokens = {
-                input: typeof tokens.input === "number" ? tokens.input : 0,
-                output: typeof tokens.output === "number" ? tokens.output : 0,
-              };
-            }
+            if (tokens) turn.tokens = opencodeTokens(tokens);
             return turn;
           });
 

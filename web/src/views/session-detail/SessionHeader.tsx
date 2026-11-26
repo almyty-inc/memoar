@@ -3,6 +3,7 @@ import { agentTone } from '../../components/AgentMark';
 import { Menu } from '../../components/Menu';
 import { Button, IconButton, cn, formatDate, formatTime, plural } from '../../components/ui';
 import type { SessionSummary } from '../../lib/types';
+import { projectName, workspaceLabel } from '../../lib/workspace';
 
 /**
  * Tags, the title, one line of when and how long, and the actions. The three
@@ -38,7 +39,7 @@ export function SessionHeader({ session, machineName, models, busyAction, pinned
         <div className="session-tags">
           <span className={cn('tag', `agent-${agentTone(session.source)}`)}>{session.sourceLabel}</span>
           {models.slice(0, 2).map((model) => <span className="tag mono-tag" key={model}>{model}</span>)}
-          <span className="tag" title={session.workspace}>{session.workspace.split('/').filter(Boolean).at(-1) ?? session.workspace}{session.branch ? ` · ${session.branch}` : ''}</span>
+          <span className="tag" title={workspaceLabel(session.workspace)}>{projectName(session.workspace)}{session.branch ? ` · ${session.branch}` : ''}</span>
           {machineName ? <span className="tag">{machineName}</span> : null}
           {pinned ? <span className="tag">Pinned</span> : null}
         </div>

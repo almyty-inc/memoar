@@ -181,19 +181,43 @@ fn collect_files(
     visited: &mut HashSet<PathBuf>,
     files: &mut Vec<PathBuf>,
 ) -> Result<(), DiscoveryError> {
-    if depth > 12 || !path.exists() || !visited.insert(path.to_path_buf()) {
+    if !path.exists() {
         return Ok(());
     }
     let metadata = fs::symlink_metadata(path).map_err(|source| DiscoveryError::Inspect {
         path: path.to_path_buf(),
         source,
     })?;
-    if metadata.file_type().is_symlink() {
-        return Ok(());
+    collect_entry(
+        path.to_path_buf(),
+        metadata.file_type(),
+        depth,
+        visited,
+        files,
+    );
+    Ok(())
+}
+
+/*
+    Below the root, an entry's type comes from the directory listing itself,
+    which costs no system call. Asking each entry with `exists` and
+    `symlink_metadata` cost two, and a real ~/.claude/projects held 245,000
+    files: the walk alone made every sync take minutes, where `find` lists the
+    same tree in two seconds.
+*/
+fn collect_entry(
+    path: PathBuf,
+    kind: fs::FileType,
+    depth: u8,
+    visited: &mut HashSet<PathBuf>,
+    files: &mut Vec<PathBuf>,
+) {
+    if depth > 12 || kind.is_symlink() {
+        return;
     }
-    if metadata.is_file() {
-        files.push(path.to_path_buf());
-        return Ok(());
+    if kind.is_file() {
+        files.push(path);
+        return;
     }
     /*
         Anything that is neither a regular file nor a directory — a unix socket,
@@ -205,20 +229,21 @@ fn collect_files(
         meant `memoar sync` captured nothing at all, on every source, with a
         message about a path the reader never put there.
     */
-    if !metadata.is_dir() {
-        return Ok(());
+    if !kind.is_dir() || !visited.insert(path.clone()) {
+        return;
     }
     /*
         A directory that cannot be read is skipped too. Losing one subtree is a
         gap; aborting the walk is an archive that silently stays empty, and the
         second is what this did.
     */
-    let Ok(entries) = fs::read_dir(path) else {
-        return Ok(());
+    let Ok(entries) = fs::read_dir(&path) else {
+        return;
     };
-    for entry in entries {
-        let Ok(entry) = entry else { continue };
-        collect_files(&entry.path(), depth + 1, visited, files)?;
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        collect_entry(entry.path(), kind, depth + 1, visited, files);
     }
-    Ok(())
 }

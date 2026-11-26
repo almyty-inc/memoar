@@ -1,6 +1,6 @@
 import type { ContentBlock, Session, Turn } from "../../canonical/src/generated.js";
 import { epochToIso, incrementUuid, isRecord, sessionModels, stringValue, turnId, withModelAndTokens } from "./common.js";
-import { bubbleModel, bubbleTime, composerNames, unindexedHeaders } from "./cursor-index.js";
+import { bubbleModel, bubbleTime, bubbleTokens, composerNames, unindexedHeaders } from "./cursor-index.js";
 import { cursorBubbleBlocks } from "./cursor-bubble.js";
 import { ensureRecord, parseJsonColumn } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
@@ -83,7 +83,7 @@ export class CursorV3Parser implements VersionedParser {
               // Each bubble carries its own time and model in Cursor 3.x.
               createdAt: bubbleTime(bubble.createdAt) ?? epochToIso(payload.createdAt, request.seed.createdAt),
               blocks,
-            }, bubbleModel(bubble) ?? request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
+            }, bubbleModel(bubble) ?? request.seed.models[0], bubbleTokens(bubble));
             previousId = turnId(bubbleId, request.seed.id);
             return [turn];
           }).map((turn, ordinal) => ({ ...turn, ordinal }));

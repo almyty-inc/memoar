@@ -1,6 +1,7 @@
 import type { Command } from '../components/command-search';
 import { formatRelative } from '../components/ui';
 import { saveTheme, type ThemeChoice } from '../lib/theme';
+import { workspaceLabel } from '../lib/workspace';
 import type { Machine, SessionSummary, ViewId } from '../lib/types';
 import { requestSessionAction } from '../views/session-detail/session-actions';
 
@@ -68,8 +69,8 @@ export function buildCommands({ sessions, openSessionId, navigate, openSession, 
       id: `session-${session.id}`,
       group: 'Sessions',
       label: () => session.title,
-      keywords: `${session.sourceLabel} ${session.workspace}`,
-      detail: `${session.workspace} · ${formatRelative(session.updatedAt)}`,
+      keywords: `${session.sourceLabel} ${workspaceLabel(session.workspace)}`,
+      detail: `${workspaceLabel(session.workspace)} · ${formatRelative(session.updatedAt)}`,
       matchLabel: true,
       needsQuery: index >= RECENT,
       run: () => openSession(session),

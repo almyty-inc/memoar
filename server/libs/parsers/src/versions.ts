@@ -17,21 +17,29 @@
  * `events.jsonl`. cursor 0.4.0 dates and attributes each bubble on its own.
  * crush and goose 0.4.0 name the session's models, goose from
  * `model_config_json`.
+ *
+ * Later on 2026-11-26, every parser but the canonical bundle's, one minor up:
+ * the seed's workspace is no longer the captured file's path but
+ * `NO_WORKSPACE`, so any session parsed without a working directory has to be
+ * parsed again to drop the file path. Besides that, claude-code, codex,
+ * antigravity-cli, cursor, zed, opencode and kilo read the token usage their
+ * source records, codex and zed read the working directory, and claude-code
+ * takes it from any line that has one.
  */
 export const PARSER_VERSIONS: Readonly<Record<string, string>> = {
-  "claude-code": "claude-code:v1:0.5.0",
-  codex: "codex:rollout-v1:0.5.0",
-  "antigravity-cli": "antigravity-cli:v1:0.4.0",
-  cursor: "cursor:v3:0.4.0",
-  goose: "goose:v1:0.4.0",
-  crush: "crush:v1:0.4.0",
-  zed: "zed:v1:0.3.0",
-  opencode: "opencode:v1:0.4.0",
-  copilot: "copilot:v1:0.4.0",
-  kilo: "kilo:v1:0.4.0",
-  roo: "roo:v1:0.3.0",
-  "chatgpt-export": "chatgpt-export:2026-08:0.3.0",
-  "cass-export": "cass-export:2026-08:0.3.0",
+  "claude-code": "claude-code:v1:0.6.0",
+  codex: "codex:rollout-v1:0.6.0",
+  "antigravity-cli": "antigravity-cli:v1:0.5.0",
+  cursor: "cursor:v3:0.5.0",
+  goose: "goose:v1:0.5.0",
+  crush: "crush:v1:0.5.0",
+  zed: "zed:v1:0.4.0",
+  opencode: "opencode:v1:0.5.0",
+  copilot: "copilot:v1:0.5.0",
+  kilo: "kilo:v1:0.5.0",
+  roo: "roo:v1:0.4.0",
+  "chatgpt-export": "chatgpt-export:2026-08:0.4.0",
+  "cass-export": "cass-export:2026-08:0.4.0",
 };
 
 export function parserVersion(source: string): string {

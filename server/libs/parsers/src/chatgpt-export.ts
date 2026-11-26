@@ -201,7 +201,8 @@ export class ChatgptExportParser implements VersionedParser {
         role: role(message),
         createdAt: timestamp(message, seed.createdAt),
         blocks: turnBlocks,
-      }, model ?? seed.models[0], seed.tokenTotals.input, seed.tokenTotals.output);
+        // An export records no usage, so the count stays zero.
+      }, model ?? seed.models[0]);
     });
 
     const nativeSessionId = stringValue(conversation, "conversation_id") ?? stringValue(conversation, "id") ?? `chatgpt-${index}`;

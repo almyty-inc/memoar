@@ -9,9 +9,15 @@ import type { Turn } from "../../libs/canonical/src/generated.js";
 
 const MAX_LENGTH = 80;
 
-/** Whether a title is the seed's placeholder rather than one the source gave. */
+/**
+ * Whether a title says nothing a person would recognise: the seed's
+ * placeholder, or text the harness injected. An earlier title pass named 85
+ * Codex sessions "# AGENTS.md instructions", so a stored title is judged by the
+ * same rule as the turns it came from.
+ */
 export function isPlaceholderTitle(title: string | undefined, source: string): boolean {
-  return !title || !title.trim() || title === `${source} imported session`;
+  if (!title || !title.trim() || title === `${source} imported session`) return true;
+  return firstMeaningfulLine(title) === undefined;
 }
 
 /**
@@ -37,13 +43,27 @@ export function titleFromTurns(turns: readonly Turn[]): string | undefined {
   Some agents wrap what the person typed in a tag of their own: Antigravity
   sends every prompt as `<USER_REQUEST>…</USER_REQUEST>`. That is the prompt,
   so the wrapper comes off. Every other leading tag marks text the harness
-  injected, such as Claude Code's `<command-name>` or `<local-command-caveat>`,
-  and Codex sends the repository's AGENTS.md as the first user message.
+  injected, such as Claude Code's `<command-name>` or `<local-command-caveat>`.
+
+  Codex injects in Markdown instead. It sends the repository's AGENTS.md as
+  the first user message, and a summary of the history after compaction. Its
+  IDE extension puts the open files first and the prompt last, under
+  `## My request for Codex:`, so the prompt is taken from there.
 */
 const PROMPT_WRAPPER = /^<(user_request|user_query)>\s*([\s\S]*?)\s*(<\/\1>)?\s*$/i;
-const INJECTED_PREFIXES = ["# AGENTS.md instructions for", "# CLAUDE.md"];
+const CODEX_REQUEST = /^## My request for Codex:\s*$/m;
+const INJECTED_PREFIXES = [
+  "# AGENTS.md instructions",
+  "# CLAUDE.md",
+  "# Context from my IDE setup",
+  "# Files mentioned by the user",
+  "## Referenced ChatGPT conversation",
+  "The following is the Codex agent history",
+];
 
 function unwrap(text: string): string {
+  const request = CODEX_REQUEST.exec(text);
+  if (request) return text.slice(request.index + request[0].length);
   return text.match(PROMPT_WRAPPER)?.[2] ?? text;
 }
 
