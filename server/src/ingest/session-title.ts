@@ -33,9 +33,24 @@ export function titleFromTurns(turns: readonly Turn[]): string | undefined {
   return undefined;
 }
 
+/*
+  Some agents wrap what the person typed in a tag of their own: Antigravity
+  sends every prompt as `<USER_REQUEST>…</USER_REQUEST>`. That is the prompt,
+  so the wrapper comes off. Every other leading tag marks text the harness
+  injected, such as Claude Code's `<command-name>` or `<local-command-caveat>`,
+  and Codex sends the repository's AGENTS.md as the first user message.
+*/
+const PROMPT_WRAPPER = /^<(user_request|user_query)>\s*([\s\S]*?)\s*(<\/\1>)?\s*$/i;
+const INJECTED_PREFIXES = ["# AGENTS.md instructions for", "# CLAUDE.md"];
+
+function unwrap(text: string): string {
+  return text.match(PROMPT_WRAPPER)?.[2] ?? text;
+}
+
 function firstMeaningfulLine(text: string): string | undefined {
-  const trimmed = text.trim();
+  const trimmed = unwrap(text.trim()).trim();
   if (!trimmed || trimmed.startsWith("<")) return undefined;
+  if (INJECTED_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) return undefined;
   const line = trimmed.split("\n").map((part) => part.replace(/\s+/g, " ").trim()).find((part) => part.length > 0);
   return line && /[\p{L}\p{N}]/u.test(line) ? line : undefined;
 }
