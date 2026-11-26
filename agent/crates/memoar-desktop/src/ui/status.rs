@@ -1,132 +1,163 @@
 //! The status screen: what this machine captured, what failed, and the
-//! controls that change it.
+//! controls that change it, as grouped lists of facts.
 
-use nsh_base::theme;
 use nsh_core::ui::prelude::*;
 
-use super::style::{button, failure_box, heading, note, row};
+use super::controls::{button, switch};
+use super::look::{look, motion};
+use super::style::{
+    BASE, SMALL, below, fact, fact_id, failure_text, group, maybe, note, row, section, title,
+};
 use crate::capture::{Redaction, Status};
 use crate::controller::Controller;
 use crate::schedule::{Mode, caption};
 use crate::words;
 
+const CAPTURE_KEYS: &str = "mod+r";
+const WEB_APP_KEYS: &str = "mod+o";
+
 pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
     let status = move || ctl.status.get().unwrap_or_default();
+    on_key(CAPTURE_KEYS, move |_| ctl.capture());
+    on_key(WEB_APP_KEYS, move |_| ctl.open_web_app());
     view()
-        .gap_4()
-        .child(
-            view()
-                .gap_1()
-                .child(heading("This machine"))
-                .child(text(move || caption(ctl.mode()).to_owned()).test_id("mode")),
-        )
-        .child(dynamic(move || match ctl.last_error() {
-            Some(failure) => failure_box("capture-error", failure).into_element(),
-            None => view().into_element(),
+        .child(header(ctl, status))
+        .child(maybe(16.0, move || {
+            ctl.last_error()
+                .map(|failure| failure_text("capture-error", failure))
         }))
         .child(when(
             move || ctl.mode() == Mode::Stopped,
             move || {
-                view().flex_row().child(button(
+                view().mt(px(12.0)).flex_row().child(button(
                     || "Sign in again".to_owned(),
                     "sign-in-again",
                     || true,
                     || true,
+                    None,
                     move || ctl.sign_out(),
                 ))
             },
         ))
-        .child(details(ctl, status))
-        .child(actions(ctl))
-        .child(masks(ctl))
-        .child(dynamic(move || match ctl.notice.get() {
-            Some(notice) => note(move || notice.clone()).into_element(),
-            None => view().into_element(),
+        .child(below(20.0, facts(ctl, status)))
+        .child(below(24.0, masks(ctl)))
+        .child(below(24.0, footer(ctl)))
+        .child(maybe(12.0, move || {
+            ctl.notice.get().map(|notice| note(move || notice.clone()))
         }))
 }
 
-fn details(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> impl IntoElement {
+/// The title and what capture is doing, with the two capture controls.
+fn header(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> impl IntoElement {
+    let l = look();
+    let tone = move || match ctl.mode() {
+        Mode::Stopped => l.danger,
+        Mode::Paused | Mode::SignedOut => l.warning,
+        Mode::Capturing | Mode::Busy => l.ok,
+    };
+    let state = view()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .child(
+            view()
+                .w(px(7.0))
+                .h(px(7.0))
+                .rounded(px(3.5))
+                .bg(tone)
+                .transition_colors()
+                .duration(motion()),
+        )
+        .child(
+            text(move || caption(ctl.mode()).to_owned())
+                .test_id("mode")
+                .text_size(px(BASE))
+                .text_color(l.text_2),
+        );
+    let about = view()
+        .flex_1()
+        .child(title("This machine"))
+        .child(below(4.0, state))
+        .child(maybe(4.0, move || {
+            status().disk_low.map(|detail| {
+                text(words::disk(Some(&detail)))
+                    .text_size(px(SMALL))
+                    .text_color(l.warning)
+            })
+        }));
     view()
-        .p_3()
-        .rounded(px(6.0))
-        .border_1()
-        .border_color(move || theme().border)
-        .child(row("Archive", move || {
+        .flex_row()
+        .items_start()
+        .gap(px(12.0))
+        .child(about)
+        .child(
+            view()
+                .flex_row()
+                .gap(px(8.0))
+                .child(button(
+                    move || {
+                        if ctl.paused.get() {
+                            "Resume".to_owned()
+                        } else {
+                            "Pause".to_owned()
+                        }
+                    },
+                    "pause",
+                    || false,
+                    move || ctl.mode() != Mode::Stopped,
+                    None,
+                    move || ctl.toggle_pause(),
+                ))
+                .child(button(
+                    move || {
+                        if ctl.busy.get() {
+                            "Capturing".to_owned()
+                        } else {
+                            "Capture now".to_owned()
+                        }
+                    },
+                    "capture-now",
+                    || true,
+                    move || ctl.can_capture(),
+                    Some(key_label(CAPTURE_KEYS)),
+                    move || ctl.capture(),
+                )),
+        )
+}
+
+fn facts(ctl: Controller, status: impl Fn() -> Status + Copy + 'static) -> impl IntoElement {
+    let held = move || status().held.is_some_and(|held| held > 0);
+    group()
+        .child(fact(true, "Archive", move || {
             status().endpoint.unwrap_or_default()
         }))
-        .child(row("Web app", move || ctl.web_app().unwrap_or_default()))
-        .child(row("Machine", move || {
+        .child(fact(false, "Web app", move || {
+            ctl.web_app().unwrap_or_default()
+        }))
+        .child(fact_id("Machine", move || {
             status().machine_id.unwrap_or_default()
         }))
-        .child(row("Last capture", move || {
+        .child(fact(false, "Last capture", move || {
             words::last_capture(status().last_sync_at.as_deref(), ctl.now.get())
         }))
-        .child(row("Uploaded by the last capture", move || {
+        .child(fact(false, "Last upload", move || {
             words::count(status().last_uploaded, "session")
         }))
-        .child(row("Uploaded from this machine", move || {
+        .child(fact(false, "Uploaded in all", move || {
             words::count(status().uploaded_total, "artifact")
         }))
-        .child(row("Waiting to upload", move || {
+        .child(fact(false, "Waiting", move || {
             let status = status();
             words::waiting(status.queued, status.retrying)
         }))
-        .child(row("Sources found", move || {
+        .child(fact(false, "Sources", move || {
             words::sources(&status().sources)
         }))
-        .child(row("Disk space", move || {
-            words::disk(status().disk_low.as_deref())
+        .child(when(held, move || {
+            fact(false, "Held back", move || {
+                words::count(status().held, "artifact")
+            })
         }))
-        .child(row("Held back by the capture policy", move || {
-            words::count(status().held, "artifact")
-        }))
-}
-
-fn actions(ctl: Controller) -> impl IntoElement {
-    view()
-        .flex_row()
-        .flex_wrap()
-        .gap_2()
-        .child(button(
-            move || {
-                if ctl.busy.get() {
-                    "Capturing".to_owned()
-                } else {
-                    "Capture now".to_owned()
-                }
-            },
-            "capture-now",
-            || true,
-            move || ctl.can_capture(),
-            move || ctl.capture(),
-        ))
-        .child(button(
-            move || {
-                if ctl.paused.get() {
-                    "Resume".to_owned()
-                } else {
-                    "Pause".to_owned()
-                }
-            },
-            "pause",
-            || false,
-            move || ctl.mode() != Mode::Stopped,
-            move || ctl.toggle_pause(),
-        ))
-        .child(button(
-            || "Open web app".to_owned(),
-            "open-web-app",
-            || false,
-            || true,
-            move || ctl.open_web_app(),
-        ))
-        .child(button(
-            || "Sign out".to_owned(),
-            "sign-out",
-            || false,
-            move || !ctl.busy.get(),
-            move || ctl.sign_out(),
-        ))
 }
 
 /// What is masked before upload. The window has to show it and let it be
@@ -139,63 +170,69 @@ fn masks(ctl: Controller) -> impl IntoElement {
             .and_then(|status| status.redaction)
             .unwrap_or_default()
     };
-    view()
-        .gap_1()
-        .child(note(|| "Masked before upload".to_owned()))
-        .child(mask(
-            "Secrets such as keys and tokens",
-            "mask-secrets",
-            move || current().secrets,
-            move || {
-                let mut next: Redaction = current();
-                next.secrets = !next.secrets;
-                ctl.set_redaction(next);
-            },
-        ))
-        .child(mask(
-            "Email addresses",
-            "mask-email",
-            move || current().email_addresses,
-            move || {
-                let mut next = current();
-                next.email_addresses = !next.email_addresses;
-                ctl.set_redaction(next);
-            },
-        ))
-        .child(mask(
-            "Home directory paths",
-            "mask-home",
-            move || current().home_paths,
-            move || {
-                let mut next = current();
-                next.home_paths = !next.home_paths;
-                ctl.set_redaction(next);
-            },
-        ))
+    let toggle = move |change: fn(&mut Redaction)| {
+        let mut next = current();
+        change(&mut next);
+        ctl.set_redaction(next);
+    };
+    view().child(section("Masked before upload")).child(
+        group()
+            .child(mask(
+                true,
+                "Secrets such as keys and tokens",
+                "mask-secrets",
+                move || current().secrets,
+                move || toggle(|next| next.secrets = !next.secrets),
+            ))
+            .child(mask(
+                false,
+                "Email addresses",
+                "mask-email",
+                move || current().email_addresses,
+                move || toggle(|next| next.email_addresses = !next.email_addresses),
+            ))
+            .child(mask(
+                false,
+                "Home directory paths",
+                "mask-home",
+                move || current().home_paths,
+                move || toggle(|next| next.home_paths = !next.home_paths),
+            )),
+    )
 }
 
 fn mask(
+    first: bool,
     label: &'static str,
     id: &'static str,
     on: impl Fn() -> bool + Copy + 'static,
     press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    row(first)
+        .child(text(label).text_size(px(BASE)).flex_1())
+        .child(switch(label, id, on, press))
+}
+
+/// Leaving the window: the web app, or this machine's sign-in.
+fn footer(ctl: Controller) -> impl IntoElement {
     view()
         .flex_row()
-        .items_center()
-        .justify_between()
-        .child(text(label).text_size(px(13.0)))
+        .justify_end()
+        .gap(px(8.0))
         .child(button(
-            move || {
-                if on() {
-                    "On".to_owned()
-                } else {
-                    "Off".to_owned()
-                }
-            },
-            id,
-            on,
+            || "Open web app".to_owned(),
+            "open-web-app",
+            || false,
             || true,
-            press,
+            Some(key_label(WEB_APP_KEYS)),
+            move || ctl.open_web_app(),
+        ))
+        .child(button(
+            || "Sign out".to_owned(),
+            "sign-out",
+            || false,
+            move || !ctl.busy.get(),
+            None,
+            move || ctl.sign_out(),
         ))
 }
