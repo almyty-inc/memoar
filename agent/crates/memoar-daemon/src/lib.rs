@@ -21,6 +21,7 @@ mod queue;
 mod redaction;
 mod secret_catalogue;
 mod settle;
+mod source_bytes;
 mod space;
 mod sync;
 mod transport;

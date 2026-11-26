@@ -47,10 +47,10 @@ look, not a verdict.
 | Source | Store it was read from | Last checked |
 | --- | --- | --- |
 | `claude-code` | `~/.claude/projects/**/*.jsonl` | 2026-09-08 |
-| `codex` | `~/.codex/sessions/**/*.jsonl` | 2026-09-08 |
-| `antigravity-cli` | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | 2026-11-25 |
+| `codex` | `~/.codex/sessions/**/rollout-*.jsonl` and `rollout-*.jsonl.zst` | 2026-11-26 |
+| `antigravity-cli` | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | 2026-11-26 |
 | `crush` | `<project>/.crush/crush.db` | 2026-09-08 |
-| `opencode` | `~/.local/share/opencode/opencode.db` | 2026-09-08 |
+| `opencode` | `~/.local/share/opencode/opencode.db`, v1 and v2 tables | 2026-11-26 |
 | `zed` | `~/Library/Application Support/Zed/threads/threads.db` | 2026-09-17 |
 
 Verifying the parser was not enough for `antigravity-cli`. The check above names
@@ -72,6 +72,63 @@ line by line now and all eight parse. The other two are guardian subagent
 threads holding `session_meta`, one `compaction` item that is only
 `encrypted_content`, and a settings event. They contain nothing readable and
 stay refused, correctly.
+
+### Storage drift, checked 2026-11-26
+
+Four tools changed where or how they write since their patterns were written.
+Each was checked on one macOS machine with `scripts/verify-store-sweep.mjs`,
+which puts every file of a store through format detection with the bare tool
+name and then the parser, and prints counts only.
+
+- **Codex** compresses cold rollouts to `rollout-*.jsonl.zst`
+  (`codex-rs/rollout/src/compression.rs`) and capture named only `.jsonl`.
+  3,882 rollouts: 477 plain, 3,405 compressed, none of which had been
+  captured. All 3,882 decompress. 3,868 parse into 31,371 turns, 13 are
+  `empty` (guardian threads with nothing readable), 1 is a 269 MB plaintext
+  past the archive's 256 MB ceiling that the agent skips as too large, and 0
+  are `unknown`. The agent's decoder (`ruzstd`) and Node's zstd produced the
+  same 1,165,171,977 bytes and the same digest over all 3,405. Every one of
+  the 4,052 assistant turns carries its model from `turn_context`.
+- **Antigravity** writes `conversations/<id>.db` beside the transcript. All
+  655 conversations have both, the newest included, so transcripts were not
+  dropped. Every transcript step is a `steps` row at the same index. The 559
+  rows only the database holds are 519 model errors (HTTP 429 details) and 40
+  cancelled tool calls. The database is protobuf with no published schema and
+  is not captured. All 655 transcripts parse, 952 turns.
+- **OpenCode** is mid-migration to `session_v2`/`session_message`/
+  `session_part`. Here the one session is in both generations, 47 messages are
+  in both, and one system message is only in `session_message`. The parser
+  now reads v1 and takes from v2 every message v1 lacks: 48 turns, every
+  assistant turn with its model. `parser-coverage.mjs` reports 24% for this
+  store now. That is the whole-row JSON of the new tables, which the archive
+  never holds as one string. Field by field, every string of 60 characters or
+  more in `message`, `part` and `session_message` is in the parsed session.
+- **Copilot**: VS Code's chat log replays as VS Code reads it
+  (`objectMutationLog.ts`): `kind` 0 replaces the state, 1 sets, 2 appends to
+  or truncates an array, 3 deletes. The parser used to drop `kind` 2, which is
+  how every new request is written, so the question this file asked below is
+  answered from VS Code's source. Panels opened with no folder are under
+  `globalStorage/emptyWindowChatSessions/` and are captured now. The 24 files
+  here (18 `.jsonl`, 5 `.json`, 1 empty-window) are all unused panels and
+  read as `empty`. The CLI's `session-state/<id>/events.jsonl` is captured and
+  parsed from the Copilot SDK's published event schema
+  (`nodejs/src/generated/session-events.ts`). **Not verified**: this machine
+  has no `events.jsonl`.
+- **Kilo Code** moved to `~/.local/share/kilo/kilo.db`, opencode's schema
+  (`packages/core/src/database/database.ts`), read by the opencode parser.
+  **Not verified**: Kilo is not installed here.
+- **Cursor 3.x**: each bubble's own `createdAt` and `modelInfo.modelName`, and
+  titles from `composer.composerHeaders`, follow `getagentseal/codeburn`, which
+  is run against real stores. **Not verified**: Cursor is not installed here.
+
+Windows paths were corrected from the tools' code: opencode and Kilo use XDG
+data under the home directory on every platform, so `AppData/Roaming/opencode`
+was never written, and Zed's data directory on Windows is `AppData/Local/Zed`.
+
+Not captured, and why: Codex's `state_5.sqlite` `threads` table and
+`session_index.jsonl` hold thread titles (78 entries here). The rollout does
+not carry a title, so Codex sessions are still titled generically. Joining
+them would need a second artifact per session and is left for later.
 
 `copilot` is deliberately not in that table, and it is the one source where the
 two halves of "verified" have to be said separately, because it has two stores.
@@ -237,7 +294,7 @@ the failure this whole file exists to prevent.
 | `cursor` | Install Cursor, hold one conversation with the agent, quit Cursor so it flushes `state.vscdb`, run the script. The parser reads `composerData:` rows for the order and `bubbleId:` rows for the content, both in `cursorDiskKV`; a green line with turns means both halves were found. |
 | `copilot` | Two stores, two answers. **CLI:** `~/.copilot/session-store.db` on this machine has the exact `sessions` and `turns` schema the parser selects, and the parser opens it — but `turns` is empty, so the script prints `empty` and only the session row is verified. Install GitHub Copilot CLI, hold a conversation that records exchanges, re-run. **VS Code:** the `chatSessions` envelope is read and its mapping is verified against six real populated sessions, but none of those came out of a `chatSessions` file — every file here is an unused panel. Open Copilot Chat in VS Code, hold one conversation, close the window so the panel flushes, and run the parser over the file it wrote: it confirms the file layouts carry what the memento did, and it is the only thing that can show whether a `.jsonl` ever writes `requests` through a `kind:1` record instead of its `kind:0` snapshot. |
 | `goose` | `brew install block-goose-cli`, one session, run the script. While there, list `~/.local/share/goose/sessions`: if anything still writes `.jsonl`, the parser needs a branch; if nothing does, the pattern goes. Still nothing here to ask, re-checked 2026-09-23: `goose` is not on the path, and `~/.local/share/goose`, `~/.config/goose` and `~/Library/Application Support/Block` do not exist. Do not re-check by hand — this is the answer until somebody installs it. |
-| `kilo` | VS Code with Kilo Code, one task, run the script. Also list one `tasks/<id>` directory and say which files are in it: the parser reads `api_conversation_history.json`, the pattern takes every `*.json` beside it, and `ui_messages.json` is a different shape that may parse into nonsense rather than be refused. |
+| `kilo` | Kilo Code now writes `~/.local/share/kilo/kilo.db`: run one task with the CLI or the current extension and run `verify-store-sweep.mjs`, which reads every `kilo*.db`. For the older extension: VS Code with Kilo Code, one task, run the script. Also list one `tasks/<id>` directory and say which files are in it: the parser reads `api_conversation_history.json`, the pattern takes every `*.json` beside it, and `ui_messages.json` is a different shape that may parse into nonsense rather than be refused. |
 | `roo` | VS Code with Roo Code, one task. Same directory listing as Kilo; they share the format and the question. |
 | `chatgpt-export` | A genuine ChatGPT data export — no software to install, just the export ChatGPT emails you. Not in the script: it arrives as an upload, not as a store on disk. |
 | `cass-export` | Unknown: nobody here has seen a real one. |

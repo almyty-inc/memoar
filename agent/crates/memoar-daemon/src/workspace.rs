@@ -8,8 +8,6 @@
 
 use regex::Regex;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -84,14 +82,9 @@ fn decode_project_dir(dir: &Path) -> Option<String> {
     name.starts_with('-').then(|| name.replace('-', "/"))
 }
 
+/// The start of the plaintext, so a compressed rollout names its workspace too.
 fn read_head(path: &Path) -> Option<Vec<u8>> {
-    let mut head = Vec::with_capacity(HEAD_BYTES);
-    File::open(path)
-        .ok()?
-        .take(HEAD_BYTES as u64)
-        .read_to_end(&mut head)
-        .ok()?;
-    Some(head)
+    crate::source_bytes::read_head(path, HEAD_BYTES)
 }
 
 /// The first `"cwd": "..."` in a run of JSON records, unescaped.

@@ -18,20 +18,45 @@ parser; the agent collected files it could not read and the archive marked them
 The capture agent finds these on disk. `memoar sources list` resolves the paths
 for the operating system it runs on.
 
-| Source | Native store |
-| --- | --- |
-| Claude Code | `~/.claude/projects/<encoded-project>/*.jsonl` and the subagent transcripts beneath each session, `<session>/subagents/*.jsonl` and `<session>/subagents/workflows/*/*.jsonl` |
-| Claude Desktop local agent mode (macOS, as Claude Code) | `~/Library/Application Support/Claude/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects/<project>/*.jsonl` and its `subagents/*.jsonl`, plus the same below `agent/local_<session>/` |
-| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
-| Antigravity CLI | `~/.gemini/antigravity-cli/brain/<conversation>/.system_generated/logs/transcript.jsonl` |
-| Cursor | VS Code `state.vscdb` stores |
-| OpenCode | JSON records or SQLite |
-| GitHub Copilot | VS Code JSON or the CLI's SQLite |
-| Goose | `~/.local/share/goose/sessions/sessions.db` |
-| Crush | `~/.crush/crush.db` |
-| Roo Code | task JSON |
-| Kilo Code | Cline-family task JSON |
-| Zed | Zstd-compressed SQLite threads |
+Paths are relative to the home directory. "VS Code user data" is
+`~/Library/Application Support/Code/User` on macOS, `~/.config/Code/User` on
+Linux and `%APPDATA%\Code\User` on Windows. The last column says whether the
+current layout was read off a real store on 2026-11-26 or only off the tool's
+own source.
+
+| Source | Native store | Current layout checked |
+| --- | --- | --- |
+| Claude Code | `.claude/projects/<encoded-project>/*.jsonl` and the subagent transcripts beneath each session, `<session>/subagents/*.jsonl` and `<session>/subagents/workflows/*/*.jsonl` | real store |
+| Claude Desktop local agent mode (macOS, as Claude Code) | `Library/Application Support/Claude/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects/<project>/*.jsonl` and its `subagents/*.jsonl`, plus the same below `agent/local_<session>/` | real store |
+| Codex CLI | `.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and `rollout-*.jsonl.zst`, or the same under `CODEX_HOME` | real store, all 3,882 rollouts |
+| Antigravity CLI | `.gemini/antigravity-cli/brain/<conversation>/.system_generated/logs/transcript.jsonl` | real store, all 655 |
+| Cursor | `state.vscdb` in Cursor's `globalStorage` and `workspaceStorage/*` | source only |
+| OpenCode | `.local/share/opencode/opencode.db` or `opencode-<channel>.db`, under `XDG_DATA_HOME` when set, on every platform | real store |
+| GitHub Copilot | VS Code user data `workspaceStorage/*/chatSessions/*.json(l)` and `globalStorage/emptyWindowChatSessions/*.json(l)`, the CLI's `.copilot/session-state/<id>/events.jsonl` and `.copilot/session-store.db` | VS Code files and CLI database: real, but empty. `events.jsonl`: source only |
+| Goose | `.local/share/goose/sessions/sessions.db` | source only |
+| Crush | `.crush/crush.db` | real store |
+| Roo Code | VS Code user data `globalStorage/rooveterinaryinc.roo-cline/tasks/*/api_conversation_history.json` | source only |
+| Kilo Code | `.local/share/kilo/kilo.db` or `kilo-<channel>.db` (opencode's schema), and the older extension's `globalStorage/kilocode.kilo-code/tasks/*/api_conversation_history.json` | source only |
+| Zed | `threads/threads*.db` in Zed's data directory: `Library/Application Support/Zed`, `.local/share/zed`, or `AppData/Local/Zed` | real store (macOS) |
+
+Codex compresses a rollout it has not touched for a while into
+`rollout-*.jsonl.zst` and deletes the plain file. On the machine checked,
+3,405 of 3,882 rollouts were compressed and none of them had ever been
+captured. The agent now decompresses them itself, before redaction, so
+redaction sees the text. It tells the archive the plain file name, so a
+rollout that Codex compresses, or decompresses again to append to it, stays
+one session.
+
+Each turn records the model that produced it where the store says: Codex
+`turn_context.model`, OpenCode and Kilo `modelID`, Crush `messages.model`,
+Copilot `selectedModel` and `model`, Cursor `modelInfo.modelName`. The
+session's `models` lists them, and Goose's comes from `model_config_json`.
+
+Antigravity also writes `conversations/<id>.db`, protobuf steps with no
+published schema. Every conversation on the machine checked still has its
+`transcript.jsonl`, and every transcript step is a database row at the same
+index. What only the database holds is model error details and cancelled tool
+calls, so the database is not captured.
 
 Each source names the exact transcript files its parser reads, at each depth
 they are written. Nothing else in those trees is taken. In Claude Desktop that
@@ -55,6 +80,11 @@ and the list does not refuse it, and when a pattern names a file type its
 parser does not read.
 
 ### How the archive recognises an upload
+
+`scripts/verify-store-sweep.mjs` puts every file of the Codex, Antigravity,
+Copilot, OpenCode and Kilo stores on a machine through that same path and
+prints counts. `scripts/verify-parsers-locally.mjs` reads the newest file of
+every source.
 
 The agent sends only the tool name as `x-memoar-source`. The server reads the
 first records of the upload and checks the fields its parser needs, for

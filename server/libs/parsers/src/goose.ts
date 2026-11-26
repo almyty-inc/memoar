@@ -1,5 +1,16 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
-import { epochToIso, incrementUuid } from "./common.js";
+import { epochToIso, incrementUuid, isRecord, sessionModels, stringValue } from "./common.js";
+
+/** `model_name` of the session's `ModelConfig` (`crates/goose/src/model_config.rs`). */
+function configuredModel(json: string | null | undefined): string | null {
+  if (!json) return null;
+  try {
+    const config: unknown = JSON.parse(json);
+    return isRecord(config) ? stringValue(config, "model_name") : null;
+  } catch {
+    return null;
+  }
+}
 import { goosePart } from "./native-parts.js";
 import { parseJsonColumn, turnFromRow } from "./sqlite-rows.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
@@ -22,8 +33,10 @@ export class GooseV1Parser implements VersionedParser {
         // so a real database failed before a row could be read. The ordering is
         // the one goose itself uses to replay a conversation.
         const sessionRows = database
-          .prepare("SELECT id, description, name, working_dir FROM sessions ORDER BY created_at, id")
-          .all() as unknown as { id: string; description: string | null; name: string | null; working_dir: string | null }[];
+          // Every column, so `model_config_json`, which newer goose writes and
+          // older goose does not have, is read where it exists.
+          .prepare("SELECT * FROM sessions ORDER BY created_at, id")
+          .all() as unknown as { id: string; description: string | null; name: string | null; working_dir: string | null; model_config_json?: string | null }[];
         if (!sessionRows.length) throw new Error("database has no sessions");
         const messagesFor = database
           .prepare("SELECT message_id, role, content_json, created_timestamp FROM messages WHERE session_id = ? ORDER BY created_timestamp, id");
@@ -49,6 +62,7 @@ export class GooseV1Parser implements VersionedParser {
             source: { ...request.seed.source, nativeSessionId: sessionRow.id },
             ...(sessionRow.description || sessionRow.name ? { title: sessionRow.description || sessionRow.name! } : {}),
             ...(sessionRow.working_dir ? { workspace: { ...request.seed.workspace, path: sessionRow.working_dir } } : {}),
+            models: sessionModels(request.seed.models, turns, configuredModel(sessionRow.model_config_json)),
             turns,
           };
         });

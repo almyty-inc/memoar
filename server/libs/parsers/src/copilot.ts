@@ -1,6 +1,7 @@
 import type { Session, Turn } from "../../canonical/src/generated.js";
 import { derivedBlockId, incrementUuid, readJsonLines } from "./common.js";
 import { chatEnvelopes, chatEnvelopesFromLog, chatSessions } from "./copilot-chat.js";
+import { isCopilotEventLog, parseCopilotEvents } from "./copilot-events.js";
 import { isSqliteBytes, withSqlite } from "./sqlite.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { parserVersion } from "./versions.js";
@@ -133,7 +134,10 @@ function parseChatSessions(request: ParseRequest): ParseResult {
   } catch {
     whole = undefined;
   }
-  const envelopes = chatEnvelopes(whole) ?? chatEnvelopesFromLog(readJsonLines(request.raw).records);
+  const lines = readJsonLines(request.raw).records;
+  // The CLI's `session-state/<id>/events.jsonl`, which is not a panel at all.
+  if (isCopilotEventLog(lines)) return parseCopilotEvents(lines, request.seed, request.raw);
+  const envelopes = chatEnvelopes(whole) ?? chatEnvelopesFromLog(lines);
   if (!envelopes) {
     return {
       kind: "unknown",
