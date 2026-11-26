@@ -1,6 +1,7 @@
 import { AgentDot } from '../../components/AgentMark';
 import { Button, plural } from '../../components/ui';
 import type { SessionSummary } from '../../lib/types';
+import { workspaceLabel } from '../../lib/workspace';
 
 export interface Filters {
   source: string;
@@ -63,7 +64,7 @@ export function TimelineFilters({ sessions, filters, onChange, shown }: {
         <span className="sr-only">Filter by project</span>
         <select className="select-plain" value={filters.workspace} onChange={(event) => onChange({ ...filters, workspace: event.target.value })}>
           <option value="all">All projects</option>
-          {workspaces.map((value) => <option key={value} value={value}>{value}</option>)}
+          {workspaces.map((value) => <option key={value} value={value}>{workspaceLabel(value)}</option>)}
         </select>
       </label>
       <label>

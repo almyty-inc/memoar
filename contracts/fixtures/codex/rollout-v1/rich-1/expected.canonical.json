@@ -8,7 +8,7 @@
     "nativeSessionId": "rich-codex-rollout"
   },
   "workspace": {
-    "path": "/workspace/example-1",
+    "path": "/workspace/rich",
     "gitRemote": "https://example.invalid/acme/memoar-fixture.git",
     "branch": "main"
   },
@@ -165,8 +165,8 @@
       ],
       "model": "gpt-5",
       "tokens": {
-        "input": 135,
-        "output": 156
+        "input": 0,
+        "output": 0
       }
     },
     {

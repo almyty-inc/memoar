@@ -50,7 +50,7 @@ describe("choosing what an older parser wrote", () => {
   const other = "0191cafe-0000-7000-8000-00000000bbbb";
   const sessions = new Map([
     ["merged", { parserVersion: "claude-code:v1:0.4.0", machineId: machine, title: "Real title", tool: "claude-code" }],
-    ["alone", { parserVersion: "claude-code:v1:0.5.0", machineId: machine, title: "claude-code imported session", tool: "claude-code" }],
+    ["alone", { parserVersion: parserVersion("claude-code"), machineId: machine, title: "claude-code imported session", tool: "claude-code" }],
     ["upload", { parserVersion: "claude-code:v1:0.3.0", machineId: other, title: null, tool: "claude-code" }],
   ]);
 
@@ -75,7 +75,13 @@ describe("choosing what an older parser wrote", () => {
 
   it("compares versions within a parser, and counts pending and unknown stamps as stale", () => {
     expect(isStaleParserVersion("claude-code:v1:0.4.0", "claude-code")).toBe(true);
-    expect(isStaleParserVersion("claude-code:v1:0.5.0", "claude-code")).toBe(false);
+    expect(isStaleParserVersion("claude-code:v1:0.6.0", "claude-code")).toBe(false);
+    // Everything parsed before tokens and workspaces were read is parsed again.
+    expect(isStaleParserVersion("claude-code:v1:0.5.0", "claude-code"), "before token usage").toBe(true);
+    expect(isStaleParserVersion("codex:rollout-v1:0.5.0", "codex"), "before cwd and token_count").toBe(true);
+    expect(isStaleParserVersion("antigravity-cli:v1:0.4.0", "antigravity-cli"), "with the transcript path as workspace").toBe(true);
+    expect(isStaleParserVersion("chatgpt-export:2026-08:0.3.0", "chatgpt-export"), "with the upload's name as workspace").toBe(true);
+    expect(isStaleParserVersion("zed:v1:0.3.0", "zed"), "with the database path as workspace").toBe(true);
     expect(isStaleParserVersion("claude-code:v1:0.10.0", "claude-code"), "numbers, not strings").toBe(false);
     expect(isStaleParserVersion("codex:rollout-v1:0.3.0", "codex"), "#26's line-by-line parse").toBe(true);
     expect(isStaleParserVersion("pending", "claude-code")).toBe(true);

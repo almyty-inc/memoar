@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Turn } from "../../canonical/src/generated.js";
+import type { TokenTotals, Turn } from "../../canonical/src/generated.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -218,12 +218,20 @@ export function sessionModels(seeded: readonly string[], turns: readonly Turn[],
   return [...new Set(named)];
 }
 
-export function withModelAndTokens(turn: Turn, model: string | undefined, input: number, output: number): Turn {
+/**
+ * An assistant turn with its model and the tokens its request used.
+ *
+ * Every caller used to pass the seed's `tokenTotals`, which the pipeline seeds
+ * with zeros, so every turn in the archive said it had used none. A source that
+ * records usage passes it here. One that records none leaves the default, and
+ * zero is then the honest answer.
+ */
+export function withModelAndTokens(turn: Turn, model: string | undefined, tokens: TokenTotals = { input: 0, output: 0 }): Turn {
   if (turn.role !== "assistant") return turn;
   return {
     ...turn,
     ...(model ? { model } : {}),
-    tokens: { input, output },
+    tokens: { ...tokens },
   };
 }
 

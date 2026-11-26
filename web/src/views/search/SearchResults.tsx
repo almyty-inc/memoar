@@ -3,6 +3,7 @@ import { AgentMark } from '../../components/AgentMark';
 import { HighlightText, cn, formatRelative, plural } from '../../components/ui';
 import { isPlainClick } from '../../components/Shell';
 import type { SessionSummary } from '../../lib/types';
+import { workspaceLabel } from '../../lib/workspace';
 import { useListKeys } from '../timeline/use-list-keys';
 
 /**
@@ -40,7 +41,7 @@ export function SearchResults({ items, query, onOpen }: {
               ) : null}
               <span className="result-meta">
                 <span>{session.sourceLabel}</span>
-                <span className="mono">{session.workspace}</span>
+                <span className="mono">{workspaceLabel(session.workspace)}</span>
                 <span>{plural(session.turnCount, 'turn')}</span>
                 <span>{formatRelative(session.updatedAt)}</span>
               </span>

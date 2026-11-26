@@ -11,6 +11,7 @@ import { CursorV3Parser } from "./cursor.js";
 import { GooseV1Parser } from "./goose.js";
 import { KiloParser } from "./kilo.js";
 import { OpencodeV1Parser } from "./opencode.js";
+import { withTokenTotals } from "./tokens.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { ZedV1Parser } from "./zed.js";
 
@@ -55,7 +56,12 @@ export class ParserRegistry {
       };
     }
     try {
-      return parser.parse(request);
+      const result = parser.parse(request);
+      // A session's total is the sum of its turns, worked out here once rather
+      // than in every parser. memoar's own bundle is the exception: it carries
+      // the totals it was exported with, and they are kept as written.
+      if (result.kind !== "parsed" || parser.source === "canonical-bundle") return result;
+      return { ...result, sessions: result.sessions.map(withTokenTotals) };
     } catch (error) {
       return {
         kind: "unknown",

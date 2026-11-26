@@ -1,5 +1,6 @@
 import type { Turn } from "../../canonical/src/generated.js";
-import { incrementUuid, isRecord, mostlyJsonLines, stringValue, withModelAndTokens } from "./common.js";
+import { incrementUuid, isRecord, mostlyJsonLines, sessionModels, stringValue, withModelAndTokens } from "./common.js";
+import { addTokens, NO_TOKENS, tokenTotals } from "./tokens.js";
 import type { ParseRequest, ParseResult, VersionedParser } from "./types.js";
 import { parserVersion } from "./versions.js";
 
@@ -47,7 +48,7 @@ export class AntigravityCliV1Parser implements VersionedParser {
         role: "assistant" as const,
         createdAt,
         blocks: [],
-      }, request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
+      }, request.seed.models[0]);
       turns.push(turn);
       return turn;
     };
@@ -83,6 +84,13 @@ export class AntigravityCliV1Parser implements VersionedParser {
 
       if (type === "PLANNER_RESPONSE") {
         const turn = openAssistant(createdAt);
+        // Each planner step is one model request, and the CLI writes its usage
+        // and model on it. `input_tokens` leaves the cache out: in 198 of 465
+        // steps on the machine this was checked on, `cache_read_tokens` was the
+        // larger of the two. A turn spanning several steps sums them.
+        turn.tokens = addTokens(turn.tokens ?? NO_TOKENS, tokenTotals(step.input_tokens, step.output_tokens, step.cache_read_tokens));
+        const model = stringValue(step, "model");
+        if (model) turn.model = model;
         const thinking = stringValue(step, "thinking");
         if (thinking) turn.blocks.push({ id: mint(), kind: "thinking", text: thinking });
         const calls = Array.isArray(step.tool_calls) ? step.tool_calls : [];
@@ -157,6 +165,17 @@ export class AntigravityCliV1Parser implements VersionedParser {
     if (withOrdinals.length === 0) {
       return { kind: "unknown", diagnostic: "antigravity-cli v1 transcript contained no readable steps", raw: request.raw };
     }
-    return { kind: "parsed", parser: parserVersion(this.source), sessions: [{ ...request.seed, turns: withOrdinals }] };
+    /*
+      No workspace, because the transcript names none. The CLI keeps it in
+      `~/.gemini/antigravity-cli/conversation_summaries.db`, as `workspace_uris`
+      keyed by the conversation id this transcript's directory is named after,
+      and the agent does not capture that database. The seed's placeholder
+      stands until it does.
+    */
+    return {
+      kind: "parsed",
+      parser: parserVersion(this.source),
+      sessions: [{ ...request.seed, models: sessionModels(request.seed.models, withOrdinals), turns: withOrdinals }],
+    };
   }
 }

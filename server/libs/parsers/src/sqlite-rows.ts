@@ -35,7 +35,9 @@ export function turnFromRow(row: RowShape, ordinal: number, seed: SessionSeed, n
     role,
     createdAt: stringValue(record, "createdAt") ?? seed.createdAt,
     blocks,
-  }, seed.models[0], seed.tokenTotals.input, seed.tokenTotals.output);
+    // No store read through here records usage per message. goose and crush
+    // keep it per session only, and a CASS export not at all.
+  }, seed.models[0]);
 }
 
 export function parseJsonColumn(value: unknown, label: string): unknown {

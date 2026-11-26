@@ -8,6 +8,12 @@ use chrono::{DateTime, Local, NaiveDate, Utc};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// The workspace the server gives a session whose source records none, and
+/// the one uploads were given before it.
+const NO_WORKSPACE_PATHS: [&str; 2] = ["/memoar/no-workspace", "/memoar/imports"];
+
+const NO_WORKSPACE_LABEL: &str = "No workspace";
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SessionRow {
     pub(crate) id: String,
@@ -47,8 +53,13 @@ impl SessionRow {
     }
 
     /// The last path component of the workspace, which is what tells two
-    /// projects apart in a narrow column.
+    /// projects apart in a narrow column. A session whose source records no
+    /// working directory carries a placeholder the server chose, which is not a
+    /// path anyone worked in, and shows as "No workspace".
     pub(crate) fn project(&self) -> &str {
+        if NO_WORKSPACE_PATHS.contains(&self.workspace.as_str()) || self.workspace.is_empty() {
+            return NO_WORKSPACE_LABEL;
+        }
         self.workspace
             .trim_end_matches(['/', '\\'])
             .rsplit(['/', '\\'])

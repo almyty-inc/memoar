@@ -1,5 +1,6 @@
 import type { SearchResponse } from '../../lib/types';
 import { cn } from '../../components/ui';
+import { workspaceLabel } from '../../lib/workspace';
 
 /*
   Only the facets the archive aggregates: agents and workspaces. A Date facet
@@ -44,7 +45,7 @@ export function SearchFilters({ response, activeSource, setActiveSource, activeW
       <FacetGroup
         title="Project"
         mono
-        items={aggregations.workspaces}
+        items={aggregations.workspaces.map((item) => ({ ...item, label: workspaceLabel(item.value) }))}
         activeValue={activeWorkspace}
         onSelect={(value) => setActiveWorkspace(activeWorkspace === value ? null : value)}
       />

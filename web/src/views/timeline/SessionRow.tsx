@@ -2,6 +2,7 @@ import { AgentMark } from '../../components/AgentMark';
 import { cn, formatTime, plural } from '../../components/ui';
 import { isPlainClick } from '../../components/Shell';
 import type { SessionSummary } from '../../lib/types';
+import { projectName, workspaceLabel } from '../../lib/workspace';
 
 /**
  * "Today", "Yesterday", or the weekday and date, measured from when the
@@ -14,11 +15,6 @@ export function friendlyDate(date: string, asOf: number): string {
   if (difference === 0) return 'Today';
   if (difference === 1) return 'Yesterday';
   return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
-}
-
-/** The last part of a project path, which is how people name a project. */
-export function projectName(workspace: string): string {
-  return workspace.replace(/\/+$/u, '').split('/').at(-1) || workspace;
 }
 
 /**
@@ -53,7 +49,7 @@ export function SessionRow({ session, machineName, selected, onOpen, onPrefetch 
         <span className="session-row-title">{session.title}</span>
         {preview && preview !== session.title ? <span className="session-row-preview">{preview}</span> : null}
         <span className="session-row-meta">
-          <span title={session.workspace}>{projectName(session.workspace)}</span>
+          <span title={workspaceLabel(session.workspace)}>{projectName(session.workspace)}</span>
           <span>{plural(session.turnCount, 'turn')}</span>
           {machineName ? <span>{machineName}</span> : null}
           <span>{formatTime(session.updatedAt)}</span>
