@@ -187,10 +187,11 @@ jobs:
       # each. Linux draws into Xvfb with GTK's software renderer.
       - name: Install Xvfb and ImageMagick
         if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb imagemagick
+        run: sudo apt-get install -y xvfb imagemagick x11-utils
       - name: Screenshots
         env:
           GSK_RENDERER: cairo
+          RUST_LOG: info
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
             xvfb-run -a -s "-screen 0 1024x768x24" agent/scripts/screenshot-desktop.sh desktop-screenshots

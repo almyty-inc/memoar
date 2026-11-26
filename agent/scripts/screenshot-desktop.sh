@@ -94,10 +94,20 @@ for screen in sign-in status; do
     # Long enough for the window to open and, on status, the first capture.
     sleep 8
     shot="$out_dir/$target-$screen-$appearance.png"
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      echo "memoar desktop: the window exited before its screenshot" >&2
+      cat "$run/app.log" >&2
+      exit 1
+    fi
+    if [ "$target" = linux ] && command -v xwininfo >/dev/null 2>&1; then
+      xwininfo -root -tree | grep -i memoar >&2 || echo "memoar desktop: no X window named Memoar" >&2
+    fi
     capture "$app_pid" "$shot"
     kill "$app_pid" 2>/dev/null || true
     wait "$app_pid" 2>/dev/null || true
     app_pid=
+    # What the window logged, next to its picture.
+    cp "$run/app.log" "${shot%.png}.log"
     echo "$(native_path "$shot")"
   done
 done
