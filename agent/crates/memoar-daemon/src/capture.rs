@@ -45,7 +45,8 @@ pub struct CaptureSummary {
     pub unchanged: u64,
     /// Files last modified before the backfill bound, left where they are.
     pub too_old: Tally,
-    /// Files in a project the policy leaves out.
+    /// Files in a project the policy leaves out. Its bytes count only the
+    /// files that were read to learn their project, usually one per project.
     pub excluded: Tally,
     /// Rows already queued that the policy now holds back, or takes in again.
     pub policy: PolicyApplied,
@@ -81,9 +82,21 @@ pub(crate) struct FileCapture<'a> {
 }
 
 impl FileCapture<'_> {
-    /// Cheapest question first: a `stat` answers whether it is queued already
-    /// and whether it is too old, and only then is the file read.
+    /// Cheapest question first. A project the policy already left out answers
+    /// without touching the file: one excluded Claude Code project held
+    /// 243,000 transcripts on a real machine, and a `stat` and a queue lookup
+    /// for each made every sync take three minutes. Those files count as
+    /// excluded with no size, since learning the size is the cost. Then a
+    /// `stat` answers whether the file is queued already and whether it is too
+    /// old, and only then is the file read.
     pub(crate) fn file(&mut self, source: &str, path: &Path) -> Result<FileOutcome, DaemonError> {
+        let excluded =
+            |workspace: Option<&str>| self.policy.by_project(workspace) != Verdict::Capture;
+        if let Some(known) = self.resolver.cached(source, path)
+            && excluded(known.as_deref())
+        {
+            return Ok(FileOutcome::Excluded(0));
+        }
         let metadata = stat_within_limit(path)?;
         if self.queue.already_queued(path, &metadata, self.redaction)? {
             return Ok(FileOutcome::Unchanged);
@@ -91,13 +104,6 @@ impl FileCapture<'_> {
         let size = metadata.len();
         if self.policy.by_age(modified_instant(&metadata)) != Verdict::Capture {
             return Ok(FileOutcome::TooOld(size));
-        }
-        let excluded =
-            |workspace: Option<&str>| self.policy.by_project(workspace) != Verdict::Capture;
-        if let Some(known) = self.resolver.cached(source, path)
-            && excluded(known.as_deref())
-        {
-            return Ok(FileOutcome::Excluded(size));
         }
         let bytes = read_source(path)?;
         let workspace = self.resolver.resolve(source, path, Some(&bytes));
