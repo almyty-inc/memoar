@@ -182,6 +182,28 @@ jobs:
           name: memoar-desktop-tests-${{ runner.os }}
           path: agent/crates/memoar-desktop/desktop-junit.xml
           if-no-files-found: ignore
+      # The real window on this desktop, both screens, light and dark, so a
+      # change to how it looks can be seen on all three without a machine of
+      # each. Linux draws into Xvfb with GTK's software renderer.
+      - name: Install Xvfb and ImageMagick
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y xvfb imagemagick
+      - name: Screenshots
+        env:
+          GSK_RENDERER: cairo
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s "-screen 0 1024x768x24" agent/scripts/screenshot-desktop.sh desktop-screenshots
+          else
+            agent/scripts/screenshot-desktop.sh desktop-screenshots
+          fi
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memoar-desktop-screenshots-${{ runner.os }}
+          path: desktop-screenshots
+          if-no-files-found: warn
 
   wrapper-and-installer:
     name: Wrapper platform/checksum/cache matrix
