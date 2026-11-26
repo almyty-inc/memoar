@@ -216,7 +216,9 @@ impl SyncTransport for HttpTransport {
             .header("x-memoar-source", &artifact.source)
             .header(
                 "x-memoar-source-path",
-                encode_source_path(&artifact.source_path),
+                encode_source_path(crate::source_bytes::logical_source_path(
+                    &artifact.source_path,
+                )),
             )
             .header("content-type", "application/octet-stream")
             .body(bytes);

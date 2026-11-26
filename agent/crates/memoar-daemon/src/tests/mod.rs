@@ -1,5 +1,6 @@
 mod activity;
 mod capture;
+mod compressed;
 mod fake;
 mod legacy;
 mod outage;
