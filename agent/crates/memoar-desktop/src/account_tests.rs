@@ -17,7 +17,7 @@ fn password() -> Credentials {
 fn a_first_sign_in_masks_secrets_and_nothing_else() {
     let args = login_args(" https://archive.example/v1 ", &password());
 
-    assert_eq!(args.endpoint, "https://archive.example/v1");
+    assert_eq!(args.endpoint.as_deref(), Some("https://archive.example/v1"));
     assert_eq!(args.email.as_deref(), Some("person@example.com"));
     assert_eq!(args.password.as_deref(), Some("hunter2"));
     assert!(args.token.is_none());
