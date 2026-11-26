@@ -85,8 +85,9 @@ describe("Codex workspace", () => {
 
 describe("Claude Code workspace", () => {
   it("is read from a later line when the first message line names none", () => {
-    // A transcript can open with lines that carry no cwd, such as a resumed
-    // session's first message written before the working directory was known.
+    // 18 Claude Code sessions on dev fell back to the file path. Every local
+    // transcript names a cwd on its first message line, so the shape that
+    // lacks one is not known. Any line that names one is used instead.
     const session = parseOne("claude-code", "v1", jsonl([
       { type: "summary", summary: "Earlier work", leafUuid: "0191cafe-0000-7000-8000-000000000009" },
       { type: "user", uuid: "0191cafe-0000-7000-8000-000000000010", parentUuid: null, sessionId: "s1", timestamp: "2026-08-01T00:00:00.000Z", message: { role: "user", content: "hi" } },
