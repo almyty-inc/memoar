@@ -28,10 +28,17 @@ describe("converting a session keeps what the parse kept", () => {
     const bundle = new ClaudeCodeWriter().write(original);
     const again = parse(bundle.files[0]!.bytes, seed);
 
-    // System notes (a compaction boundary, a summary) have no Claude Code
-    // block and degrade to attributed text by design, reported as such.
-    const kept = (session: Session) => content(session).filter((block) => block.kind !== "system" && !block.text?.startsWith("[Memoar system]"));
+    // Two things change by design. System notes (a compaction boundary, a
+    // summary) are Claude Code's own harness context and are dropped, reported
+    // as such. A file attached with an @-mention is written back as the
+    // person's text, since its own record type is Claude Code's and the other
+    // targets have no equivalent.
+    const mention = original.turns.flatMap((turn) => turn.blocks).find((block) => block.kind === "attachment" && block.artifactRef);
+    const kept = (session: Session) => content(session).filter((block) =>
+      block.kind !== "system" && block.artifactRef === undefined && block.text !== `${mention?.name}\n${mention?.text}`);
     expect(kept(again)).toEqual(kept(original));
-    expect(new Set(bundle.report.degraded.map((entry) => entry.kind))).toEqual(new Set(["system"]));
+    expect(content(again)).toContainEqual({ kind: "text", text: `${mention!.name}\n${mention!.text}` });
+    expect(new Set(bundle.report.dropped.map((entry) => entry.reason))).toEqual(new Set(["source_harness_context"]));
+    expect(bundle.report.degraded).toEqual([]);
   });
 });

@@ -1,31 +1,28 @@
-version: 0.1.0
+version: 0.2.0
 target: antigravity-cli
 stability: gated
 layout:
-  - path: "~/.gemini/antigravity-cli/brain/<session-id>/.system_generated/logs/transcript.jsonl"
-    mediaType: application/x-ndjson
-    purpose: Native transcript
-  - path: "~/.gemini/antigravity-cli/brain/<session-id>/conversations/<session-id>.db"
+  - path: "~/.gemini/antigravity-cli/conversations/<session-id>.db"
     mediaType: application/vnd.sqlite3
-    purpose: Conversation metadata including workspace
-  - path: "~/.gemini/antigravity-cli/brain/<session-id>/walkthrough.md"
-    mediaType: text/markdown
-    purpose: Converted artifact summary
+    purpose: The conversation database agy --conversation opens
 requiredFields:
-  - message.id
-  - message.role
-  - message.parts
-  - message.createdAt
-  - conversation.workspacePath
+  - PRAGMA user_version = 1
+  - trajectory_meta.trajectory_id
+  - trajectory_meta.cascade_id
+  - trajectory_metadata_blob.data (workspace file URI)
+  - steps.step_type
+  - steps.status
+  - steps.step_payload
 mapping:
-  session.id: brain directory and conversation id
-  workspace.path: conversation.workspacePath
-  turn.id: message.id
-  turn.parentId: message.parentId
-  turn.blocks: message.parts
+  session.id: database name, trajectory_id and cascade_id
+  workspace.path: workspace file URI in trajectory_metadata_blob, or the request's workspacePath when given
+  user message: step type 14 (user input) with the text in payload field 19
+  assistant message: step type 15 (planner response) with the text in payload field 20
 degradation:
-  unsupportedBlock: Render an attributed text part and record it in walkthrough.md
-  missingArtifact: Keep the artifact reference and mark the file unavailable
+  toolCall: Write the call and its result as attributed text in the planner response, reported as degraded
+  attachment: Write an attributed text marker, reported as degraded
+  thinking: Drop, reported as reasoning_not_portable
+  harnessContext: Drop system turns and harness-injected user text, reported as source_harness_context
 resume:
-  command: "agy --conversation <session-id> --print smoke"
-  successSignal: Bounded non-interactive run prints a response for the resumed conversation and exits zero without a format error
+  command: "agy --conversation <session-id>"
+  successSignal: "agy --conversation <session-id> --print asked about the first message quotes it"

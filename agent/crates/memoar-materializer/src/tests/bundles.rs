@@ -1,139 +1,109 @@
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use rusqlite::Connection;
 use serde_json::json;
 use std::fs;
 
-use super::fixtures::{finalized_bundle, fixture_session};
-use crate::antigravity::antigravity_database_bytes;
-use crate::bundle::{BundleFile, ConversionBundle};
-use crate::entry::{materialize, materialize_bundle};
+use super::fixtures::{SESSION_ID, single_file_bundle};
+use crate::entry::materialize_bundle;
+use crate::error::MaterializeError;
 use crate::target::Target;
 
 #[test]
-fn materializes_all_gated_targets_and_is_idempotent() {
-    for target in [Target::ClaudeCode, Target::Codex, Target::AntigravityCli] {
-        let temp = tempfile::tempdir().unwrap();
-        let first = materialize(&fixture_session(), target, temp.path()).unwrap();
-        assert!(!first.written.is_empty());
-        assert!(first.written.iter().all(|path| path.exists()));
-        let second = materialize(&fixture_session(), target, temp.path()).unwrap();
-        assert!(second.written.is_empty());
-        assert_eq!(second.unchanged.len(), first.written.len());
-    }
-}
-
-#[test]
-fn server_native_bundle_decodes_and_materializes() {
+fn server_native_bundle_decodes_and_materializes_idempotently() {
     let temp = tempfile::tempdir().unwrap();
-    let session_id = fixture_session().id;
-    let content = b"{\"type\":\"message\"}\n";
-    let bundle = finalized_bundle(ConversionBundle {
-        contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
-        bundle_version: "1".to_owned(),
-        bundle_sha256: String::new(),
-        target: Target::ClaudeCode,
-        session_id: session_id.clone(),
-        files: vec![BundleFile {
-            path: format!("~/.claude/projects/-tmp-project/{session_id}.jsonl"),
-            media_type: "application/x-ndjson".to_owned(),
-            base64: BASE64.encode(content),
-            sha256: String::new(),
-            size: 0,
-        }],
-        resume_command: format!("claude -r {session_id}"),
-        report: json!({"mappedTurns": 1, "degradedBlocks": 0, "droppedBlocks": 0}),
-    });
-    let result = materialize_bundle(&bundle, temp.path()).unwrap();
-    assert_eq!(fs::read(&result.written[0]).unwrap(), content);
+    let content = b"{\"type\":\"user\"}\n";
+    let bundle = single_file_bundle(
+        Target::ClaudeCode,
+        &format!("~/.claude/projects/-tmp-project/{SESSION_ID}.jsonl"),
+        content,
+    );
+    let first = materialize_bundle(&bundle, temp.path()).unwrap();
+    assert_eq!(fs::read(&first.written[0]).unwrap(), content);
+    let second = materialize_bundle(&bundle, temp.path()).unwrap();
+    assert!(second.written.is_empty());
+    assert_eq!(second.unchanged.len(), 1);
 }
 
 #[test]
 fn a_bundle_reports_what_the_archive_said_it_did() {
     // The archive writes {"mapped":N,"degraded":[...],"dropped":[...],
-    // "fallback":bool}. That was parsed into this crate's own report
-    // struct, whose fields are named differently, so the parse failed every
-    // time and unwrap_or_default printed zeros: a conversion that dropped
-    // half a session reported nothing dropped, and the fixture beside it
-    // used this crate's names, so nothing caught it.
+    // "fallback":bool}. It is passed on untouched, so a conversion that
+    // dropped half a session cannot report nothing dropped.
     let temp = tempfile::tempdir().unwrap();
-    let session_id = fixture_session().id;
     let archive_report = json!({
         "mapped": 4,
         "degraded": [{"turnId": "t1", "blockId": "b1", "kind": "image", "reason": "no native representation"}],
-        "dropped": [{"reference": "turns:5-900", "reason": "injection_token_budget_exceeded"}],
-        "fallback": true,
+        "dropped": [{"reference": "block:b2", "reason": "reasoning_not_portable"}],
+        "fallback": false,
     });
-    let bundle = finalized_bundle(ConversionBundle {
-        contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
-        bundle_version: "1".to_owned(),
-        bundle_sha256: String::new(),
-        target: Target::ClaudeCode,
-        session_id: session_id.clone(),
-        files: vec![BundleFile {
-            path: format!("~/.claude/projects/-tmp-project/{session_id}.jsonl"),
-            media_type: "application/x-ndjson".to_owned(),
-            base64: BASE64.encode(b"{\"type\":\"message\"}\n"),
-            sha256: String::new(),
-            size: 0,
-        }],
-        resume_command: format!("claude -r {session_id}"),
-        report: archive_report.clone(),
-    });
+    let mut bundle = single_file_bundle(
+        Target::ClaudeCode,
+        &format!("~/.claude/projects/-tmp-project/{SESSION_ID}.jsonl"),
+        b"{}\n",
+    );
+    bundle.report = archive_report.clone();
+    let bundle = super::fixtures::finalized_bundle(bundle);
 
     let result = materialize_bundle(&bundle, temp.path()).unwrap();
 
     let reported = serde_json::to_value(&result.report).unwrap();
-    assert_eq!(
-        reported, archive_report,
-        "the archive's report must survive the trip"
-    );
-    assert_eq!(reported["dropped"].as_array().unwrap().len(), 1);
-    assert_eq!(reported["fallback"], json!(true));
+    assert_eq!(reported, archive_report);
+}
+
+/// A database as Antigravity writes it: the two tables the check reads, and
+/// `user_version` 1, without which Antigravity skips the conversation.
+fn antigravity_database(cascade: &str, user_version: i64) -> Vec<u8> {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("conversation.db");
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(&format!(
+            "PRAGMA user_version = {user_version};
+             CREATE TABLE trajectory_meta (trajectory_id TEXT PRIMARY KEY, cascade_id TEXT, trajectory_type INTEGER, source INTEGER);
+             CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER NOT NULL DEFAULT 0, step_payload BLOB);"
+        ))
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO trajectory_meta VALUES (?1, ?1, 4, 17)",
+            [cascade],
+        )
+        .unwrap();
+    drop(connection);
+    fs::read(path).unwrap()
 }
 
 #[test]
-fn antigravity_bundle_builds_observed_sqlite_schema() {
+fn an_antigravity_database_lands_where_antigravity_opens_conversations() {
     let temp = tempfile::tempdir().unwrap();
-    let session_id = fixture_session().id;
-    let seed = serde_json::to_vec(
-        &json!({"id": session_id, "workspacePath": "/tmp/project", "title": "Test"}),
-    )
-    .unwrap();
-    let native_database = antigravity_database_bytes(&session_id, &seed).unwrap();
-    let bundle = finalized_bundle(ConversionBundle {
-        contract_version: memoar_canonical::CONTRACT_VERSION.to_owned(),
-        bundle_version: "1".to_owned(),
-        bundle_sha256: String::new(),
-        target: Target::AntigravityCli,
-        session_id: session_id.clone(),
-        files: vec![BundleFile {
-            path: format!(
-                "~/.gemini/antigravity-cli/brain/{session_id}/conversations/{session_id}.db"
-            ),
-            media_type: "application/vnd.sqlite3".to_owned(),
-            base64: BASE64.encode(&native_database),
-            sha256: String::new(),
-            size: 0,
-        }],
-        resume_command: format!("agy --conversation {session_id}"),
-        report: json!({}),
-    });
+    let database = antigravity_database(SESSION_ID, 1);
+    let bundle = single_file_bundle(
+        Target::AntigravityCli,
+        &format!("~/.gemini/antigravity-cli/conversations/{SESSION_ID}.db"),
+        &database,
+    );
     let result = materialize_bundle(&bundle, temp.path()).unwrap();
-    assert_eq!(fs::read(&result.written[0]).unwrap(), native_database);
-    let database = Connection::open(&result.written[0]).unwrap();
-    let integrity: String = database
-        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .unwrap();
-    let version: i64 = database
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .unwrap();
-    let trajectory: String = database
-        .query_row("SELECT trajectory_id FROM trajectory_meta", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    assert_eq!(integrity, "ok");
-    assert_eq!(version, 1);
-    assert_eq!(trajectory, session_id);
+    assert_eq!(
+        result.written[0],
+        temp.path()
+            .join(".gemini/antigravity-cli/conversations")
+            .join(format!("{SESSION_ID}.db"))
+    );
+    assert_eq!(fs::read(&result.written[0]).unwrap(), database);
+}
+
+#[test]
+fn an_antigravity_database_antigravity_would_skip_is_refused() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = format!("~/.gemini/antigravity-cli/conversations/{SESSION_ID}.db");
+    for database in [
+        antigravity_database(SESSION_ID, 0),
+        antigravity_database("0198d8d0-977c-777b-9f8f-0f6d8416e799", 1),
+    ] {
+        let bundle = single_file_bundle(Target::AntigravityCli, &path, &database);
+        assert!(matches!(
+            materialize_bundle(&bundle, temp.path()),
+            Err(MaterializeError::Integrity(_))
+        ));
+    }
+    assert!(!temp.path().join(".gemini").exists());
 }

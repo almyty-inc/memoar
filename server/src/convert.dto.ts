@@ -1,4 +1,4 @@
-import { IsIn, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
+import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
 
 export class RequestConversionDto {
   @IsUUID()
@@ -19,6 +19,18 @@ export class RequestConversionDto {
 
   @IsIn(["fail", "injection"])
   fallback!: "fail" | "injection";
+
+  /**
+   * The directory the person will resume in, absolute. `memoar convert --here`
+   * sends its working directory. Each tool files a session by the directory it
+   * was started in, so without this the session is placed for the workspace it
+   * was archived from, where a resume run in any other directory cannot see it.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  @Matches(/^(?:\/|[A-Za-z]:[\\/])[^\0]*$/u, { message: "workspacePath must be an absolute path" })
+  workspacePath?: string;
 }
 
 export class MaterializeDto {

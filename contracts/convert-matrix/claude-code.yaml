@@ -1,26 +1,39 @@
-version: 0.1.0
+version: 0.2.0
 target: claude-code
 stability: gated
 layout:
   - path: "~/.claude/projects/<encoded-workspace>/<session-id>.jsonl"
     mediaType: application/x-ndjson
-    purpose: Branch-aware native session stream
+    purpose: One line per message, in Claude Code's own record shape
 requiredFields:
   - uuid
   - parentUuid
+  - sessionId
+  - cwd
+  - version
+  - userType
+  - isSidechain
   - type
   - message.role
-  - message.content
+  - message.content[].type
   - timestamp
 mapping:
-  session.id: filename session id
-  turn.id: uuid
-  turn.parentId: parentUuid
-  turn.role: message.role
-  turn.blocks: message.content
+  session.id: filename session id and sessionId on every line
+  workspace.path: encoded directory and cwd, or the request's workspacePath when given
+  turn.role: type and message.role (user or assistant)
+  text: "{type: text}"
+  image attachment: "{type: image, source: base64 or url}"
+  document attachment: "{type: document, source}"
+  tool_call: "{type: tool_use, id, name, input} in an assistant message"
+  tool_result: "{type: tool_result, tool_use_id, content, is_error} in the next user message"
+  thinking: "{type: thinking, signature} only when the source is Claude Code and the block is signed"
 degradation:
   unsupportedBlock: Render an attributed text block and add it to the conversion report
+  foreignReasoning: Drop thinking another vendor encrypted or did not sign, reported as reasoning_not_portable
+  harnessContext: Drop system turns and harness-injected user text (AGENTS.md, environment context, system reminders), reported as source_harness_context
+  unansweredToolCall: Write a placeholder error result, reported as degraded
+  branch: Lines are chained linearly in archive order
   missingWorkspace: Place the session in a memoar-imports workspace
 resume:
-  command: "claude -r <session-id> --print smoke"
-  successSignal: Process loads the requested session without a format error
+  command: "claude -r <session-id>"
+  successSignal: "claude -r <session-id> --print asked about the first message quotes it"

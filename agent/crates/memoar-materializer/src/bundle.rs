@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use crate::error::MaterializeError;
 use crate::target::Target;
-use memoar_canonical::Session;
 
 /// Server download wire format. It intentionally carries already-serialized
 /// native files so CLI and remote-machine materializers use one path.
@@ -35,41 +34,6 @@ pub struct BundleFile {
     pub size: u64,
 }
 
-/// Local/testing form retained for deterministic canonical-to-native writers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalConversionBundle {
-    pub contract_version: String,
-    pub target: Target,
-    pub session: Session,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ConversionReport {
-    pub mapped_turns: usize,
-    pub degraded_blocks: usize,
-    pub dropped_blocks: usize,
-}
-
-/// The report the archive produced, as it wrote it.
-///
-/// A bundle carries the server's own report — how many blocks it mapped, what
-/// it degraded, what it dropped, whether it fell back to an injection prelude.
-/// That was parsed into the struct above, whose fields have different names, so
-/// the parse failed every time and `unwrap_or_default` printed zeros: a
-/// conversion that dropped half a session reported nothing dropped. It is
-/// carried through untouched now, because nothing here needs to interpret it
-/// and inventing a shape for it is what hid the real one.
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
-pub enum MaterializedReport {
-    /// Built here, when this machine converted a session itself.
-    Local(ConversionReport),
-    /// Written by the archive and passed on as-is.
-    FromArchive(Value),
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterializationResult {
@@ -78,7 +42,10 @@ pub struct MaterializationResult {
     pub written: Vec<PathBuf>,
     pub unchanged: Vec<PathBuf>,
     pub resume_command: String,
-    pub report: MaterializedReport,
+    /// The report the archive produced, as it wrote it: what it mapped,
+    /// degraded and dropped. Nothing here interprets it, so it is passed on
+    /// untouched rather than parsed into a shape of this crate's own.
+    pub report: Value,
 }
 
 #[derive(Debug)]

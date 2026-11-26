@@ -2045,6 +2045,10 @@ components:
           minLength: 1
           description: Conversion target. claude-code, codex, and antigravity-cli produce native bundles; any other value is an open target that only succeeds with fallback "injection", producing a cited, token-budgeted context prelude built from the session and related archive evidence.
         fallback: { type: string, enum: [fail, injection] }
+        workspacePath:
+          type: string
+          maxLength: 4096
+          description: Absolute directory the session is placed for and written with as its working directory. memoar convert --here sends the current directory. Without it the session is placed for the workspace it was archived from.
     ConversionJob:
       type: object
       required: [id, sessionId, target, status, createdAt]

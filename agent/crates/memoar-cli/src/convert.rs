@@ -56,14 +56,18 @@ pub(crate) fn convert(args: &ConvertArgs, paths: &RuntimePaths) -> Result<Comman
     }
     let (config, token) = authenticated_config(paths)?;
     let api = ApiClient::new(&config.endpoint, Some(&token));
-    let mut job = api.post(
-        "/convert",
-        &json!({
-            "sessionId": args.session_id,
-            "target": args.target,
-            "fallback": args.fallback
-        }),
-    )?;
+    let mut request = json!({
+        "sessionId": args.session_id,
+        "target": args.target,
+        "fallback": args.fallback
+    });
+    if args.here {
+        // Each tool files a session by the directory it was started in, so a
+        // session placed for the workspace it was archived from is invisible
+        // to `claude -r`, `codex resume` or `agy --conversation` run here.
+        request["workspacePath"] = json!(here_directory()?);
+    }
+    let mut job = api.post("/convert", &request)?;
     if !args.here {
         return Ok(CommandOutput {
             command: "convert".to_owned(),
@@ -124,6 +128,28 @@ pub(crate) fn convert(args: &ConvertArgs, paths: &RuntimePaths) -> Result<Comman
         ));
     }
     materialize_conversion(bundle, paths)
+}
+
+/// The directory `--here` places the session for, as the tools spell it.
+///
+/// `current_dir` is the resolved path, `/private/tmp/x` rather than `/tmp/x`
+/// on macOS, which is also what Claude Code, Codex and Antigravity record.
+fn here_directory() -> Result<String, AppError> {
+    let directory = std::env::current_dir().map_err(|error| {
+        AppError::local(
+            format!("could not read the current directory: {error}"),
+            "Run the command from a directory that still exists.",
+        )
+    })?;
+    directory.to_str().map(str::to_owned).ok_or_else(|| {
+        AppError::local(
+            format!(
+                "the current directory {} is not valid UTF-8",
+                directory.display()
+            ),
+            "Run the command from a directory whose path is valid UTF-8.",
+        )
+    })
 }
 
 /// Why the archive refused, as a sentence.

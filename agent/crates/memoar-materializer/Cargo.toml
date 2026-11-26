@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 base64.workspace = true
-chrono.workspace = true
 memoar-canonical = { path = "../memoar-canonical" }
 rusqlite.workspace = true
 serde.workspace = true
