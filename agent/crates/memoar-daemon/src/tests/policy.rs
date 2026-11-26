@@ -7,7 +7,7 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::capture::capture_sources_with_policy;
+use crate::capture::{FileCapture, FileOutcome, capture_sources_with_policy};
 use crate::error::DaemonError;
 use crate::plan::plan_capture;
 use crate::policy::CapturePolicy;
@@ -175,4 +175,34 @@ fn capture_refuses_to_start_below_the_free_space_floor() {
     .unwrap_err();
     assert!(matches!(error, DaemonError::DiskLow { .. }), "{error}");
     assert_eq!(queue.counts().unwrap().pending, 0);
+}
+
+#[test]
+fn an_excluded_project_is_known_without_touching_its_other_files() {
+    // One excluded project held 243,000 transcripts on a real machine. A
+    // `stat` and a queue lookup for each made every sync take three minutes.
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let first = session(&home, "/private/tmp/scratch", "first", 1);
+    let queue = OfflineQueue::open(&temp.path().join("data/queue.sqlite3")).unwrap();
+    let policy = last_30_days();
+    let mut resolver = WorkspaceResolver::new();
+    let mut capture = FileCapture {
+        queue: &queue,
+        redaction: RedactionConfig::disabled(),
+        policy: &policy,
+        resolver: &mut resolver,
+    };
+
+    assert!(matches!(
+        capture.file("claude-code", &first).unwrap(),
+        FileOutcome::Excluded(bytes) if bytes > 0
+    ));
+    // A path that does not exist would fail its `stat`. It is answered
+    // first, from the project, so nothing is asked of the file system.
+    let unseen = first.with_file_name("never-written.jsonl");
+    assert_eq!(
+        capture.file("claude-code", &unseen).unwrap(),
+        FileOutcome::Excluded(0)
+    );
 }
