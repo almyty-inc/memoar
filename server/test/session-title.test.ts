@@ -30,6 +30,16 @@ describe("session titles", () => {
     expect(titleFromTurns(turns)).toBe("Fix the flaky timeline test");
   });
 
+  it("takes the prompt out of an agent's own wrapper, and skips injected instructions", () => {
+    expect(titleFromTurns([turn("user", "<USER_REQUEST>\nWrite a short summary of the passage.\n</USER_REQUEST>")]))
+      .toBe("Write a short summary of the passage.");
+    expect(titleFromTurns([
+      turn("user", "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>Be brief.</INSTRUCTIONS>"),
+      turn("user", "<recommended_plugins>none</recommended_plugins>"),
+      turn("user", "Rename the config loader"),
+    ])).toBe("Rename the config loader");
+  });
+
   it("shortens long prompts at a word", () => {
     const title = titleFromTurns([turn("user", "word ".repeat(40))]);
     expect(title?.length).toBeLessThanOrEqual(80);
