@@ -20,10 +20,8 @@
     "vendor-model"
   ],
   "tokenTotals": {
-    "input": 142,
-    "output": 163,
-    "cacheRead": 0,
-    "cacheWrite": 0
+    "input": 5,
+    "output": 7
   },
   "provenance": [
     {

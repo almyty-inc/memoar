@@ -40,6 +40,9 @@
     "scope": "private",
     "ownerId": "0191cafe-0000-7000-8000-000000000002"
   },
+  "ext": {
+    "fixtureSource": "cass-export"
+  },
   "turns": [
     {
       "id": "0191cafe-0000-7000-8000-000000000173",
@@ -61,11 +64,6 @@
       "parentId": "0191cafe-0000-7000-8000-000000000173",
       "role": "assistant",
       "createdAt": "2026-08-08T09:00:00.000Z",
-      "model": "vendor-model",
-      "tokens": {
-        "input": 71,
-        "output": 92
-      },
       "blocks": [
         {
           "id": "0191cafe-0000-7000-8000-000000000176",
@@ -86,10 +84,12 @@
           "kind": "text",
           "text": "The parser dropped parent references. Preserve the native parent id during normalization."
         }
-      ]
+      ],
+      "model": "vendor-model",
+      "tokens": {
+        "input": 0,
+        "output": 0
+      }
     }
-  ],
-  "ext": {
-    "fixtureSource": "cass-export"
-  }
+  ]
 }

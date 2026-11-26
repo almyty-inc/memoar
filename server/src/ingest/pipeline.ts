@@ -2,7 +2,7 @@
 // Split out of ingest.service.ts, which was over the file-size rule.
 
 import type { AnnotationKind } from "../../libs/canonical/src/generated.js";
-import { ParserRegistry, type SessionSeed } from "../../libs/parsers/src/index.js";
+import { NO_WORKSPACE, ParserRegistry, type SessionSeed } from "../../libs/parsers/src/index.js";
 import type { EmbeddingProvider } from "../search.js";
 import type { AnnotationStore, ArchivedSession, ArtifactStore, RawArtifactRecord, SessionStore, SettingsStore, TeamOptinStore, TenantContext } from "../archive-store.js";
 import { redactionPatterns } from "../redaction.js";
@@ -63,7 +63,10 @@ export class DefaultPipelineSeedFactory implements PipelineSeedFactory {
       // One derived id per tenant at least keeps every import pointing at the
       // same origin instead of inventing a machine per file.
       source: { vendor: format.source, tool: format.source, version: format.version, machineId: context.machineId ?? uuidV5(`${context.tenantId}:uploads`), nativeSessionId: native },
-      workspace: { path: artifact.sourcePath ?? "/memoar/imports" },
+      // Not the captured file's path, which is where the transcript was kept
+      // and not where anybody worked. A parser that finds a working directory
+      // replaces this. See NO_WORKSPACE.
+      workspace: { path: NO_WORKSPACE },
       createdAt: now,
       updatedAt: now,
       title: `${format.source} imported session`,

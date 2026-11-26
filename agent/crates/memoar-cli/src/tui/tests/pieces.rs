@@ -97,6 +97,17 @@ fn code_is_highlighted_in_ansi_colours() {
 }
 
 #[test]
+fn a_session_without_a_workspace_names_no_project() {
+    let mut rows = rows(&page());
+    for placeholder in ["/memoar/no-workspace", "/memoar/imports", ""] {
+        rows[0].workspace = placeholder.to_owned();
+        assert_eq!(rows[0].project(), "No workspace");
+    }
+    rows[0].workspace = "/workspace/memoar/".to_owned();
+    assert_eq!(rows[0].project(), "memoar");
+}
+
+#[test]
 fn sessions_group_under_their_day() {
     let rows = rows(&page());
     assert_eq!(rows[0].project(), "example-app");

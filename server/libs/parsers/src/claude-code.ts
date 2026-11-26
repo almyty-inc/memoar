@@ -1,5 +1,6 @@
 import type { Turn } from "../../canonical/src/generated.js";
 import { claudeCodeIdentity } from "./claude-code-identity.js";
+import { claudeCodeWorkspace, ClaudeCodeUsage } from "./claude-code-usage.js";
 import { parseBlock } from "./blocks.js";
 import { recordTurn } from "./claude-code-records.js";
 import { incrementUuid, isRecord, mapParent, MIN_JSON_SHARE, readJsonLines, stringValue, turnId, withModelAndTokens, type JsonLinesReport } from "./common.js";
@@ -98,10 +99,11 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     let recordOrdinal = 0;
     const mintRecordBlock = () => incrementUuid(request.seed.id, 0x9000000 + (recordOrdinal += 1));
     const turns: Turn[] = [];
+    const usage = new ClaudeCodeUsage(records);
     for (const [index, record] of read.records.entries()) {
       const isMessage = stringValue(record, "uuid") !== null && isRecord(record.message);
       if (isMessage) {
-        turns.push(this.messageTurn(record, uniqueId(stringValue(record, "uuid")!), turns.length, mintBlock, request));
+        turns.push(this.messageTurn(record, uniqueId(stringValue(record, "uuid")!), turns.length, mintBlock, request, usage));
         continue;
       }
       const extra = recordTurn(record, mintRecordBlock);
@@ -130,8 +132,7 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     // non-message lines became turns.
     const first = records[0]!;
     const { nativeSessionId, parent } = claudeCodeIdentity(first);
-    const cwd = stringValue(first, "cwd");
-    const branch = stringValue(first, "gitBranch");
+    const { cwd, branch } = claudeCodeWorkspace(first, read.records);
     // The title Claude Code shows for the conversation, a person's rename
     // winning over the generated one. The last line of each kind is current.
     const titles = read.records.flatMap((record) => {
@@ -159,7 +160,7 @@ export class ClaudeCodeV1Parser implements VersionedParser {
     };
   }
 
-  private messageTurn(record: Record<string, unknown>, id: string, ordinal: number, mintBlock: () => string, request: ParseRequest): Turn {
+  private messageTurn(record: Record<string, unknown>, id: string, ordinal: number, mintBlock: () => string, request: ParseRequest, usage: ClaudeCodeUsage): Turn {
     const message = record.message as Record<string, unknown>;
     const roleValue = stringValue(message, "role") ?? stringValue(record, "type") ?? "user";
     const role = roleValue === "assistant" || roleValue === "tool" || roleValue === "system" ? roleValue : "user";
@@ -175,6 +176,6 @@ export class ClaudeCodeV1Parser implements VersionedParser {
       role,
       createdAt: stringValue(record, "timestamp") ?? request.seed.createdAt,
       blocks,
-    }, typeof message.model === "string" ? message.model : request.seed.models[0], request.seed.tokenTotals.input, request.seed.tokenTotals.output);
+    }, typeof message.model === "string" ? message.model : request.seed.models[0], usage.claim(message));
   }
 }

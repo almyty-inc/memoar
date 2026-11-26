@@ -115,8 +115,8 @@
       ],
       "model": "gpt-5",
       "tokens": {
-        "input": 139,
-        "output": 160
+        "input": 0,
+        "output": 0
       }
     },
     {
@@ -161,8 +161,8 @@
       ],
       "model": "gpt-5",
       "tokens": {
-        "input": 139,
-        "output": 160
+        "input": 0,
+        "output": 0
       }
     }
   ]

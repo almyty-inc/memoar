@@ -19,10 +19,8 @@
     "claude-sonnet"
   ],
   "tokenTotals": {
-    "input": 0,
-    "output": 0,
-    "cacheRead": 0,
-    "cacheWrite": 0
+    "input": 92,
+    "output": 21
   },
   "provenance": [
     {
@@ -86,8 +84,8 @@
       ],
       "model": "claude-sonnet",
       "tokens": {
-        "input": 0,
-        "output": 0
+        "input": 40,
+        "output": 12
       }
     },
     {
@@ -105,8 +103,8 @@
       ],
       "model": "claude-sonnet",
       "tokens": {
-        "input": 0,
-        "output": 0
+        "input": 52,
+        "output": 9
       }
     }
   ]

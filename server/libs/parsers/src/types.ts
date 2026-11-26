@@ -2,6 +2,21 @@ import type { Session } from "../../canonical/src/generated.js";
 
 export type SessionSeed = Omit<Session, "turns">;
 
+/**
+ * The workspace of a session whose source records none.
+ *
+ * The contract requires a non-empty path, and the seed used to fill it with
+ * the path of the captured file, so 655 Antigravity sessions on dev showed
+ * `…/brain/<id>/.system_generated/logs/transcript.jsonl` as their project. A
+ * transcript file is not a working directory. This value is not a path on any
+ * machine, and the clients show it as "No workspace". `/memoar/imports`, which
+ * uploads were given before, means the same and is recognised too.
+ */
+export const NO_WORKSPACE = "/memoar/no-workspace";
+
+/** Workspace paths that stand for "none recorded". */
+export const NO_WORKSPACE_PATHS: readonly string[] = [NO_WORKSPACE, "/memoar/imports"];
+
 export interface ParseRequest {
   source: string;
   version: string;
