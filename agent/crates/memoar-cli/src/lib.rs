@@ -15,11 +15,13 @@ mod envelope;
 mod error;
 mod health;
 mod http_error;
+mod integrate;
 mod listen;
 mod lock;
 mod login;
 mod logout;
 mod machine;
+mod mcp;
 mod memory;
 mod plan_report;
 mod progress;
@@ -53,6 +55,8 @@ pub use crate::error::{
     AppError, EXIT_DISK_LOW, EXIT_LOCKED, EXIT_NETWORK, EXIT_NOT_INITIALIZED, EXIT_OK,
     EXIT_REFUSED, EXIT_UNKNOWN, EXIT_USAGE,
 };
+pub use crate::integrate::IntegrateArgs;
+pub use crate::mcp::{McpArgs, McpCallArgs, McpCommand};
 pub use crate::service::args::{
     ServiceChangeArgs, ServiceCommand, ServiceLogsArgs, ServiceNameArgs,
 };
@@ -95,6 +99,8 @@ pub fn execute(cli: &Cli, paths: &RuntimePaths) -> Result<CommandOutput, AppErro
         Command::Convert(args) => convert(args, paths),
         Command::Memory { command } => memory(command, paths),
         Command::Listen(args) => listen(args, paths),
+        Command::Mcp(args) => crate::mcp::mcp(args, paths),
+        Command::Integrate(args) => crate::integrate::integrate(args, cli, paths),
         Command::Doctor => doctor(paths),
         Command::Capabilities => Ok(CommandOutput {
             command: "capabilities".to_owned(),
