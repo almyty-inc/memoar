@@ -228,9 +228,16 @@ test.describe('Memoar live Compose browser acceptance', () => {
     await page.getByRole('button', { name: 'Open sessions' }).click();
     await expect(page.getByText(fixtureTitle, { exact: true }).first()).toBeVisible();
 
+    // A filter is answered by the archive, not by the rows already loaded, so
+    // it reaches sessions older than the first timeline page.
     const source = page.getByRole('group', { name: 'Filter by source' });
+    const filtered = page.waitForResponse((response) =>
+      response.url().includes('/v1/sessions?') && response.url().includes('agent=claude-code'));
     await source.getByRole('button', { name: 'Claude Code' }).click();
+    expect((await filtered).ok()).toBeTruthy();
     await expect(page.getByText(fixtureTitle, { exact: true }).first()).toBeVisible();
+
+    await source.getByRole('button', { name: 'All', exact: true }).click();
     const loadMore = page.getByRole('button', { name: 'Load older sessions' });
     await expect(loadMore).toBeVisible();
     const secondPage = page.waitForResponse((response) =>
