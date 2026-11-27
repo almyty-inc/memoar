@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, EmptyState, PageHeader, cn, plural } from '../components/ui';
 import type { Machine, SessionSummary, TimelineGroup } from '../lib/types';
 import { SessionRow, friendlyDate } from './timeline/SessionRow';
-import { TimelineFilters, type Filters, NO_FILTERS, isFiltered, matches } from './timeline/TimelineFilters';
+import { TimelineFilters, type Filters, NO_FILTERS, sourceOptions, workspaceOptions } from './timeline/TimelineFilters';
+import { useFilteredSessions, type LoadFiltered } from './timeline/use-filtered-sessions';
 import { useListKeys } from './timeline/use-list-keys';
 
 type TimelineItem =
@@ -13,7 +14,7 @@ type TimelineItem =
 const ROW = 96;
 const DAY = 38;
 
-export function TimelineView({ groups, machines, archived, asOf, selectedId, initialSource, onOpen, onSelect, onPrefetch, onConnect, onImport, hasMore, loadingMore, onLoadMore }: {
+export function TimelineView({ groups, machines, archived, asOf, selectedId, initialSource, onOpen, onSelect, onPrefetch, onConnect, onImport, hasMore, loadingMore, onLoadMore, loadFiltered }: {
   groups: TimelineGroup[];
   machines: Machine[];
   /** Sessions in the archive, counted by the server rather than by this page. */
@@ -33,20 +34,28 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
   onLoadMore: () => Promise<void>;
   /** An agent chosen in the sidebar. The caller remounts the list to apply it. */
   initialSource?: string | undefined;
+  /** Where a filtered page comes from. The archive's session list by default. */
+  loadFiltered?: LoadFiltered | undefined;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<Filters>(() => (initialSource ? { ...NO_FILTERS, source: initialSource } : NO_FILTERS));
   const machineNames = useMemo(() => new Map(machines.map((machine) => [machine.id, machine.name])), [machines]);
 
+  // With a filter on, the archive answers it, so older sessions are not missed.
+  const filtered = useFilteredSessions(filters, loadFiltered);
+  const listed = filtered.active ? filtered.groups : groups;
+  const more = useMemo(() => (filtered.active
+    ? { hasMore: filtered.hasMore, loadingMore: filtered.loadingMore, onLoadMore: filtered.loadMore }
+    : { hasMore, loadingMore, onLoadMore }), [filtered.active, filtered.hasMore, filtered.loadingMore, filtered.loadMore, hasMore, loadingMore, onLoadMore]);
+
   const sessions = useMemo(() => groups.flatMap((group) => group.sessions), [groups]);
-  const items = useMemo<TimelineItem[]>(() => groups.flatMap((group) => {
-    const shown = group.sessions.filter((session) => matches(session, filters));
-    if (shown.length === 0) return [];
-    return [
-      { type: 'date' as const, key: `date-${group.date}`, date: group.date, count: shown.length },
-      ...shown.map((session) => ({ type: 'session' as const, key: session.id, session })),
-    ];
-  }), [groups, filters]);
+  const seen = useMemo(() => [...sessions, ...filtered.groups.flatMap((group) => group.sessions)], [sessions, filtered.groups]);
+  const sources = useMemo(() => sourceOptions(machines, seen, filters.source), [machines, seen, filters.source]);
+  const workspaces = useMemo(() => workspaceOptions(seen, filters.workspace), [seen, filters.workspace]);
+  const items = useMemo<TimelineItem[]>(() => listed.flatMap((group) => [
+    { type: 'date' as const, key: `date-${group.date}`, date: group.date, count: group.sessions.length },
+    ...group.sessions.map((session) => ({ type: 'session' as const, key: session.id, session })),
+  ]), [listed]);
 
   const stickyIndexes = useMemo(() => items.flatMap((item, index) => (item.type === 'date' ? [index] : [])), [items]);
   const activeSticky = useRef(0);
@@ -101,13 +110,14 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
     if (!element) return undefined;
     const onScroll = () => {
       const nearEnd = element.scrollTop + element.clientHeight >= element.scrollHeight - 240;
-      if (nearEnd && hasMore && !loadingMore) void onLoadMore();
+      if (nearEnd && more.hasMore && !more.loadingMore) void more.onLoadMore();
     };
     element.addEventListener('scroll', onScroll, { passive: true });
     return () => element.removeEventListener('scroll', onScroll);
-  }, [hasMore, loadingMore, onLoadMore]);
+  }, [more]);
 
-  const shown = isFiltered(filters) ? items.filter((item) => item.type === 'session').length : null;
+  const shown = filtered.active && !filtered.loading ? filtered.total : null;
+  const noMatch = filtered.loading ? 'Loading matching sessions.' : filtered.error ?? 'No sessions match these filters.';
 
   return (
     <div className="timeline-page">
@@ -117,7 +127,7 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
         </PageHeader>
         {/* Filters over an empty archive are controls with one option each. */}
         {sessions.length === 0 ? null : (
-          <TimelineFilters sessions={sessions} filters={filters} onChange={setFilters} shown={shown} />
+          <TimelineFilters sources={sources} workspaces={workspaces} filters={filters} onChange={setFilters} shown={shown} />
         )}
       </div>
 
@@ -132,7 +142,7 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
           <div className="session-scroll" ref={scrollRef} role="feed" aria-label="Sessions">
             {items.length === 0 ? (
               <EmptyState
-                title="No sessions match these filters."
+                title={noMatch}
                 action={<Button size="sm" onClick={() => setFilters(NO_FILTERS)}>Clear filters</Button>}
               />
             ) : (
@@ -168,9 +178,9 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
               </div>
             )}
             <div className="list-end">
-              {hasMore
-                ? <Button size="sm" variant="ghost" disabled={loadingMore} onClick={() => void onLoadMore()}>{loadingMore ? 'Loading older sessions' : 'Load older sessions'}</Button>
-                : <span>End of archive</span>}
+              {more.hasMore
+                ? <Button size="sm" variant="ghost" disabled={more.loadingMore} onClick={() => void more.onLoadMore()}>{more.loadingMore ? 'Loading older sessions' : 'Load older sessions'}</Button>
+                : filtered.loading ? null : <span>End of archive</span>}
             </div>
           </div>
         </>

@@ -34,6 +34,12 @@ export interface WireTimelineResponse {
   nextCursor: string | null;
 }
 
+export interface WireSessionListResponse {
+  items: WireSessionSummary[];
+  total: number;
+  nextCursor: string | null;
+}
+
 export interface WireSearchResponse {
   items: WireSessionSummary[];
   nextCursor: string | null;

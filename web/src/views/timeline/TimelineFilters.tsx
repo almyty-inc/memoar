@@ -1,6 +1,7 @@
 import { AgentDot } from '../../components/AgentMark';
 import { Button, plural } from '../../components/ui';
-import type { SessionSummary } from '../../lib/types';
+import { sourceLabel } from '../../lib/source-labels';
+import type { Machine, SessionSummary } from '../../lib/types';
 import { workspaceLabel } from '../../lib/workspace';
 
 export interface Filters {
@@ -25,24 +26,49 @@ export function isFiltered(filters: Filters): boolean {
   return filters.source !== 'all' || filters.workspace !== 'all' || filters.within !== 'all';
 }
 
-export function matches(session: SessionSummary, filters: Filters): boolean {
-  if (filters.source !== 'all' && session.source !== filters.source) return false;
-  if (filters.workspace !== 'all' && session.workspace !== filters.workspace) return false;
-  if (filters.cutoff === null) return true;
-  const at = new Date(session.updatedAt).valueOf();
-  return Number.isFinite(at) && at >= filters.cutoff;
+/**
+ * Every agent the archive holds sessions from, not only those on the page.
+ *
+ * The machines list counts sessions per source for the whole archive, so an
+ * agent whose sessions are all older than the loaded page is still offered.
+ * Sessions already loaded add sources no machine reports, such as imports.
+ */
+export function sourceOptions(machines: Machine[], sessions: SessionSummary[], chosen: string): Array<[string, string]> {
+  const options = new Map<string, string>();
+  for (const machine of machines) {
+    for (const source of machine.sources) {
+      if (source.sessionCount > 0 && !options.has(source.id)) options.set(source.id, sourceLabel(source.id));
+    }
+  }
+  for (const session of sessions) {
+    if (!options.has(session.source)) options.set(session.source, session.sourceLabel);
+  }
+  if (chosen !== 'all' && !options.has(chosen)) options.set(chosen, sourceLabel(chosen));
+  return [...options].sort(([, left], [, right]) => left.localeCompare(right));
+}
+
+/**
+ * The projects among the sessions loaded so far, plus the one chosen.
+ *
+ * No endpoint lists an archive's projects, so this list can miss a project
+ * whose sessions are all older than the loaded page. A project that is chosen
+ * is still queried from the archive, never matched against the page.
+ */
+export function workspaceOptions(sessions: SessionSummary[], chosen: string): string[] {
+  const workspaces = new Set(sessions.map((session) => session.workspace));
+  if (chosen !== 'all') workspaces.add(chosen);
+  return [...workspaces].sort();
 }
 
 /** A compact row of plain dropdowns, each with a name a screen reader can say. */
-export function TimelineFilters({ sessions, filters, onChange, shown }: {
-  sessions: SessionSummary[];
+export function TimelineFilters({ sources, workspaces, filters, onChange, shown }: {
+  sources: Array<[string, string]>;
+  workspaces: string[];
   filters: Filters;
   onChange: (filters: Filters) => void;
-  /** How many rows the filters leave, when any filter is on. */
+  /** How many sessions the archive says match, once it has answered. */
   shown: number | null;
 }) {
-  const knownSources = [...new Map(sessions.map((session) => [session.source, session.sourceLabel])).entries()];
-  const workspaces = [...new Set(sessions.map((session) => session.workspace))].sort();
 
   const chooseRange = (value: string) => {
     const days = Number(value);
@@ -54,7 +80,7 @@ export function TimelineFilters({ sessions, filters, onChange, shown }: {
       {/* Pills with the agent's colour. The active one is solid ink. */}
       <div className="chips" role="group" aria-label="Filter by source">
         <button type="button" className="chip" aria-pressed={filters.source === 'all'} onClick={() => onChange({ ...filters, source: 'all' })}>All</button>
-        {knownSources.map(([value, label]) => (
+        {sources.map(([value, label]) => (
           <button key={value} type="button" className="chip" aria-pressed={filters.source === value} onClick={() => onChange({ ...filters, source: filters.source === value ? 'all' : value })}>
             <AgentDot source={value} />{label}
           </button>
@@ -75,7 +101,7 @@ export function TimelineFilters({ sessions, filters, onChange, shown }: {
       </label>
       {isFiltered(filters) ? (
         <>
-          <span className="meta">{plural(shown ?? 0, 'match', 'matches')}</span>
+          {shown === null ? null : <span className="meta">{plural(shown, 'match', 'matches')}</span>}
           <Button size="sm" variant="ghost" onClick={() => onChange(NO_FILTERS)}>Clear</Button>
         </>
       ) : null}

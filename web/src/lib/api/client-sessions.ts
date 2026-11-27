@@ -8,6 +8,7 @@ import type {
   WireMachine,
   WireSearchResponse,
   WireSessionChunk,
+  WireSessionListResponse,
   WireShareGrant,
   WireTimelineResponse,
   WireTransfer,
@@ -21,8 +22,31 @@ import type {
   TimelineGroup,
 } from '../types';
 
+/** What the session list can be narrowed by. `from` is an ISO date-time. */
+export interface SessionQuery {
+  agent?: string;
+  workspace?: string;
+  from?: string;
+}
+
+export interface TimelinePage {
+  groups: TimelineGroup[];
+  total: number;
+  nextCursor: string | null;
+}
+
+/** Sessions by the day they were last updated, in the order they arrived. */
+export function groupByDay(sessions: SessionSummary[]): TimelineGroup[] {
+  const byDate = new Map<string, SessionSummary[]>();
+  for (const session of sessions) {
+    const date = session.updatedAt.slice(0, 10);
+    byDate.set(date, [...(byDate.get(date) ?? []), session]);
+  }
+  return [...byDate].map(([date, grouped]) => ({ date, sessions: grouped }));
+}
+
 export class SessionsApi extends ApiClientCore {
-  async loadTimelinePage(cursor: string | null = null, limit = 30): Promise<{ groups: TimelineGroup[]; total: number; nextCursor: string | null }> {
+  async loadTimelinePage(cursor: string | null = null, limit = 30): Promise<TimelinePage> {
     this.requireArchive();
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set('cursor', cursor);
@@ -33,6 +57,24 @@ export class SessionsApi extends ApiClientCore {
       nextCursor: response.nextCursor,
     };
   }
+
+  /**
+   * One page of the sessions a filter matches, answered by the archive.
+   *
+   * The timeline endpoint takes no filters, so a filtered list reads the
+   * session list instead and groups it by day the way the timeline does.
+   */
+  async listSessions(filter: SessionQuery, cursor: string | null = null, limit = 50): Promise<TimelinePage> {
+    this.requireArchive();
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (filter.agent) query.set('agent', filter.agent);
+    if (filter.workspace) query.set('workspace', filter.workspace);
+    if (filter.from) query.set('from', filter.from);
+    if (cursor) query.set('cursor', cursor);
+    const response = await this.request<WireSessionListResponse>(`/sessions?${query.toString()}`);
+    return { groups: groupByDay(response.items.map(mapSession)), total: response.total, nextCursor: response.nextCursor };
+  }
+
   async loadDashboard(): Promise<DashboardState> {
     this.requireArchive();
     const timeline = await this.loadTimelinePage();
