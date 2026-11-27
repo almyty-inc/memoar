@@ -1,5 +1,5 @@
 import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, ProvenanceEntry, Visibility } from "../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "./context.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "./context.js";
 import type {
   CollectionRecord,
   DistillationSettings,
@@ -41,6 +41,8 @@ export interface SessionStore {
   saveSessionEmbedding(context: TenantContext, sessionId: string, vector: readonly number[]): Promise<void>;
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean>;
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage>;
+  /** A page of list rows: the same filter and order, without loading turns. */
+  listSessionHeaders(context: TenantContext, filter: SessionFilter): Promise<SessionHeaderPage>;
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null>;
   /**
    * Whether a session exists, without reading it.
@@ -70,6 +72,8 @@ export interface SessionStore {
    * in bulk; doing it one session at a time is an N+1 inside every query.
    */
   getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]>;
+  /** List rows for these sessions, in the order given, without loading turns. */
+  getSessionHeaders(context: TenantContext, sessionIds: readonly string[]): Promise<SessionHeader[]>;
   deleteSession(context: TenantContext, sessionId: string): Promise<boolean>;
 }
 

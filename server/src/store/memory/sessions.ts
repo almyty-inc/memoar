@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/require-await -- in-memory store methods intentionally satisfy the asynchronous production port. */
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
 import { scopeCollidingIds, separateRepeatedIds } from "../turn-identity.js";
 import { copy, key, type MemoryTables } from "./tables.js";
+import { headerOf } from "../session-header.js";
 
 export class MemorySessionStore implements SessionStore {
   constructor(private readonly tables: MemoryTables) {}
@@ -89,6 +90,11 @@ export class MemorySessionStore implements SessionStore {
     };
   }
 
+  async listSessionHeaders(context: TenantContext, filter: SessionFilter): Promise<SessionHeaderPage> {
+    const page = await this.listSessions(context, filter);
+    return { ...page, items: page.items.map(headerOf) };
+  }
+
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {
     const session = this.tables.sessions.get(key(context.tenantId, sessionId));
     return session ? copy(session) : null;
@@ -136,6 +142,10 @@ export class MemorySessionStore implements SessionStore {
       if (session) found.push(copy(session));
     }
     return found;
+  }
+
+  async getSessionHeaders(context: TenantContext, sessionIds: readonly string[]): Promise<SessionHeader[]> {
+    return (await this.getSessions(context, sessionIds)).map(headerOf);
   }
 
   async deleteSession(context: TenantContext, sessionId: string): Promise<boolean> {

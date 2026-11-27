@@ -1,10 +1,10 @@
 import { DataSource } from "typeorm";
-import type { ArchivedSession, SessionStore, TenantContext } from "../archive-store.js";
+import type { ArchivedSession, SessionHeader, SessionStore, TenantContext } from "../archive-store.js";
 import { isTeamVisible, teamVisibilitySql } from "../store/team-visibility.js";
 
 
 export interface SearchCandidate {
-  session: ArchivedSession;
+  session: ArchivedSession | SessionHeader;
   score: number;
   highlight: string;
 }
@@ -25,6 +25,8 @@ export interface SearchFilters {
 
 export interface SearchBackend {
   lexical(context: TenantContext, query: string, filters: SearchFilters, limit: number): Promise<SearchCandidate[]>;
+  /** Whole sessions, turns included, for a caller that quotes them. */
+  sessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]>;
 }
 
 export function words(value: string): string[] {
@@ -45,6 +47,10 @@ export function excerptAround(text: string, queryWords: readonly string[], maxim
 
 export class DeterministicLexicalBackend implements SearchBackend {
   constructor(private readonly store: SessionStore) {}
+
+  sessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> {
+    return this.store.getSessions(context, sessionIds);
+  }
 
   async lexical(context: TenantContext, query: string, filters: SearchFilters, limit: number): Promise<SearchCandidate[]> {
     const page = await this.store.listSessions(context, {
@@ -77,6 +83,10 @@ const MINIMUM_CANDIDATES = 200;
 
 export class PostgresFtsBackend implements SearchBackend {
   constructor(private readonly dataSource: DataSource, private readonly store: SessionStore) {}
+
+  sessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> {
+    return this.store.getSessions(context, sessionIds);
+  }
 
   async lexical(context: TenantContext, query: string, filters: SearchFilters, limit: number): Promise<SearchCandidate[]> {
     const rows = await this.dataSource.transaction(async (manager): Promise<{ id: string; score: string; highlight: string }[]> => {
@@ -118,8 +128,9 @@ export class PostgresFtsBackend implements SearchBackend {
       `, values);
       return raw as { id: string; score: string; highlight: string }[];
     });
-    // One batched hydration instead of a query trio per result.
-    const hydrated = await this.store.getSessions(context, rows.map((row) => row.id));
+    // List rows only: the excerpt came from the search document, so the turns
+    // of every hit would be loaded just to be counted.
+    const hydrated = await this.store.getSessionHeaders(context, rows.map((row) => row.id));
     const sessions = new Map(hydrated.map((session) => [session.id, session]));
     const candidates: SearchCandidate[] = [];
     for (const row of rows) {

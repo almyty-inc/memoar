@@ -1,7 +1,8 @@
 import { BadRequestException, Controller, Delete, Get, HttpCode, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { CONTRACT_VERSION, type ContentBlock, type Session, type Turn } from "../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionStore, TenantContext } from "./archive-store.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionStore, TenantContext } from "./archive-store.js";
+import { headerOf } from "./store/session-header.js";
 import { Tenant } from "./auth.js";
 import { sourceLabel } from "./source-labels.js";
 import { ARCHIVE_STORE } from "./tokens.js";
@@ -12,12 +13,9 @@ function positiveInt(value: string | undefined, fallback: number, maximum: numbe
 }
 
 /** Wall-clock minutes between the first and last turn, when both are dated. */
-function durationMinutes(session: ArchivedSession): number | null {
-  const stamps = session.turns
-    .map((turn) => new Date(turn.createdAt).valueOf())
-    .filter((value) => Number.isFinite(value));
-  if (stamps.length < 2) return null;
-  return Math.round((Math.max(...stamps) - Math.min(...stamps)) / 60_000);
+function durationMinutes(session: SessionHeader): number | null {
+  if (session.turnCount < 2 || !session.firstTurnAt || !session.lastTurnAt) return null;
+  return Math.round((new Date(session.lastTurnAt).valueOf() - new Date(session.firstTurnAt).valueOf()) / 60_000);
 }
 
 /**
@@ -29,7 +27,8 @@ function durationMinutes(session: ArchivedSession): number | null {
  * property of the session, so every one of them is sent, and absent when the
  * session genuinely does not have it.
  */
-export function sessionSummary(session: ArchivedSession): Record<string, unknown> {
+export function sessionSummary(loaded: ArchivedSession | SessionHeader): Record<string, unknown> {
+  const session = "turns" in loaded ? headerOf(loaded) : loaded;
   const minutes = durationMinutes(session);
   return {
     id: session.id,
@@ -42,7 +41,7 @@ export function sessionSummary(session: ArchivedSession): Record<string, unknown
     ...(session.workspace.branch ? { branch: session.workspace.branch } : {}),
     ...(session.models[0] ? { model: session.models[0] } : {}),
     updatedAt: session.updatedAt,
-    turnCount: session.turns.length,
+    turnCount: session.turnCount,
     tokenCount: session.tokenTotals.input + session.tokenTotals.output,
     ...(minutes === null ? {} : { durationMinutes: minutes }),
     redactionStatus: session.redactionStatus,
@@ -87,14 +86,14 @@ export class SessionsService {
       ...(query.from ? { from: new Date(query.from) } : {}),
       ...(query.to ? { to: new Date(query.to) } : {}),
     };
-    const page = await this.store.listSessions(context, filter);
+    const page = await this.store.listSessionHeaders(context, filter);
     // The total, so a reader can be told how many sessions there are rather
     // than only how many arrived in this page.
     return { items: page.items.map(sessionSummary), total: page.total, nextCursor: page.nextCursor };
   }
 
   async timeline(context: TenantContext, query: Record<string, string | undefined>): Promise<Record<string, unknown>> {
-    const page = await this.store.listSessions(context, {
+    const page = await this.store.listSessionHeaders(context, {
       limit: positiveInt(query.limit, 30, 100),
       ...(query.cursor ? { cursor: query.cursor } : {}),
     });
