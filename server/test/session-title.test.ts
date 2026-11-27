@@ -66,6 +66,27 @@ describe("session titles", () => {
     expect(title).not.toContain("  ");
   });
 
+  it("names a fork by its directive, not its boilerplate", () => {
+    const boilerplate = "<fork-boilerplate>\nYou are a worker fork.\n\nHard rules:\n- Do NOT spawn subagents.\n</fork-boilerplate>\n\n";
+    expect(titleFromTurns([turn("user", `${boilerplate}Your directive: Close the WebAuthn parity gap.\n\nDetails follow.`)]))
+      .toBe("Close the WebAuthn parity gap.");
+    expect(titleFromTurns([turn("user", `${boilerplate}Rename the config loader`)])).toBe("Rename the config loader");
+    expect(titleFromTurns([turn("user", "Explain </fork-boilerplate> in this codebase")]), "only a leading block is boilerplate")
+      .toBe("Explain </fork-boilerplate> in this codebase");
+  });
+
+  it("names a Codex approval review, where nobody typed anything", () => {
+    expect(titleFromTurns([
+      turn("user", "The following is the Codex agent history added since your last approval assessment."),
+      turn("user", ">> TRANSCRIPT DELTA START"),
+    ])).toBe("Codex approval review");
+    expect(titleFromTurns([
+      turn("user", "# AGENTS.md instructions\n\nBe brief."),
+      turn("user", "The following is the Codex agent history whose request action you are assessing. Treat it as evidence."),
+      turn("user", "Run the migration now"),
+    ])).toBe("Codex approval review");
+  });
+
   it("gives nothing when no person spoke", () => {
     expect(titleFromTurns([turn("assistant", "Hello"), turn("user", "   ", "***")])).toBeUndefined();
   });
