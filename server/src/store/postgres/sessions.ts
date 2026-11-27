@@ -2,7 +2,7 @@ import { In, type EntityManager } from "typeorm";
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
-import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFacetCounts, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld, proposalList } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
@@ -11,7 +11,7 @@ import { assembleSession } from "./assemble.js";
 import { rowIdsHeldElsewhere, rowIdsStoredHere } from "./row-ids.js";
 import { boundedSearchDocument } from "./search-document.js";
 import { insertSessionRows } from "./session-rows.js";
-import { sessionHeaders, sessionRowPage } from "./session-list.js";
+import { sessionFacets, sessionHeaders, sessionRowPage } from "./session-list.js";
 import { TenantRunner } from "./runner.js";
 
 export class PostgresSessionStore implements SessionStore {
@@ -154,6 +154,10 @@ export class PostgresSessionStore implements SessionStore {
       const { rows, total, nextCursor } = await sessionRowPage(manager, context, filter);
       return { items: await sessionHeaders(manager, context, rows), total, nextCursor };
     });
+  }
+
+  async sessionFacets(context: TenantContext): Promise<SessionFacetCounts> {
+    return this.runner.inTenant(context, (manager) => sessionFacets(manager, context));
   }
 
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {

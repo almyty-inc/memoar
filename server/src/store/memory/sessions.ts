@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/require-await -- in-memory store methods intentionally satisfy the asynchronous production port. */
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFacetCounts, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
@@ -93,6 +93,26 @@ export class MemorySessionStore implements SessionStore {
   async listSessionHeaders(context: TenantContext, filter: SessionFilter): Promise<SessionHeaderPage> {
     const page = await this.listSessions(context, filter);
     return { ...page, items: page.items.map(headerOf) };
+  }
+
+  async sessionFacets(context: TenantContext): Promise<SessionFacetCounts> {
+    const sources = new Map<string, number>();
+    const workspaces = new Map<string, { sessions: number; lastUpdatedAt: string }>();
+    for (const [entryKey, session] of this.tables.sessions.entries()) {
+      if (!entryKey.startsWith(`${context.tenantId}:`)) continue;
+      sources.set(session.source.tool, (sources.get(session.source.tool) ?? 0) + 1);
+      const seen = workspaces.get(session.workspace.path);
+      workspaces.set(session.workspace.path, {
+        sessions: (seen?.sessions ?? 0) + 1,
+        lastUpdatedAt: seen && seen.lastUpdatedAt > session.updatedAt ? seen.lastUpdatedAt : session.updatedAt,
+      });
+    }
+    return {
+      sources: [...sources].map(([source, sessions]) => ({ source, sessions }))
+        .sort((left, right) => right.sessions - left.sessions || left.source.localeCompare(right.source)),
+      workspaces: [...workspaces].map(([path, counts]) => ({ path, ...counts }))
+        .sort((left, right) => right.lastUpdatedAt.localeCompare(left.lastUpdatedAt) || left.path.localeCompare(right.path)),
+    };
   }
 
   async getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> {

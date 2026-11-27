@@ -101,6 +101,31 @@ describe('the timeline filters, answered by the archive', () => {
 
     await waitFor(() => expect(load).toHaveBeenCalledWith({ workspace: '/workspace/memoar' }, null));
   });
+
+  it('offer every project and agent the archive lists, not only those on the page', async () => {
+    const loadFacets = vi.fn().mockResolvedValue({
+      sources: [{ source: 'zed', sourceLabel: 'Zed', sessions: 4 }],
+      workspaces: [{ path: '/work/old-project', sessions: 12, lastUpdatedAt: '2026-01-02T00:00:00.000Z' }],
+    });
+    const load = vi.fn().mockResolvedValue({ groups: [], total: 12, nextCursor: null });
+    view({ loadFacets, loadFiltered: load });
+
+    const projects = screen.getByLabelText('Filter by project');
+    await waitFor(() => expect(projects).toHaveTextContent('old-project'));
+    expect(projects, 'the loaded page still counts').toHaveTextContent('memoar');
+    expect(screen.getByRole('group', { name: 'Filter by source' })).toHaveTextContent('Zed');
+
+    fireEvent.change(projects, { target: { value: '/work/old-project' } });
+    await waitFor(() => expect(load).toHaveBeenCalledWith({ workspace: '/work/old-project' }, null));
+  });
+
+  it('fall back to the page and the machines when the archive cannot list them', async () => {
+    const loadFacets = vi.fn().mockRejectedValue(new Error('offline'));
+    view({ loadFacets });
+    await waitFor(() => expect(loadFacets).toHaveBeenCalled());
+    expect(screen.getByRole('group', { name: 'Filter by source' })).toHaveTextContent('Antigravity CLI');
+    expect(screen.getByLabelText('Filter by project')).toHaveTextContent('memoar');
+  });
 });
 
 describe('the session list request', () => {

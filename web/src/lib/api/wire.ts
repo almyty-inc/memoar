@@ -40,6 +40,12 @@ export interface WireSessionListResponse {
   nextCursor: string | null;
 }
 
+/** Every agent and project the archive holds, from `GET /sessions/facets`. */
+export interface WireSessionFacets {
+  sources: Array<{ source: string; sourceLabel: string; sessions: number }>;
+  workspaces: Array<{ path: string; sessions: number; lastUpdatedAt: string }>;
+}
+
 export interface WireSearchResponse {
   items: WireSessionSummary[];
   nextCursor: string | null;

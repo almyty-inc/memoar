@@ -1,5 +1,5 @@
 import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, Visibility } from "../../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFacetCounts, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { ArchiveStore, MemoryCapture, SessionParse } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
@@ -44,6 +44,7 @@ export class DevArchiveStore implements ArchiveStore {
   updateSessionVisibility(context: TenantContext, sessionId: string, visibility: Visibility): Promise<boolean> { return this.sessionStore.updateSessionVisibility(context, sessionId, visibility); }
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage> { return this.sessionStore.listSessions(context, filter); }
   listSessionHeaders(context: TenantContext, filter: SessionFilter): Promise<SessionHeaderPage> { return this.sessionStore.listSessionHeaders(context, filter); }
+  sessionFacets(context: TenantContext): Promise<SessionFacetCounts> { return this.sessionStore.sessionFacets(context); }
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null> { return this.sessionStore.getSession(context, sessionId); }
   sessionExists(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessionStore.sessionExists(context, sessionId); }
   countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]> { return this.sessionStore.countSessionsByMachineSource(context); }

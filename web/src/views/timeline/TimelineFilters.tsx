@@ -1,5 +1,6 @@
 import { AgentDot } from '../../components/AgentMark';
 import { Button, plural } from '../../components/ui';
+import type { WireSessionFacets } from '../../lib/api/wire';
 import { sourceLabel } from '../../lib/source-labels';
 import type { Machine, SessionSummary } from '../../lib/types';
 import { workspaceLabel } from '../../lib/workspace';
@@ -29,13 +30,14 @@ export function isFiltered(filters: Filters): boolean {
 /**
  * Every agent the archive holds sessions from, not only those on the page.
  *
- * The machines list counts sessions per source for the whole archive, so an
- * agent whose sessions are all older than the loaded page is still offered.
- * Sessions already loaded add sources no machine reports, such as imports.
+ * The archive's facets list them all. Until those arrive, the machines list
+ * stands in: it counts sessions per source for the whole archive, and
+ * sessions already loaded add sources no machine reports, such as imports.
  */
-export function sourceOptions(machines: Machine[], sessions: SessionSummary[], chosen: string): Array<[string, string]> {
+export function sourceOptions(machines: Machine[], sessions: SessionSummary[], chosen: string, facets?: WireSessionFacets | null): Array<[string, string]> {
   const options = new Map<string, string>();
-  for (const machine of machines) {
+  for (const entry of facets?.sources ?? []) options.set(entry.source, entry.sourceLabel);
+  for (const machine of facets ? [] : machines) {
     for (const source of machine.sources) {
       if (source.sessionCount > 0 && !options.has(source.id)) options.set(source.id, sourceLabel(source.id));
     }
@@ -48,14 +50,15 @@ export function sourceOptions(machines: Machine[], sessions: SessionSummary[], c
 }
 
 /**
- * The projects among the sessions loaded so far, plus the one chosen.
+ * Every project in the archive, plus the one chosen.
  *
- * No endpoint lists an archive's projects, so this list can miss a project
- * whose sessions are all older than the loaded page. A project that is chosen
- * is still queried from the archive, never matched against the page.
+ * The archive's facets list them all, so a project whose sessions are all
+ * older than the loaded page is still offered. Until they arrive, the
+ * projects among the loaded sessions stand in.
  */
-export function workspaceOptions(sessions: SessionSummary[], chosen: string): string[] {
-  const workspaces = new Set(sessions.map((session) => session.workspace));
+export function workspaceOptions(sessions: SessionSummary[], chosen: string, facets?: WireSessionFacets | null): string[] {
+  const workspaces = new Set(facets ? facets.workspaces.map((entry) => entry.path) : sessions.map((session) => session.workspace));
+  for (const session of sessions) workspaces.add(session.workspace);
   if (chosen !== 'all') workspaces.add(chosen);
   return [...workspaces].sort();
 }

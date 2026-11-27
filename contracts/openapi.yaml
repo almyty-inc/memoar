@@ -451,6 +451,20 @@ paths:
           content:
             application/json:
               schema: { type: object, required: [groups, total], properties: { groups: { type: array, items: { $ref: '#/components/schemas/TimelineGroup' } }, total: { type: integer, minimum: 0, description: 'Sessions in the archive, not in this page.' }, nextCursor: { type: [string, 'null'] } } }
+  /sessions/facets:
+    get:
+      tags: [Sessions]
+      operationId: getSessionFacets
+      description: >-
+        Every agent and project the archive holds sessions from, with counts.
+        A list filter offers these, rather than only what one page of sessions
+        happens to contain.
+      responses:
+        '200':
+          description: Agents and projects across the whole archive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionFacets' }
   /sessions/{sessionId}/export:
     get:
       tags: [Sessions]
@@ -1829,6 +1843,30 @@ components:
       properties:
         date: { type: string, format: date }
         sessions: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
+    SessionFacets:
+      type: object
+      required: [sources, workspaces]
+      properties:
+        sources:
+          description: Most sessions first.
+          type: array
+          items:
+            type: object
+            required: [source, sourceLabel, sessions]
+            properties:
+              source: { type: string }
+              sourceLabel: { type: string }
+              sessions: { type: integer, minimum: 1 }
+        workspaces:
+          description: Most recently updated first.
+          type: array
+          items:
+            type: object
+            required: [path, sessions, lastUpdatedAt]
+            properties:
+              path: { type: string, minLength: 1 }
+              sessions: { type: integer, minimum: 1 }
+              lastUpdatedAt: { type: string, format: date-time }
     SessionChunk:
       type: object
       required: [session, turns, provenance, nextCursor]

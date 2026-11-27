@@ -1,6 +1,6 @@
 import type { EntityManager } from "typeorm";
 import { SessionEntity, type SessionRow } from "../../entities.js";
-import type { SessionFilter, SessionHeader, TenantContext } from "../context.js";
+import type { SessionFacetCounts, SessionFilter, SessionHeader, TenantContext } from "../context.js";
 import { sessionFields } from "./assemble.js";
 import { decodeCursor, encodeCursor, TenantScope } from "./runner.js";
 
@@ -38,6 +38,28 @@ export async function sessionRowPage(manager: EntityManager, context: TenantCont
   const pageRows = rows.slice(0, filter.limit);
   const last = pageRows.at(-1);
   return { rows: pageRows, total, nextCursor: hasNext && last ? encodeCursor(last.capturedUpdatedAt, last.id) : null };
+}
+
+/** Every agent and project the tenant has sessions from: two grouped counts. */
+export async function sessionFacets(manager: EntityManager, context: TenantContext): Promise<SessionFacetCounts> {
+  const [sources, workspaces] = await Promise.all([
+    manager.query<{ source: string; sessions: number }[]>(
+      `SELECT source->>'tool' AS source, count(*)::int AS sessions
+         FROM sessions WHERE "tenantId" = $1
+        GROUP BY 1 ORDER BY 2 DESC, 1`,
+      [context.tenantId],
+    ),
+    manager.query<{ path: string; sessions: number; last: Date }[]>(
+      `SELECT workspace->>'path' AS path, count(*)::int AS sessions, max("capturedUpdatedAt") AS last
+         FROM sessions WHERE "tenantId" = $1
+        GROUP BY 1 ORDER BY 3 DESC, 1`,
+      [context.tenantId],
+    ),
+  ]);
+  return {
+    sources,
+    workspaces: workspaces.map((row) => ({ path: row.path, sessions: row.sessions, lastUpdatedAt: new Date(row.last).toISOString() })),
+  };
 }
 
 interface TurnStats {
