@@ -80,6 +80,14 @@ export class DeterministicLexicalBackend implements SearchBackend {
 /** How many ranked candidates to rescore before returning the requested page. */
 const CANDIDATE_FACTOR = 8;
 const MINIMUM_CANDIDATES = 200;
+/**
+ * How much of a search document the excerpt reads, starting a little before
+ * the first literal hit. ts_headline parses all the text it is given, and a
+ * long session's document runs to almost a megabyte: on dev, excerpts from
+ * whole documents took 1.4 s of a 1.45 s query.
+ */
+const EXCERPT_WINDOW = 20_000;
+const EXCERPT_LEAD = 2_000;
 
 export class PostgresFtsBackend implements SearchBackend {
   constructor(private readonly dataSource: DataSource, private readonly store: SessionStore) {}
@@ -110,21 +118,34 @@ export class PostgresFtsBackend implements SearchBackend {
       values.push(Math.max(limit * CANDIDATE_FACTOR, MINIMUM_CANDIDATES));
       const candidateLimitIndex = values.length;
       values.push(limit);
+      const pageLimitIndex = values.length;
+      // The literal words find where the excerpt window starts. A stemmed hit
+      // with no literal match ("migrating" for "migration") falls back to the
+      // start of the document, which is where ts_headline would look first.
+      values.push([...new Set(words(query))]);
       const raw: unknown = await manager.query(`
         WITH candidates AS (
-          SELECT id, title, "searchDocument", "capturedUpdatedAt",
+          SELECT id, title, "capturedUpdatedAt",
             ts_rank_cd("searchVector", websearch_to_tsquery('english', $2)) AS rank
           FROM sessions
           WHERE ${conditions.join(" AND ")}
           ORDER BY rank DESC, "capturedUpdatedAt" DESC, id ASC
           LIMIT $${candidateLimitIndex}
+        ), page AS (
+          SELECT id, "capturedUpdatedAt", rank + similarity(title, $2) AS score
+          FROM candidates
+          ORDER BY score DESC, "capturedUpdatedAt" DESC, id ASC
+          LIMIT $${pageLimitIndex}
         )
-        SELECT id,
-          rank + similarity(title, $2) AS score,
-          ts_headline('english', "searchDocument", websearch_to_tsquery('english', $2), 'MaxWords=36, MinWords=12, StartSel="", StopSel=""') AS highlight
-        FROM candidates
-        ORDER BY score DESC, "capturedUpdatedAt" DESC, id ASC
-        LIMIT $${values.length}
+        SELECT page.id, page.score,
+          ts_headline('english', substr(s."searchDocument", greatest(1, coalesce(hit.at, 1) - ${EXCERPT_LEAD}), ${EXCERPT_WINDOW}),
+            websearch_to_tsquery('english', $2), 'MaxWords=36, MinWords=12, StartSel="", StopSel=""') AS highlight
+        FROM page
+        JOIN sessions s ON s.id = page.id AND s."tenantId" = $1
+        CROSS JOIN LATERAL (
+          SELECT min(nullif(strpos(lower(s."searchDocument"), term), 0)) AS at FROM unnest($${values.length}::text[]) AS term
+        ) hit
+        ORDER BY page.score DESC, page."capturedUpdatedAt" DESC, page.id ASC
       `, values);
       return raw as { id: string; score: string; highlight: string }[];
     });
