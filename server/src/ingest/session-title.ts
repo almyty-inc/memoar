@@ -28,6 +28,7 @@ export function isPlaceholderTitle(title: string | undefined, source: string): b
  * title made of those says nothing about the session.
  */
 export function titleFromTurns(turns: readonly Turn[]): string | undefined {
+  if (isCodexReview(turns)) return "Codex approval review";
   for (const turn of turns) {
     if (turn.role !== "user") continue;
     for (const block of turn.blocks) {
@@ -40,6 +41,19 @@ export function titleFromTurns(turns: readonly Turn[]): string | undefined {
 }
 
 /*
+  Codex reviews its own agent's commands before running them, in a separate
+  session whose user turns are the history it is asked to judge. Nobody typed
+  anything there, and a line quoted from that history would name the session
+  after somebody else's work, so the review is named for what it is.
+*/
+const CODEX_REVIEW = /^The following is the Codex agent history (whose request action you are assessing|added since your last approval assessment)/;
+
+function isCodexReview(turns: readonly Turn[]): boolean {
+  return turns.some((turn) => turn.role === "user"
+    && turn.blocks.some((block) => block.kind === "text" && CODEX_REVIEW.test(block.text?.trim() ?? "")));
+}
+
+/*
   Some agents wrap what the person typed in a tag of their own: Antigravity
   sends every prompt as `<USER_REQUEST>…</USER_REQUEST>`. That is the prompt,
   so the wrapper comes off. Every other leading tag marks text the harness
@@ -49,9 +63,13 @@ export function titleFromTurns(turns: readonly Turn[]): string | undefined {
   the first user message, and a summary of the history after compaction. Its
   IDE extension puts the open files first and the prompt last, under
   `## My request for Codex:`, so the prompt is taken from there.
+
+  A Claude Code fork starts with `<fork-boilerplate>` rules and puts its task
+  after them, as `Your directive: …`. The task is what names the session.
 */
 const PROMPT_WRAPPER = /^<(user_request|user_query)>\s*([\s\S]*?)\s*(<\/\1>)?\s*$/i;
 const CODEX_REQUEST = /^## My request for Codex:\s*$/m;
+const FORK_DIRECTIVE = /<\/fork-boilerplate>\s*(Your directive:\s*)?/;
 const INJECTED_PREFIXES = [
   "# AGENTS.md instructions",
   "# CLAUDE.md",
@@ -64,6 +82,8 @@ const INJECTED_PREFIXES = [
 function unwrap(text: string): string {
   const request = CODEX_REQUEST.exec(text);
   if (request) return text.slice(request.index + request[0].length);
+  const fork = FORK_DIRECTIVE.exec(text);
+  if (fork && text.startsWith("<fork-boilerplate>")) return text.slice(fork.index + fork[0].length);
   return text.match(PROMPT_WRAPPER)?.[2] ?? text;
 }
 
