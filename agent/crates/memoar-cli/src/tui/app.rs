@@ -261,6 +261,18 @@ impl App {
         }
     }
 
+    /// Back one screen, but never out of the app.
+    ///
+    /// Escape is what people press to back out of something, and pressing it
+    /// once too often closed the TUI. Only `q` leaves from the session list.
+    pub(crate) fn escape(&mut self) {
+        if self.stack.len() > 1 {
+            self.stack.pop();
+        } else {
+            self.info("Press q to quit.");
+        }
+    }
+
     pub(crate) fn info(&mut self, text: impl Into<String>) {
         self.notice = Some(Notice {
             kind: NoticeKind::Info,

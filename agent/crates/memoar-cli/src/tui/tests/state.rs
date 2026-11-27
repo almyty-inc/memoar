@@ -87,6 +87,12 @@ fn enter_reads_the_session_and_escape_comes_back() {
     press(&mut app, KeyCode::Esc);
     assert_eq!(app.screen(), Screen::Sessions);
     assert!(!app.quit);
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.quit, "one Escape too many must not close the TUI");
+    assert_eq!(
+        app.notice.as_ref().map(|notice| notice.text.as_str()),
+        Some("Press q to quit.")
+    );
     press(&mut app, KeyCode::Char('q'));
     assert!(app.quit);
 }
