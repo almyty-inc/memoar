@@ -1,12 +1,8 @@
 import type { ContentBlockRow, SessionRow, TurnRow } from "../../entities.js";
 import type { ArchivedSession } from "../context.js";
 
-/** Builds a canonical session from its already-loaded rows. */
-export function assembleSession(
-  session: SessionRow,
-  turns: readonly TurnRow[],
-  blocksByTurn: ReadonlyMap<string, readonly ContentBlockRow[]>,
-): ArchivedSession {
+/** Everything a session row says on its own, without its turns. */
+export function sessionFields(session: SessionRow): Omit<ArchivedSession, "turns"> {
   return {
     id: session.id,
     source: session.source,
@@ -19,6 +15,19 @@ export function assembleSession(
     tokenTotals: session.tokenTotals,
     provenance: session.provenance,
     visibility: session.visibility,
+    ...(session.ext ? { ext: session.ext } : {}),
+    redactionStatus: session.redactionStatus,
+  };
+}
+
+/** Builds a canonical session from its already-loaded rows. */
+export function assembleSession(
+  session: SessionRow,
+  turns: readonly TurnRow[],
+  blocksByTurn: ReadonlyMap<string, readonly ContentBlockRow[]>,
+): ArchivedSession {
+  return {
+    ...sessionFields(session),
     turns: turns.map((turn) => ({
       id: turn.id,
       ordinal: turn.ordinal,
@@ -41,7 +50,5 @@ export function assembleSession(
       })),
       ...(turn.ext ? { ext: turn.ext } : {}),
     })),
-    ...(session.ext ? { ext: session.ext } : {}),
-    redactionStatus: session.redactionStatus,
   };
 }

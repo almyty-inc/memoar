@@ -49,3 +49,21 @@ export interface SessionPage {
   total: number;
   nextCursor: string | null;
 }
+
+/**
+ * A session without its turns, plus the three facts a list row reads off them.
+ *
+ * A list used to hydrate every turn and block of every row to count them. One
+ * session on dev had 16,668 turns, and a page of 100 took 16 seconds.
+ */
+export interface SessionHeader extends Omit<ArchivedSession, "turns"> {
+  turnCount: number;
+  firstTurnAt: string | null;
+  lastTurnAt: string | null;
+}
+
+export interface SessionHeaderPage {
+  items: SessionHeader[];
+  total: number;
+  nextCursor: string | null;
+}

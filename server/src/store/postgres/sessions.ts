@@ -2,7 +2,7 @@ import { In, type EntityManager } from "typeorm";
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
-import type { ArchivedSession, SessionFilter, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFilter, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld, proposalList } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
@@ -11,7 +11,8 @@ import { assembleSession } from "./assemble.js";
 import { rowIdsHeldElsewhere, rowIdsStoredHere } from "./row-ids.js";
 import { boundedSearchDocument } from "./search-document.js";
 import { insertSessionRows } from "./session-rows.js";
-import { decodeCursor, encodeCursor, TenantRunner, TenantScope } from "./runner.js";
+import { sessionHeaders, sessionRowPage } from "./session-list.js";
+import { TenantRunner } from "./runner.js";
 
 export class PostgresSessionStore implements SessionStore {
   constructor(private readonly runner: TenantRunner) {}
@@ -141,34 +142,17 @@ export class PostgresSessionStore implements SessionStore {
 
   async listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage> {
     return this.runner.inTenant(context, async (manager) => {
-      const query = TenantScope.apply(manager.getRepository(SessionEntity).createQueryBuilder("session"), "session", context)
-        .orderBy("session.capturedUpdatedAt", "DESC")
-        .addOrderBy("session.id", "DESC");
-      if (filter.agent) query.andWhere("session.source ->> 'tool' = :agent", { agent: filter.agent });
-      if (filter.workspace) query.andWhere("session.workspace ->> 'path' ILIKE :workspace", { workspace: `%${filter.workspace}%` });
-      if (filter.machineId) query.andWhere("session.source ->> 'machineId' = :machineId", { machineId: filter.machineId });
-      if (filter.model) query.andWhere(":model = ANY(session.models)", { model: filter.model });
-      if (filter.from) query.andWhere("session.capturedUpdatedAt >= :from", { from: filter.from });
-      if (filter.to) query.andWhere("session.capturedUpdatedAt <= :to", { to: filter.to });
-      // How many match the filter, before the cursor narrows it to one page.
-      // Without this the client can say how many sessions it is holding but not
-      // how many there are, which is the number a reader actually wants.
-      const total = await query.getCount();
-
-      if (filter.cursor) {
-        const cursor = decodeCursor(filter.cursor);
-        if (cursor) query.andWhere("(session.capturedUpdatedAt, session.id) < (:cursorDate, :cursorId)", {
-          cursorDate: cursor.updatedAt,
-          cursorId: cursor.id,
-        });
-      }
-      const rows = await query.take(filter.limit + 1).getMany();
-      const hasNext = rows.length > filter.limit;
-      const pageRows = rows.slice(0, filter.limit);
+      const { rows, total, nextCursor } = await sessionRowPage(manager, context, filter);
       // Hydrated together: three queries for the page, not three per session.
-      const items = await this.hydrateWithManager(manager, context, pageRows.map((row) => row.id));
-      const last = pageRows.at(-1);
-      return { items, total, nextCursor: hasNext && last ? encodeCursor(last.capturedUpdatedAt, last.id) : null };
+      const items = await this.hydrateWithManager(manager, context, rows.map((row) => row.id));
+      return { items, total, nextCursor };
+    });
+  }
+
+  async listSessionHeaders(context: TenantContext, filter: SessionFilter): Promise<SessionHeaderPage> {
+    return this.runner.inTenant(context, async (manager) => {
+      const { rows, total, nextCursor } = await sessionRowPage(manager, context, filter);
+      return { items: await sessionHeaders(manager, context, rows), total, nextCursor };
     });
   }
 
