@@ -8,6 +8,7 @@ import type {
   WireMachine,
   WireSearchResponse,
   WireSessionChunk,
+  WireSessionFacets,
   WireSessionListResponse,
   WireShareGrant,
   WireTimelineResponse,
@@ -73,6 +74,12 @@ export class SessionsApi extends ApiClientCore {
     if (cursor) query.set('cursor', cursor);
     const response = await this.request<WireSessionListResponse>(`/sessions?${query.toString()}`);
     return { groups: groupByDay(response.items.map(mapSession)), total: response.total, nextCursor: response.nextCursor };
+  }
+
+  /** Every agent and project in the archive, for the list filters to offer. */
+  async sessionFacets(): Promise<WireSessionFacets> {
+    this.requireArchive();
+    return this.request<WireSessionFacets>('/sessions/facets');
   }
 
   async loadDashboard(): Promise<DashboardState> {

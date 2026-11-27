@@ -62,6 +62,14 @@ export interface SessionHeader extends Omit<ArchivedSession, "turns"> {
   lastTurnAt: string | null;
 }
 
+/** Every agent and project a tenant has sessions from, counted. */
+export interface SessionFacetCounts {
+  /** Most sessions first. */
+  sources: { source: string; sessions: number }[];
+  /** Most recently updated first. */
+  workspaces: { path: string; sessions: number; lastUpdatedAt: string }[];
+}
+
 export interface SessionHeaderPage {
   items: SessionHeader[];
   total: number;

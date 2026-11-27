@@ -1,5 +1,5 @@
 import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, ProvenanceEntry, Visibility } from "../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "./context.js";
+import type { ArchivedSession, SessionFacetCounts, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "./context.js";
 import type {
   CollectionRecord,
   DistillationSettings,
@@ -43,6 +43,8 @@ export interface SessionStore {
   listSessions(context: TenantContext, filter: SessionFilter): Promise<SessionPage>;
   /** A page of list rows: the same filter and order, without loading turns. */
   listSessionHeaders(context: TenantContext, filter: SessionFilter): Promise<SessionHeaderPage>;
+  /** Every agent and project the tenant has sessions from, counted, without loading sessions. */
+  sessionFacets(context: TenantContext): Promise<SessionFacetCounts>;
   getSession(context: TenantContext, sessionId: string): Promise<ArchivedSession | null>;
   /**
    * Whether a session exists, without reading it.

@@ -92,6 +92,15 @@ export class SessionsService {
     return { items: page.items.map(sessionSummary), total: page.total, nextCursor: page.nextCursor };
   }
 
+  /** What a list filter offers: every agent and project in the archive, not in one page. */
+  async facets(context: TenantContext): Promise<Record<string, unknown>> {
+    const counts = await this.store.sessionFacets(context);
+    return {
+      sources: counts.sources.map((entry) => ({ ...entry, sourceLabel: sourceLabel(entry.source) })),
+      workspaces: counts.workspaces,
+    };
+  }
+
   async timeline(context: TenantContext, query: Record<string, string | undefined>): Promise<Record<string, unknown>> {
     const page = await this.store.listSessionHeaders(context, {
       limit: positiveInt(query.limit, 30, 100),
@@ -225,6 +234,11 @@ export class SessionsController {
   @Get("timeline")
   timeline(@Tenant() context: TenantContext, @Query() query: Record<string, string | undefined>): Promise<Record<string, unknown>> {
     return this.sessions.timeline(context, query);
+  }
+
+  @Get("facets")
+  facets(@Tenant() context: TenantContext): Promise<Record<string, unknown>> {
+    return this.sessions.facets(context);
   }
 
   @Get(":sessionId/export")

@@ -16,6 +16,14 @@ const bob: TenantContext = {
   authType: "dev",
 };
 
+/** An archive of her own, so the counts are not mixed with the other tests' sessions. */
+const carol: TenantContext = {
+  tenantId: "0191cafe-0000-7000-8000-0000000000c1",
+  userId: "0191cafe-0000-7000-8000-0000000000c2",
+  scopes: ["*"],
+  authType: "dev",
+};
+
 const usePostgres = process.env.MEMOAR_TEST_POSTGRES !== "0" && dockerAvailable();
 let dataSource: DataSource | null = null;
 
@@ -24,6 +32,7 @@ beforeAll(async () => {
     dataSource = await startPostgres();
     await seedAccount(dataSource, { userId: alice.userId, tenantId: alice.tenantId, email: "alice@example.test" });
     await seedAccount(dataSource, { userId: bob.userId, tenantId: bob.tenantId, email: "bob@example.test" });
+    await seedAccount(dataSource, { userId: carol.userId, tenantId: carol.tenantId, email: "carol@example.test" });
   }
 }, 180_000);
 
@@ -95,6 +104,28 @@ for (const implementation of implementations) {
       expect(hits.map((hit) => hit.id)).toEqual([sessions[2]!.id, sessions[0]!.id]);
       expect(hits[1]).toEqual(headerOf((await store.getSession(alice, sessions[0]!.id))!));
       expect(await store.getSessionHeaders(bob, ranked)).toEqual([]);
+    });
+
+    it("counts every agent and project in the archive, not one page of it", async () => {
+      const store = implementation.create();
+      const prefix = `0191cafe-0000-7000-8000-0000${implementation.name === "postgres" ? "d" : "c"}00000`;
+      const older = { ...session(`${prefix}11`, "2026-07-01T00:00:00.000Z", [0]), workspace: { path: "/work/old-project" } };
+      const newer = { ...session(`${prefix}12`, "2026-08-05T00:00:00.000Z", [0]), workspace: { path: "/work/app" } };
+      const other = session(`${prefix}13`, "2026-08-04T00:00:00.000Z", [0]);
+      other.workspace = { path: "/work/app" };
+      other.source = { ...other.source, tool: "antigravity-cli" };
+      for (const each of [older, newer, other]) await store.saveSession(carol, each);
+
+      const facets = await store.sessionFacets(carol);
+      expect(facets.workspaces).toEqual([
+        { path: "/work/app", sessions: 2, lastUpdatedAt: "2026-08-05T00:00:00.000Z" },
+        { path: "/work/old-project", sessions: 1, lastUpdatedAt: "2026-07-01T00:00:00.000Z" },
+      ]);
+      expect(facets.sources).toEqual([
+        { source: TEST_SESSION.source.tool, sessions: 2 },
+        { source: "antigravity-cli", sessions: 1 },
+      ]);
+      expect(await store.sessionFacets(bob)).toEqual({ sources: [], workspaces: [] });
     });
   });
 }

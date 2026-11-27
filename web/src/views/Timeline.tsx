@@ -6,6 +6,7 @@ import { SessionRow, friendlyDate } from './timeline/SessionRow';
 import { TimelineFilters, type Filters, NO_FILTERS, sourceOptions, workspaceOptions } from './timeline/TimelineFilters';
 import { useFilteredSessions, type LoadFiltered } from './timeline/use-filtered-sessions';
 import { useListKeys } from './timeline/use-list-keys';
+import { useSessionFacets, type LoadFacets } from './timeline/use-session-facets';
 
 type TimelineItem =
   | { type: 'date'; key: string; date: string; count: number }
@@ -14,7 +15,7 @@ type TimelineItem =
 const ROW = 96;
 const DAY = 38;
 
-export function TimelineView({ groups, machines, archived, asOf, selectedId, initialSource, onOpen, onSelect, onPrefetch, onConnect, onImport, hasMore, loadingMore, onLoadMore, loadFiltered }: {
+export function TimelineView({ groups, machines, archived, asOf, selectedId, initialSource, onOpen, onSelect, onPrefetch, onConnect, onImport, hasMore, loadingMore, onLoadMore, loadFiltered, loadFacets }: {
   groups: TimelineGroup[];
   machines: Machine[];
   /** Sessions in the archive, counted by the server rather than by this page. */
@@ -36,6 +37,8 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
   initialSource?: string | undefined;
   /** Where a filtered page comes from. The archive's session list by default. */
   loadFiltered?: LoadFiltered | undefined;
+  /** Where the filter options come from. The archive's facets by default. */
+  loadFacets?: LoadFacets | undefined;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<Filters>(() => (initialSource ? { ...NO_FILTERS, source: initialSource } : NO_FILTERS));
@@ -43,6 +46,7 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
 
   // With a filter on, the archive answers it, so older sessions are not missed.
   const filtered = useFilteredSessions(filters, loadFiltered);
+  const facets = useSessionFacets(loadFacets);
   const listed = filtered.active ? filtered.groups : groups;
   const more = useMemo(() => (filtered.active
     ? { hasMore: filtered.hasMore, loadingMore: filtered.loadingMore, onLoadMore: filtered.loadMore }
@@ -50,8 +54,8 @@ export function TimelineView({ groups, machines, archived, asOf, selectedId, ini
 
   const sessions = useMemo(() => groups.flatMap((group) => group.sessions), [groups]);
   const seen = useMemo(() => [...sessions, ...filtered.groups.flatMap((group) => group.sessions)], [sessions, filtered.groups]);
-  const sources = useMemo(() => sourceOptions(machines, seen, filters.source), [machines, seen, filters.source]);
-  const workspaces = useMemo(() => workspaceOptions(seen, filters.workspace), [seen, filters.workspace]);
+  const sources = useMemo(() => sourceOptions(machines, seen, filters.source, facets), [machines, seen, filters.source, facets]);
+  const workspaces = useMemo(() => workspaceOptions(seen, filters.workspace, facets), [seen, filters.workspace, facets]);
   const items = useMemo<TimelineItem[]>(() => listed.flatMap((group) => [
     { type: 'date' as const, key: `date-${group.date}`, date: group.date, count: group.sessions.length },
     ...group.sessions.map((session) => ({ type: 'session' as const, key: session.id, session })),
