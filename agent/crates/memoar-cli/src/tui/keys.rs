@@ -77,7 +77,8 @@ pub(crate) fn handle(app: &mut App, key: KeyEvent) -> Vec<Request> {
 /// The keys every session screen shares.
 fn action_key(app: &App, key: KeyEvent) -> Option<Action> {
     let action = match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => Action::Back,
+        KeyCode::Esc => Action::Escape,
+        KeyCode::Char('q') => Action::Back,
         KeyCode::Char(':') => Action::Palette,
         KeyCode::Char('/') if app.screen() == Screen::Search => {
             return None;
@@ -98,7 +99,7 @@ fn search_input_key(app: &mut App, key: KeyEvent) -> Vec<Request> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let search = &mut app.search;
     match key.code {
-        KeyCode::Esc => app.back(),
+        KeyCode::Esc => app.escape(),
         KeyCode::Enter => return submit_search(app),
         KeyCode::Down | KeyCode::Tab if !search.results.rows.is_empty() => {
             search.focus = SearchFocus::Results;
@@ -117,7 +118,8 @@ fn status_key(app: &mut App, key: KeyEvent) -> Vec<Request> {
     match key.code {
         KeyCode::Char('r') => perform(app, Action::Refresh),
         KeyCode::Char(':') => perform(app, Action::Palette),
-        KeyCode::Esc | KeyCode::Char('q' | 's') => perform(app, Action::Back),
+        KeyCode::Esc => perform(app, Action::Escape),
+        KeyCode::Char('q' | 's') => perform(app, Action::Back),
         _ => Vec::new(),
     }
 }

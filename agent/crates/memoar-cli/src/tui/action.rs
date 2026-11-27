@@ -24,6 +24,8 @@ pub(crate) enum Action {
     /// Select this session in the session list.
     Jump(String),
     Back,
+    /// Back one screen, never out of the app.
+    Escape,
     Quit,
 }
 
@@ -113,6 +115,10 @@ pub(crate) fn perform(app: &mut App, action: Action) -> Vec<Request> {
         }
         Action::Back => {
             app.back();
+            Vec::new()
+        }
+        Action::Escape => {
+            app.escape();
             Vec::new()
         }
         Action::Quit => {
