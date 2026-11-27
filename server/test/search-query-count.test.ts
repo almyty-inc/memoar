@@ -147,6 +147,32 @@ suite("search hydration cost", () => {
     expect(queries).toEqual([]);
   });
 
+  it("quotes a hit that sits deep inside a long session", async () => {
+    const store = new PostgresArchiveStore(dataSource!);
+    const suffix = "0000000beef0";
+    const session = structuredClone(TEST_SESSION);
+    session.id = `01a01700-0000-7000-8000-${suffix}`;
+    session.title = "long transcript";
+    session.source = { ...session.source, nativeSessionId: "count-long" };
+    session.turns = session.turns.map((turn, turnIndex) => ({
+      ...turn,
+      id: `01a01701-${String(turnIndex).padStart(4, "0")}-7000-8000-${suffix}`,
+      parentId: turnIndex === 0 ? null : `01a01701-${String(turnIndex - 1).padStart(4, "0")}-7000-8000-${suffix}`,
+      blocks: turn.blocks.map((block, blockIndex) => ({
+        ...block,
+        id: `01a01702-${String(turnIndex).padStart(2, "0")}${String(blockIndex).padStart(2, "0")}-7000-8000-${suffix}`,
+        // Far past the excerpt window, so only a window that starts at the hit finds it.
+        ...(turnIndex === 0 && blockIndex === 0 ? { text: `${"filler words ".repeat(8_000)}the Quokka ledger reconciled ${"tail words ".repeat(100)}` } : {}),
+      })),
+    }));
+    await store.saveSession(TEST_CONTEXT, session);
+
+    const service = new SearchService(new PostgresFtsBackend(dataSource!, store), new DisabledSemanticSearchProvider());
+    const result = await service.execute(TEST_CONTEXT, "quokka ledger", "lexical", {}, 5);
+    const hit = result.candidates.find((candidate) => candidate.session.id === session.id);
+    expect(hit?.highlight).toMatch(/Quokka ledger/);
+  }, 60_000);
+
   it("keeps the in-memory store's batch hydration behaviourally identical", async () => {
     const { DevArchiveStore } = await import("../src/dev-archive-store.js");
     const memory = new DevArchiveStore();
