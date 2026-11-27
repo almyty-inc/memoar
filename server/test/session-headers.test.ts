@@ -88,6 +88,13 @@ for (const implementation of implementations) {
       expect(rest.nextCursor).toBeNull();
 
       expect((await store.listSessionHeaders(bob, { limit: 10 })).items, "another tenant sees none of them").toEqual([]);
+
+      // Search ranks the ids, so headers come back in the order asked for.
+      const ranked = [sessions[2]!.id, "0191cafe-0000-7000-8000-00000000dead", sessions[0]!.id];
+      const hits = await store.getSessionHeaders(alice, ranked);
+      expect(hits.map((hit) => hit.id)).toEqual([sessions[2]!.id, sessions[0]!.id]);
+      expect(hits[1]).toEqual(headerOf((await store.getSession(alice, sessions[0]!.id))!));
+      expect(await store.getSessionHeaders(bob, ranked)).toEqual([]);
     });
   });
 }

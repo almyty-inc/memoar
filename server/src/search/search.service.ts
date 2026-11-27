@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Post, Query } from "@nestjs/common";
-import type { RedactionStatus, TenantContext } from "../archive-store.js";
+import type { ArchivedSession, RedactionStatus, TenantContext } from "../archive-store.js";
 import { Tenant } from "../auth.js";
 import { sessionSummary } from "../sessions.js";
 import { SEARCH_BACKEND, SEMANTIC_SEARCH_PROVIDER } from "../tokens.js";
@@ -51,6 +51,21 @@ export class SearchService {
     @Inject(SEARCH_BACKEND) private readonly backend: SearchBackend,
     @Inject(SEMANTIC_SEARCH_PROVIDER) private readonly semantic: SemanticSearchProvider,
   ) {}
+
+  /**
+   * The same candidates with every turn loaded, in the same order.
+   *
+   * A search result lists sessions, so the backend returns list rows. A pack
+   * quotes turns, so it loads them here, for its own hits only.
+   */
+  async withTurns(context: TenantContext, candidates: readonly SearchCandidate[]): Promise<(SearchCandidate & { session: ArchivedSession })[]> {
+    const missing = candidates.filter((candidate) => !("turns" in candidate.session)).map((candidate) => candidate.session.id);
+    const loaded = new Map((await this.backend.sessions(context, missing)).map((session) => [session.id, session]));
+    return candidates.flatMap((candidate) => {
+      const session = "turns" in candidate.session ? candidate.session : loaded.get(candidate.session.id);
+      return session ? [{ ...candidate, session }] : [];
+    });
+  }
 
   async execute(
     context: TenantContext,
@@ -178,6 +193,7 @@ export class PackService {
 
   async build(context: TenantContext, request: PackRequest): Promise<Record<string, unknown>> {
     const result = await this.search.execute(context, request.query, "hybrid", {}, Math.max(request.maxEvidence, request.maxSessions));
+    const candidates = await this.search.withTurns(context, result.candidates);
     const now = this.clock().valueOf();
     const staleAfterDays = request.staleAfterDays ?? 90;
     const maximumCharacters = request.maxTokens * 4;
@@ -188,7 +204,7 @@ export class PackService {
     let staleCount = 0;
     const redactions = new Set<RedactionStatus>();
     const sections: string[] = [];
-    for (const candidate of result.candidates) {
+    for (const candidate of candidates) {
       if (evidence.length >= request.maxEvidence || selectedSessions.size >= request.maxSessions) break;
       const ageDays = Math.max(0, Math.floor((now - new Date(candidate.session.updatedAt).valueOf()) / 86_400_000));
       const stale = ageDays > staleAfterDays;

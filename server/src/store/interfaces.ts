@@ -1,5 +1,5 @@
 import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, ProvenanceEntry, Visibility } from "../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionHeaderPage, SessionPage, TenantContext } from "./context.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "./context.js";
 import type {
   CollectionRecord,
   DistillationSettings,
@@ -72,6 +72,8 @@ export interface SessionStore {
    * in bulk; doing it one session at a time is an N+1 inside every query.
    */
   getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]>;
+  /** List rows for these sessions, in the order given, without loading turns. */
+  getSessionHeaders(context: TenantContext, sessionIds: readonly string[]): Promise<SessionHeader[]>;
   deleteSession(context: TenantContext, sessionId: string): Promise<boolean>;
 }
 

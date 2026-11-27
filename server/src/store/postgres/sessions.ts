@@ -2,7 +2,7 @@ import { In, type EntityManager } from "typeorm";
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
 import { ContentBlockEntity, SessionEntity, SessionIdentityEntity, TurnEntity } from "../../entities.js";
 import { uuidV7 } from "../../ids.js";
-import type { ArchivedSession, SessionFilter, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld, proposalList } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
@@ -199,6 +199,16 @@ export class PostgresSessionStore implements SessionStore {
   async getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> {
     if (sessionIds.length === 0) return [];
     return this.runner.inTenant(context, (manager) => this.hydrateWithManager(manager, context, sessionIds));
+  }
+
+  async getSessionHeaders(context: TenantContext, sessionIds: readonly string[]): Promise<SessionHeader[]> {
+    if (sessionIds.length === 0) return [];
+    return this.runner.inTenant(context, async (manager) => {
+      const rows = await manager.getRepository(SessionEntity).find({ where: { tenantId: context.tenantId, id: In([...new Set(sessionIds)]) } });
+      const byId = new Map((await sessionHeaders(manager, context, rows)).map((header) => [header.id, header]));
+      // The caller's ranking order, without ids that no longer exist.
+      return sessionIds.map((id) => byId.get(id)).filter((header): header is SessionHeader => header !== undefined);
+    });
   }
 
   /** The same batched hydration, for callers already inside a transaction. */

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/require-await -- in-memory store methods intentionally satisfy the asynchronous production port. */
 import type { Visibility } from "../../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { SessionParse, SessionStore } from "../interfaces.js";
 import { firstUnheld } from "../identity-proposal.js";
 import { withoutNulBytes } from "../nul-bytes.js";
@@ -142,6 +142,10 @@ export class MemorySessionStore implements SessionStore {
       if (session) found.push(copy(session));
     }
     return found;
+  }
+
+  async getSessionHeaders(context: TenantContext, sessionIds: readonly string[]): Promise<SessionHeader[]> {
+    return (await this.getSessions(context, sessionIds)).map(headerOf);
   }
 
   async deleteSession(context: TenantContext, sessionId: string): Promise<boolean> {

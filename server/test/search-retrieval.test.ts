@@ -101,6 +101,10 @@ class CountingBackend implements SearchBackend {
     this.calls += 1;
     return this.outcome();
   }
+
+  sessions(): Promise<never[]> {
+    return Promise.resolve([]);
+  }
 }
 
 function semanticProvider(outcome: () => Promise<SearchCandidate[]>): SemanticSearchProvider {

@@ -1,6 +1,6 @@
 import type { DataSource } from "typeorm";
 import type { Annotation, AnnotationKind, MemoryDocument, MemoryRevision, Visibility } from "../../../libs/canonical/src/generated.js";
-import type { ArchivedSession, SessionFilter, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
+import type { ArchivedSession, SessionFilter, SessionHeader, SessionHeaderPage, SessionPage, TenantContext } from "../context.js";
 import type { AnnotationStore, ArchiveStore, MemoryCapture, SessionParse } from "../interfaces.js";
 import type {
   CollectionRecord, DistillationSettings, JobRecord, MachineCommandRecord, MachineRecord,
@@ -68,6 +68,7 @@ export class PostgresArchiveStore implements ArchiveStore {
   countSessionsByMachineSource(context: TenantContext): Promise<{ machineId: string; tool: string; sessions: number }[]> { return this.sessions.countSessionsByMachineSource(context); }
   sessionParserVersions(context: TenantContext): Promise<Map<string, SessionParse>> { return this.sessions.sessionParserVersions(context); }
   getSessions(context: TenantContext, sessionIds: readonly string[]): Promise<ArchivedSession[]> { return this.sessions.getSessions(context, sessionIds); }
+  getSessionHeaders(context: TenantContext, sessionIds: readonly string[]): Promise<SessionHeader[]> { return this.sessions.getSessionHeaders(context, sessionIds); }
   deleteSession(context: TenantContext, sessionId: string): Promise<boolean> { return this.sessions.deleteSession(context, sessionId); }
 
   listAnnotations(context: TenantContext, sessionId?: string): Promise<Annotation[]> { return this.annotations.listAnnotations(context, sessionId); }
