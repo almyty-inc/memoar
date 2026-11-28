@@ -6,6 +6,7 @@ pub(crate) mod brand;
 mod chrome;
 mod controls;
 mod look;
+mod page;
 mod sign_in;
 mod status;
 mod style;
@@ -16,6 +17,7 @@ use nsh_core::{BoxShadow, Color};
 
 use crate::controller::Controller;
 use look::look;
+use page::page;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Screen {
@@ -56,17 +58,21 @@ fn content(ctl: Controller) -> impl IntoElement {
         .child(when(
             move || screen.get() == Screen::Fatal,
             move || {
-                style::note(move || {
+                page(style::note(move || {
                     format!(
                         "Memoar cannot start: {}",
                         ctl.fatal.get().unwrap_or_default()
                     )
-                })
+                }))
             },
         ))
         .child(when(
             move || screen.get() == Screen::Loading,
-            || style::note(|| "Reading this machine's configuration.".to_owned()),
+            || {
+                page(style::note(|| {
+                    "Reading this machine's configuration.".to_owned()
+                }))
+            },
         ))
         .child(when(
             move || screen.get() == Screen::SignIn,
@@ -89,15 +95,8 @@ pub(crate) fn root(ctl: Controller) -> impl IntoElement {
         .border_color(l.rule)
         .shadow(float())
         .overflow_hidden()
-        .child(
-            scroll().flex_1().child(
-                view()
-                    .px(px(32.0))
-                    .pt(px(26.0))
-                    .pb(px(16.0))
-                    .child(content(ctl)),
-            ),
-        )
+        // Each screen scrolls its own body and pins its own buttons.
+        .child(content(ctl))
         // The endorsement stays at the foot of the card while the screen
         // above it scrolls.
         .child(

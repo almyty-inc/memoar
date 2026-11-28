@@ -7,6 +7,7 @@ use nsh_core::ui::prelude::*;
 use super::agents;
 use super::controls::{button, switch};
 use super::look::{look, motion};
+use super::page::page_with;
 use super::style::{
     BASE, SMALL, below, fact, fact_id, failure_text, label, maybe, note, row, section, title,
 };
@@ -22,7 +23,7 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
     let status = move || ctl.status.get().unwrap_or_default();
     on_key(CAPTURE_KEYS, move |_| ctl.capture());
     on_key(WEB_APP_KEYS, move |_| ctl.open_web_app());
-    view()
+    let body = view()
         .child(header(ctl, status))
         .child(maybe(16.0, move || {
             ctl.last_error()
@@ -43,10 +44,10 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
         ))
         .child(below(20.0, facts(ctl, status)))
         .child(below(24.0, masks(ctl)))
-        .child(below(24.0, footer(ctl)))
         .child(maybe(12.0, move || {
             ctl.notice.get().map(|notice| note(move || notice.clone()))
-        }))
+        }));
+    page_with(body, footer(ctl))
 }
 
 /// The title and what capture is doing, with the two capture controls.

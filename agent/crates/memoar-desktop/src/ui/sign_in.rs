@@ -6,6 +6,7 @@ use nsh_core::ui::prelude::*;
 use super::brand::mark;
 use super::controls::{button, field, segment};
 use super::look::look;
+use super::page::page_with;
 use super::style::{below, failure_text, maybe, note, title};
 use crate::account::Credentials;
 use crate::controller::Controller;
@@ -117,21 +118,24 @@ pub(crate) fn screen(ctl: Controller) -> impl IntoElement {
             ctl.sign_in_error
                 .get()
                 .map(|failure| failure_text("sign-in-error", failure))
-        }))
-        .child(view().mt(px(20.0)).child(button(
-            move || {
-                if ctl.signing_in.get() {
-                    "Signing in".to_owned()
-                } else {
-                    "Sign in".to_owned()
-                }
-            },
-            "sign-in",
-            || true,
-            idle,
-            None,
-            submit,
-        )));
+        }));
+    let sign_in = view().w(px(WIDTH)).child(button(
+        move || {
+            if ctl.signing_in.get() {
+                "Signing in".to_owned()
+            } else {
+                "Sign in".to_owned()
+            }
+        },
+        "sign-in",
+        || true,
+        idle,
+        None,
+        submit,
+    ));
 
-    view().items_center().pt(px(12.0)).child(form)
+    page_with(
+        view().items_center().pt(px(12.0)).child(form),
+        view().items_center().child(sign_in),
+    )
 }
