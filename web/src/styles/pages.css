@@ -38,7 +38,7 @@
 .steps li.done { color: var(--text); }
 .step-mark { display: grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid var(--control); border-radius: 50%; }
 .steps li.done .step-mark { color: #fff; background: linear-gradient(135deg, #2775f7, #26c5cf 65%, #85e5ba); border: 0; }
-.command-stack { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
+.command-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); margin-top: var(--sp-4); }
 .install-command code { color: var(--text); }
 
 /* Search. */
@@ -150,8 +150,11 @@
 .settings-nav { position: sticky; top: var(--sp-5); display: grid; gap: 2px; padding: var(--sp-2); background: var(--surround-flat); border-radius: var(--r-popover); }
 .settings-nav .nav-item { width: 100%; text-align: left; background: none; border: 0; }
 .settings-nav .nav-item-active { background: var(--bg); }
-.settings-content { display: grid; gap: var(--sp-7); max-width: 760px; }
-.settings-section { display: grid; gap: var(--sp-4); }
+/* minmax(0, 1fr), not the implicit auto column: an auto column grows to its
+   widest unbreakable child, a long API key name or a scope list, and at
+   phone width that pushed the page 62px sideways. */
+.settings-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-7); max-width: 760px; }
+.settings-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
 .settings-section > h2 { font-size: 17px; letter-spacing: -0.02em; }
 .settings-section > header { display: flex; gap: var(--sp-4); align-items: flex-start; justify-content: space-between; }
 .settings-section > header h2 { font-size: 17px; letter-spacing: -0.02em; }
