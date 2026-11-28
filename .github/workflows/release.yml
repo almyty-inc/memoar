@@ -493,7 +493,12 @@ jobs:
           NAME: ${{ steps.package.outputs.name }}
         run: |
           set -euo pipefail
-          tar -tzf "$ARCHIVE" | grep -q '\.desktop$' || { echo "::error::${NAME} holds no .desktop file"; exit 1; }
+          # Listed to a file first. Piped, grep -q stops reading at the first
+          # match, tar fails writing the rest ("tar: stdout: write error") and
+          # pipefail reported a package that has its .desktop file as one
+          # without it.
+          tar -tzf "$ARCHIVE" > "$RUNNER_TEMP/archive.txt"
+          grep -q '\.desktop$' "$RUNNER_TEMP/archive.txt" || { echo "::error::${NAME} holds no .desktop file"; exit 1; }
           cp "$ARCHIVE" "dist/${NAME}"
           echo "signature: n/a (Linux packages are verified by SHA256SUMS and the provenance attestation)" > "dist/${NAME}.signing"
 
